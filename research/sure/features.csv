@@ -1,0 +1,114 @@
+feature,area,priority,original,clone,notes
+"Manual accounts of 10 types (cash, checking, savings, brokerage, retirement, crypto, property, vehicle, loan, credit card, other asset, other liability)",accounts,must,yes,no,Type-specific fields per account type
+Asset versus liability classification with sign handling,accounts,must,yes,no,Liability balance shown as owed
+"Account subtypes with tax treatment (taxable, deferred, exempt, advantaged)",accounts,should,yes,no,Drives badges and cash-flow filters
+Account sparklines and grouped list with totals,accounts,should,yes,no,
+"Disable, exclude from reports, set default account",accounts,should,yes,no,
+"Account sharing with full control, read/write, read-only",accounts,could,yes,no,Household use
+Institution logo picker and custom logo,accounts,could,yes,no,Brandfetch is a third-party asset
+Opening balance and reconciliation valuations with confirm step,accounts,must,yes,no,
+Daily balance history with cash and non-cash flows,accounts,must,yes,no,Needed for net worth chart and returns
+"Account statements vault (PDF, CSV, XLSX) with match and coverage",accounts,could,yes,no,"25 MB cap, checksum dedupe"
+"Transactions table with search, filters, pending badge",transactions,must,yes,no,
+"Transaction detail drawer (name, date, amount, category, merchant, tags, notes)",transactions,must,yes,no,
+Attachments on transactions,transactions,should,yes,no,Allowed content types list
+"Split with exact total, atomic, undo",transactions,must,yes,no,See rea.md SURE-002
+"Transaction kinds (standard, funds movement, card payment, loan payment, one time, investment contribution)",transactions,must,yes,no,See SURE-001
+"Automatic transfer and card-payment matching, reject, mark as recurring",transactions,must,yes,no,Per-family disable switch
+Pending-to-posted reconciliation and manual pending duplicate merge,transactions,must,yes,no,See SURE-004
+Bulk edit and bulk delete,transactions,should,yes,no,Respects share permission
+Categorize queue with rule preview,transactions,should,yes,no,Step-through review
+Exclude transaction from budget and reports,transactions,should,yes,no,
+Convert transaction to trade,transactions,could,yes,no,
+Name suggestions while typing,transactions,could,yes,no,
+Locked fields survive sync (user overrides),transactions,must,yes,no,"locked_attributes, import_locked"
+Idempotency key and external id per entry,transactions,must,yes,no,See SURE-006
+"Categories tree with color and icon, lock, merge, bootstrap defaults",categories,must,yes,no,One level of nesting
+"Merchants (user and provider), merge, AI enhance",categories,should,yes,no,
+Tags with color,categories,should,yes,no,
+Rules engine with nested conditions and 13 action types,rules,must,yes,no,"Name, amount, type, merchant, category, tag, details, notes, account"
+"Rule groups, ordering, activation, stop processing, effective date",rules,should,yes,no,
+"Rule confirm preview, apply one or all, run history",rules,should,yes,no,
+Bayes categorizer with evaluation and weight tuning,rules,could,yes,no,"Local, no LLM cost"
+LLM auto-categorization with confidence threshold and shadow rate,rules,should,yes,no,Provider-agnostic
+Prompt to create a rule after manual categorization,rules,could,yes,no,Dismissible
+Monthly budget with custom month start day,budgets,must,yes,no,
+Expected income and per-category budget,budgets,must,yes,no,
+Per-category rollover,budgets,should,yes,no,
+Copy previous month and bootstrap from history,budgets,should,yes,no,
+"Over-allocation warning, available-to-spend, available-to-allocate",budgets,must,yes,no,
+"Personal and household budgets, budget sharing",budgets,could,yes,no,
+Refund netting with floor in category spend,budgets,must,yes,no,"Product choice, see SURE-005"
+Investment contributions as spending switch,budgets,should,yes,no,Per-family
+Recurring detection from history (3 occurrences),recurring,must,yes,no,"Suggested then confirmed, tombstone on dismiss"
+"Bills page: upcoming, calendar, all, history views",recurring,must,yes,no,
+Paycheck view with safe-to-spend and shortfall,recurring,should,yes,no,Similar to Rocket Money payday view
+"Occurrence actions: paid, skip, snooze, override amount, allocate",recurring,should,yes,no,
+"Bill types: bill, subscription, installment; autopay, trial end, renew date",recurring,should,yes,no,
+Recurring price-change detection,recurring,should,yes,no,
+iCal feed of bills with resettable token,recurring,could,yes,no,
+Weekend and holiday adjust for due dates,recurring,could,yes,no,
+"Goals: one-off and maintained, fixed or months-of-expenses target",goals,should,yes,no,
+Goal pledges reconciled against later transfers,goals,could,yes,no,Expire after a window
+Goal projection chart and pace/status pill,goals,should,yes,no,
+"Goal pause, archive, complete, reopen, consume",goals,could,yes,no,
+"Dashboard: net worth chart, Sankey cash flow, outflows donut, balance sheet, insights feed",dashboard,must,yes,no,
+"Dashboard sections reorder, hide, collapse, resize",dashboard,should,yes,no,
+Cash flow Sankey by category or by account,reports,should,yes,no,
+"Reports: trends, transactions breakdown, budget performance, net worth, investment flows and performance, spending vs normal",reports,must,yes,no,
+"CSV export of transactions, print view, Google Sheets instructions",reports,should,yes,no,
+Insights: 8 template-based generators with acknowledge and refresh,insights,should,yes,no,"Budget, cash-flow warning, idle cash, goal depleted, net-worth milestone, savings rate, anomaly, subscription audit"
+Holdings with daily snapshots and security prices,investments,must,yes,no,
+Trades with activity labels and fees,investments,must,yes,no,
+Cost basis priority manual > calculated > provider with lock,investments,must,yes,no,
+Security search across multiple price providers with fallbacks,investments,should,yes,no,"Tiingo, Twelve Data, EODHD, Yahoo, Alpha Vantage, MFAPI, MOEX"
+Stock split handling,investments,could,yes,no,
+Remap or reset a holding's security,investments,could,yes,no,
+"Property valuation providers (RentCast, Realie, Chimnie)",investments,could,yes,no,US/UK AVM
+"Loan terms: rate, term, variable schedule, insurance",investments,could,yes,no,Amortization context
+"Credit card terms: APR, limit, due day, statement day",accounts,should,yes,no,
+Multi-currency with exchange rate history (Frankfurter),currency,must,yes,no,
+Per-family enabled currencies,currency,should,yes,no,
+"CSV import with column mapping, date and number format, signage",imports,must,yes,no,
+Import dedupe that keeps identical real purchases,imports,must,yes,no,See SURE-003
+Import revert,imports,should,yes,no,
+"Imports from Mint, YNAB, Actual, QIF",imports,should,yes,no,Migration helpers
+PDF statement import via AI,imports,could,yes,no,
+"Category, merchant, rule and Sure full-export imports",imports,could,yes,no,
+Chunked API import sessions and preflight,imports,could,yes,no,
+Full data export with archive link,imports,should,yes,no,
+Provider: Plaid US and EU,connectors,could,yes,no,Paid; needs own keys
+Provider: SimpleFIN,connectors,should,yes,no,Low-cost US bank bridge
+Provider: Lunch Flow,connectors,could,yes,no,
+Provider: Enable Banking (EU),connectors,could,yes,no,
+Provider: TrueLayer (UK),connectors,could,yes,no,
+Provider: Sophtron,connectors,could,yes,no,
+Provider: Wise with SCA keypair,connectors,could,yes,no,
+"Provider: IBKR Flex, Trading 212, Questrade, SnapTrade, Trade Republic, Indexa Capital",connectors,could,yes,no,Brokers
+"Provider: Coinbase, Binance, Kraken, CoinSpot, CoinStats",connectors,could,yes,no,Exchanges
+"Provider: on-chain wallets across EVM, Bitcoin, Solana, Cosmos, Polkadot",connectors,could,yes,no,Public explorers
+"Provider: Akahu, Up, Redbark, Monobank, Fio, Mercury, Brex",connectors,could,yes,no,Regional or business
+Provider: Apple Wallet via FinanceKit,connectors,could,yes,no,Needs iOS app
+"Provider health strip, maturity badge, sync all, per-provider sync",connectors,should,yes,no,
+Link provider account to existing manual account; unlink,connectors,should,yes,no,
+Several providers feeding one account,connectors,could,yes,no,account_providers
+Debug log of provider incidents,connectors,could,yes,no,Support diagnostics
+AI assistant with function tools (read and write),assistant,should,yes,no,About 40 tools
+External assistant mode and mcp_only mode,assistant,could,yes,no,
+Assistant uses token budget and history trimming,assistant,could,yes,no,
+LLM usage page and Langfuse tracing,assistant,could,yes,no,
+Family document vector search for the assistant,assistant,could,yes,no,
+MCP server with OAuth dynamic registration,api,should,yes,no,Both Monarch and Copilot now ship MCP
+"REST API v1 with OpenAPI, scoped keys",api,should,yes,no,
+"Email/password, TOTP MFA, backup codes",security,must,yes,no,
+WebAuthn keys and passkeys,security,should,yes,no,
+OIDC SSO,security,could,yes,no,Single user does not need it
+Roles and household invitations,security,could,yes,no,
+Mobile companion (Flutter) and PWA,platform,could,yes,no,Mobile shows login and balances
+macOS shell (Tauri),platform,could,yes,no,
+Web push notifications,platform,could,yes,no,
+"Onboarding: preferences, goals, trial",onboarding,should,yes,no,
+Release notes and highlight banner,platform,could,yes,no,
+Background job health and AI lane separation,operations,could,yes,no,Ops for self-hosting
+Hosted-service billing via Stripe,billing,could,yes,skip,Not needed for own use
+Impersonation support sessions,security,could,yes,skip,"Support tool, not needed for own use"
