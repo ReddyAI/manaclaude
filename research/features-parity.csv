@@ -1,0 +1,96 @@
+feature,area,priority,original,clone,notes
+Review queue with unreviewed state and one-step confirm,review,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Sure. Best: Lunch Money: explicit reviewed flag with auto-review options; Copilot: blue-dot queue; Rocket Money: swipe cards"
+Category suggestions with a confidence signal,review,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Sure. Best: Copilot: per-user model trained on reviewed items; Sure: confidence threshold and shadow-rate evaluation"
+Assign a transaction to a household member to review,review,could,yes,no,In: Monarch. Best: Monarch: only app with it
+Hide a transaction without clearing its review state,review,could,yes,no,In: Monarch. Best: Monarch
+Search and multi-filter with totals for the filtered set,transactions,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Lunch Money: quick, quick-filter and advanced modes; Copilot: total spent, income, net of filtered set"
+"Bulk edit (category, tags, date, account, reviewed) with keyboard shortcuts",transactions,must,yes,no,"In: Copilot, Lunch Money, Sure. Best: Lunch Money: widest action list; Copilot: X, R, C, F shortcuts"
+Inline editing in a spreadsheet-like table,transactions,should,yes,no,In: Lunch Money. Best: Lunch Money
+"Split a transaction (amount, percent, equal, over time) with exact total and undo",transactions,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Sure. Best: Lunch Money: modes including payments over time and bulk unsplit; Sure: atomic, locked, undo"
+Split rule action (smart split),transactions,should,yes,no,"In: Monarch, Lunch Money, Sure. Best: Monarch: retroactive option"
+Group several transactions under one row,transactions,could,yes,no,In: Lunch Money. Best: Lunch Money
+Tags on any transaction,transactions,should,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Copilot: tags vs categories rule (tags have no budget)"
+Attachments and receipts on a transaction,transactions,should,yes,no,"In: Monarch, Lunch Money, Sure. Best: Sure: allowed types list; Lunch Money"
+Per-transaction change history / activity log,transactions,should,yes,no,"In: Monarch, Lunch Money. Best: Monarch: timeline incl. pending to posted; Lunch Money: change log"
+Pending edits survive when the posted version arrives,transactions,must,yes,no,"In: Monarch, Lunch Money, Sure. Best: Monarch: matches even when bank gives no link; Sure: provider link id plus fallbacks"
+User overrides locked against sync and import,transactions,must,yes,no,"In: Lunch Money, Sure. Best: Sure: locked_attributes and import_locked"
+Transfers and card payments matched and kept out of spending,transactions,must,yes,no,"In: Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Simplifi: linked transfers with auto-create of the other side; Sure: matcher, rejected pairs, reconcile"
+Transaction kind or category properties that drive budget inclusion,transactions,must,yes,no,"In: Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Lunch Money: three category properties; Sure: kinds with explicit budget lists"
+Refunds net against the original category,transactions,must,yes,no,"In: Copilot, Rocket Money, Sure. Best: Sure: floor at zero in category spend; Copilot: backdate to original purchase"
+Two exclusion flags: from reports and from spending plan,transactions,should,yes,no,"In: Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Simplifi: separate flags per transaction and per account"
+Manual transaction entry and duplicate,transactions,should,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Lunch Money: duplicate and quick add"
+CSV export of the current view,transactions,should,yes,no,"In: Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Copilot: includes recurring link and account mask"
+"Category tree with color and emoji or icon, groups",categories,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Copilot: group with unassigned budget; Sure: Lucide icons, merge, lock"
+Merchant entity separate from raw payee name,categories,should,yes,no,"In: Monarch, Lunch Money, Sure. Best: Sure: user and provider merchants with merge"
+Rules engine with rich conditions and actions,rules,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Lunch Money: payee, category, notes, amount range, day range, account; Sure: nested conditions, 13 actions"
+Preview matches before applying; apply to existing,rules,should,yes,no,"In: Monarch, Lunch Money, Sure. Best: Sure: confirm screen and rule runs"
+Rule can set reviewed state,rules,should,yes,no,"In: Monarch, Lunch Money. Best: Monarch and Lunch Money"
+Local Bayes categorizer plus optional LLM categorizer,rules,should,yes,no,In: Sure. Best: Sure
+Monthly category budgets,budgets,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Copilot: edit by month; Sure: expected income plus allocation warnings"
+"Flex budgeting: fixed, non-monthly, flexible buckets with one flex number",budgets,should,yes,no,In: Monarch. Best: Monarch
+Rollovers (cumulative or per category or income pool),budgets,should,yes,no,"In: Monarch, Copilot, Lunch Money, Simplifi, Sure. Best: Lunch Money: general pool and per category; Copilot: cumulative from a start month"
+Rebalance budgets to actual spend with preview,budgets,could,yes,no,In: Copilot. Best: Copilot
+Left-to-spend headline number,budgets,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Simplifi: Left This Month from plan; Copilot: free to spend with ideal-pace line"
+"Spending plan from recurring income, bills and planned spend",budgets,should,yes,no,"In: Monarch, Rocket Money, Simplifi, Sure. Best: Simplifi: no double counting between bills and planned spend"
+Custom income amount per month,budgets,should,yes,no,"In: Lunch Money, Simplifi, Sure. Best: Simplifi: per-month override with revert"
+Custom budget period or month start day,budgets,should,yes,no,"In: Lunch Money, Sure. Best: Lunch Money; Sure"
+Personal and household budgets side by side,budgets,could,yes,no,In: Sure. Best: Sure
+"Watchlist for a category, merchant or tag without a budget",budgets,could,yes,no,"In: Rocket Money, Simplifi. Best: Rocket Money"
+Optional budgeting switch,budgets,could,yes,no,In: Copilot. Best: Copilot
+"Per-category key metrics (year total, average monthly)",budgets,should,yes,no,In: Copilot. Best: Copilot
+Recurring detection from history with review of new items,recurring,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Sure: three occurrences, suggested then confirmed, tombstone on dismiss"
+Calendar and list of upcoming bills with paid state,recurring,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Monarch: calendar with checkmarks; Rocket Money: two-week upcoming"
+"Match filters: name text, amount range, day window",recurring,must,yes,no,"In: Copilot, Simplifi, Sure. Best: Copilot: editable filters; Sure: tolerance and early/late days"
+Payday view with bills before next paycheck,recurring,should,yes,no,"In: Rocket Money, Sure. Best: Rocket Money: needs 3 paychecks; Sure: shortfall and bridge"
+Price-change detection on a recurring item,recurring,should,yes,no,In: Sure. Best: Sure
+Subscription audit and cancel guidance,recurring,should,yes,no,"In: Monarch, Rocket Money, Sure. Best: Rocket Money: where each charge is billed from and self-cancel steps; Sure: audit insight"
+Link transactions to recurring items manually or through rules,recurring,should,yes,no,"In: Copilot, Lunch Money, Simplifi, Sure. Best: Lunch Money: rule action, bulk link"
+"Occurrence actions: paid, skip, snooze, override amount",recurring,could,yes,no,"In: Copilot, Lunch Money, Simplifi, Sure. Best: Sure"
+Cash flow report,reports,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Copilot: tap bars to drill down"
+Sankey diagram,reports,should,yes,no,"In: Monarch, Sure. Best: Monarch (shareable, mobile); Sure (by category or by account)"
+Treemap with drill-down,reports,could,yes,no,In: Monarch. Best: Monarch
+Saved report views / query tool,reports,should,yes,no,"In: Monarch, Lunch Money, Sure. Best: Lunch Money: Analyze with five chart types, granularity"
+Spending vs normal comparison,reports,could,yes,no,In: Sure. Best: Sure
+Top purchases and new merchants,reports,could,yes,no,In: Lunch Money. Best: Lunch Money Stats
+Toggles to include recurring or excluded items in stats,reports,could,yes,no,In: Lunch Money. Best: Lunch Money
+Month in Review and Year in Review slides,insights,should,yes,no,"In: Monarch, Copilot. Best: Copilot: shareable slides; Monarch: swipeable monthly review"
+Weekly AI recap,insights,could,yes,no,In: Monarch. Best: Monarch
+"Rule-based insight cards (anomaly, idle cash, savings rate, milestones)",insights,should,yes,no,"In: Monarch, Copilot, Rocket Money, Sure. Best: Sure: 8 template generators, dedupe, acknowledge"
+Challenges and badges,insights,could,yes,no,In: Rocket Money. Best: Rocket Money
+Manual accounts for assets and liabilities,accounts,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Sure: 10 typed account forms"
+"Net worth chart with assets, liabilities, equity toggle",accounts,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Sure. Best: Rocket Money: equity toggle; Lunch Money: manual and historical balances"
+Daily balance history including investment flows,accounts,must,yes,no,"In: Lunch Money, Sure. Best: Sure: cash and non-cash flow columns"
+"Liability details (APR, term, due day, minimum payment)",accounts,should,yes,no,"In: Copilot, Sure. Best: Sure; Copilot: credit utilization"
+Property valuation from a provider,accounts,could,yes,no,"In: Monarch, Copilot, Rocket Money, Sure. Best: Sure: RentCast, Realie, Chimnie; Copilot: Zillow, RentCast"
+Multi-currency with a primary currency for totals,accounts,must,yes,no,"In: Lunch Money, Sure. Best: Lunch Money: per-amount currency; Sure: rate history"
+Account sharing with permission levels,accounts,could,yes,no,"In: Monarch, Sure. Best: Sure: full control, read/write, read-only"
+Several aggregators with per-institution switch that keeps history,connectors,should,yes,no,"In: Monarch, Copilot, Sure. Best: Monarch: Switch provider; Sure: provider tables per account"
+Connection status and re-link prompts,connectors,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Sure: health strip and maturity badges"
+Crypto exchange keys and wallet addresses,connectors,should,yes,no,"In: Monarch, Copilot, Lunch Money, Sure. Best: Sure: on-chain wallets; Lunch Money: 300+ coins manual"
+Broker and brokerage-style connections,connectors,could,yes,no,"In: Monarch, Copilot, Rocket Money, Sure. Best: Sure: IBKR, Trading 212, Questrade, SnapTrade"
+CSV and PDF statement import with column mapping,connectors,must,yes,no,"In: Lunch Money, Simplifi, Sure. Best: Lunch Money: CSV and PDF; Sure: 12 import types, preflight"
+"Imports from Mint, YNAB, Actual, QIF",connectors,could,yes,no,"In: Monarch, Lunch Money, Simplifi, Sure. Best: Sure"
+Full export and re-import,connectors,should,yes,no,In: Sure. Best: Sure: archive link and SureImport
+Amazon itemization,connectors,should,yes,no,"In: Monarch, Copilot. Best: Copilot: amount equal and within 2 days; Monarch: browser extension, split by item"
+Venmo through email forwarding,connectors,could,yes,no,In: Copilot. Best: Copilot
+Receipt email forwarding and receipt tab,connectors,should,yes,no,In: Monarch. Best: Monarch
+"Holdings with prices, allocation, top movers",investments,must,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Sure. Best: Sure for data model; Monarch for views"
+Performance that ignores deposits and withdrawals,investments,must,yes,no,"In: Copilot, Sure. Best: Copilot: TWR-like; Sure: performance and flows reports"
+Cost basis with source priority and lock,investments,should,yes,no,In: Sure. Best: Sure
+Benchmarks and live balance estimate,investments,could,yes,no,In: Copilot. Best: Copilot
+Trades with activity labels and fees,investments,should,yes,no,In: Sure. Best: Sure
+Savings goals with on-track status and projection,goals,should,yes,no,"In: Monarch, Copilot, Rocket Money, Simplifi, Sure. Best: Monarch: Save Up with target date and contributions; Sure: projection chart"
+Pay-down goals with interest and extra-payment what-if,goals,could,yes,no,In: Monarch. Best: Monarch
+Allocate existing balances to goals; one account to many goals,goals,should,yes,no,"In: Monarch, Copilot, Sure. Best: Copilot allocations; Monarch many-to-many"
+Link transactions to goals,goals,could,yes,no,"In: Monarch, Sure. Best: Monarch (bulk and rules); Sure pledges"
+Forecasting with life events and scenarios,planning,could,yes,no,In: Monarch. Best: Monarch (Plus)
+In-app AI assistant over your data,assistant,should,yes,no,"In: Monarch, Copilot, Rocket Money, Simplifi, Sure. Best: Sure: ~40 tools; Copilot: per-tab prompts"
+Assistant asks approval before changing data,assistant,should,yes,no,In: Simplifi. Best: Simplifi
+"Proactive suggestions (idle cash, duplicate charges, transaction fixes)",assistant,should,yes,no,"In: Monarch, Copilot, Rocket Money, Sure. Best: Monarch: savings found; Copilot: transaction fixes"
+"MCP server (read, optional write)",assistant,should,yes,no,"In: Monarch, Copilot, Sure. Best: Monarch: permission choice; Sure: OAuth dynamic registration"
+Personal API token and documented REST API,api,should,yes,no,"In: Lunch Money, Sure. Best: Lunch Money; Sure OpenAPI"
+Low-balance alert with default threshold,alerts,should,yes,no,In: Rocket Money. Best: Rocket Money
+Two-factor login; passkeys,security,should,yes,no,"In: Copilot, Rocket Money, Sure. Best: Sure: TOTP, WebAuthn, passkeys"
+Home-screen widgets,platform,could,yes,no,"In: Monarch, Copilot. Best: Copilot, Monarch"
+Mobile companion,platform,could,yes,no,"In: Monarch, Copilot, Rocket Money, Lunch Money, Simplifi, Sure. Best: Lunch Money companion is deliberately small"
+Customizable dashboard layout,platform,should,yes,no,"In: Monarch, Sure. Best: Monarch; Sure"

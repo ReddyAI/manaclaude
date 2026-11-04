@@ -1,0 +1,96 @@
+area,feature,priority,monarch,copilot,rocketmoney,lunchmoney,simplifi,sure,ours,keep_from,notes
+review,Review queue with unreviewed state and one-step confirm,must,yes,yes,yes,yes,not mapped,partial,no,Lunch Money: explicit reviewed flag with auto-review options; Copilot: blue-dot queue; Rocket Money: swipe cards,Rocket Money shows ten at a time; Monarch adds swipe on mobile and assigning a household member
+review,Category suggestions with a confidence signal,must,partial,yes,partial,partial,not mapped,yes,no,Copilot: per-user model trained on reviewed items; Sure: confidence threshold and shadow-rate evaluation,Only Sure documents a threshold; Copilot needs 30 reviews before it turns on
+review,Assign a transaction to a household member to review,could,yes,no,no,no,not mapped,no,no,Monarch: only app with it,Needs households
+review,Hide a transaction without clearing its review state,could,yes,no,no,no,not mapped,no,no,Monarch,From search summary
+transactions,Search and multi-filter with totals for the filtered set,must,yes,yes,yes,yes,yes,yes,no,"Lunch Money: quick, quick-filter and advanced modes; Copilot: total spent, income, net of filtered set",Monarch has exclude filters (Oct 2026)
+transactions,"Bulk edit (category, tags, date, account, reviewed) with keyboard shortcuts",must,unconfirmed,yes,unconfirmed,yes,not mapped,yes,no,"Lunch Money: widest action list; Copilot: X, R, C, F shortcuts",Rocket Money and Monarch bulk edit not confirmed
+transactions,Inline editing in a spreadsheet-like table,should,no,no,no,yes,not mapped,no,no,Lunch Money,Fast cleanup for power users
+transactions,"Split a transaction (amount, percent, equal, over time) with exact total and undo",must,yes,yes,yes,yes,not mapped,yes,no,"Lunch Money: modes including payments over time and bulk unsplit; Sure: atomic, locked, undo",Sure also blocks pending and transfers
+transactions,Split rule action (smart split),should,yes,no,no,yes,not mapped,yes,no,Monarch: retroactive option,Rules can split automatically
+transactions,Group several transactions under one row,could,no,no,no,yes,not mapped,no,no,Lunch Money,Children keep their data
+transactions,Tags on any transaction,should,yes,yes,yes,yes,yes,yes,no,Copilot: tags vs categories rule (tags have no budget),Rocket Money creates tags only on mobile
+transactions,Attachments and receipts on a transaction,should,yes,unconfirmed,unconfirmed,yes,unconfirmed,yes,no,Sure: allowed types list; Lunch Money,Monarch attaches matched receipts
+transactions,Per-transaction change history / activity log,should,yes,no,no,yes,no,no,no,Monarch: timeline incl. pending to posted; Lunch Money: change log,Both shipped it recently
+transactions,Pending edits survive when the posted version arrives,must,yes,unconfirmed,unconfirmed,partial,unconfirmed,yes,no,Monarch: matches even when bank gives no link; Sure: provider link id plus fallbacks,"Rocket Money, Copilot unknown"
+transactions,User overrides locked against sync and import,must,unconfirmed,unconfirmed,unconfirmed,partial,unconfirmed,yes,no,Sure: locked_attributes and import_locked,Lunch Money locks amounts of synced rows
+transactions,Transfers and card payments matched and kept out of spending,must,unconfirmed,partial,partial,partial,yes,yes,no,"Simplifi: linked transfers with auto-create of the other side; Sure: matcher, rejected pairs, reconcile",Copilot: manual internal transfer type; Lunch Money: create-transfer flow
+transactions,Transaction kind or category properties that drive budget inclusion,must,unconfirmed,yes,yes,yes,yes,yes,no,Lunch Money: three category properties; Sure: kinds with explicit budget lists,Pick one model: see README decision list
+transactions,Refunds net against the original category,must,unconfirmed,partial,partial,unconfirmed,unconfirmed,yes,no,Sure: floor at zero in category spend; Copilot: backdate to original purchase,Copilot and Rocket Money only document workarounds
+transactions,Two exclusion flags: from reports and from spending plan,should,unconfirmed,partial,partial,partial,yes,partial,no,Simplifi: separate flags per transaction and per account,Account-level defaults
+transactions,Manual transaction entry and duplicate,should,yes,yes,yes,yes,yes,yes,no,Lunch Money: duplicate and quick add,
+transactions,CSV export of the current view,should,unconfirmed,yes,yes,yes,yes,yes,no,Copilot: includes recurring link and account mask,Rocket Money mails a download link
+categories,"Category tree with color and emoji or icon, groups",must,yes,yes,yes,yes,yes,yes,no,"Copilot: group with unassigned budget; Sure: Lucide icons, merge, lock",Monarch: custom groups and emojis
+categories,Merchant entity separate from raw payee name,should,yes,no,no,partial,no,yes,no,Sure: user and provider merchants with merge,Enables cleaner rules
+rules,Rules engine with rich conditions and actions,must,yes,partial,yes,yes,yes,yes,no,"Lunch Money: payee, category, notes, amount range, day range, account; Sure: nested conditions, 13 actions",Copilot rules only set category
+rules,Preview matches before applying; apply to existing,should,partial,no,no,partial,no,yes,no,Sure: confirm screen and rule runs,Monarch has retroactive checkbox
+rules,Rule can set reviewed state,should,yes,no,no,yes,no,no,no,Monarch and Lunch Money,Skips queue for trusted merchants
+rules,Local Bayes categorizer plus optional LLM categorizer,should,no,no,no,no,no,yes,no,Sure,Cheap and private first pass
+budgets,Monthly category budgets,must,yes,yes,yes,yes,yes,yes,no,Copilot: edit by month; Sure: expected income plus allocation warnings,
+budgets,"Flex budgeting: fixed, non-monthly, flexible buckets with one flex number",should,yes,no,no,no,no,no,no,Monarch,Good for variable spending
+budgets,Rollovers (cumulative or per category or income pool),should,yes,yes,unconfirmed,yes,yes,yes,no,Lunch Money: general pool and per category; Copilot: cumulative from a start month,Simplifi limits rollover to Planned Spend
+budgets,Rebalance budgets to actual spend with preview,could,no,yes,no,no,no,no,no,Copilot,Unique
+budgets,Left-to-spend headline number,must,yes,yes,yes,partial,yes,yes,no,Simplifi: Left This Month from plan; Copilot: free to spend with ideal-pace line,Rocket Money: safe-to-spend before payday
+budgets,"Spending plan from recurring income, bills and planned spend",should,partial,no,partial,no,yes,partial,no,Simplifi: no double counting between bills and planned spend,Core of Simplifi scope
+budgets,Custom income amount per month,should,unconfirmed,no,unconfirmed,partial,yes,yes,no,Simplifi: per-month override with revert,Sure has expected income
+budgets,Custom budget period or month start day,should,unconfirmed,no,unconfirmed,yes,no,yes,no,Lunch Money; Sure,
+budgets,Personal and household budgets side by side,could,no,no,no,no,no,yes,no,Sure,
+budgets,"Watchlist for a category, merchant or tag without a budget",could,no,no,yes,no,yes,no,no,Rocket Money,For people who dislike budgeting
+budgets,Optional budgeting switch,could,no,yes,no,no,no,no,no,Copilot,Compares to last month when off
+budgets,"Per-category key metrics (year total, average monthly)",should,unconfirmed,yes,unconfirmed,unconfirmed,unconfirmed,unconfirmed,no,Copilot,Averages skip the current month
+recurring,Recurring detection from history with review of new items,must,yes,yes,yes,yes,yes,yes,no,"Sure: three occurrences, suggested then confirmed, tombstone on dismiss",Lunch Money also suggests
+recurring,Calendar and list of upcoming bills with paid state,must,yes,partial,yes,partial,yes,yes,no,Monarch: calendar with checkmarks; Rocket Money: two-week upcoming,Sure adds history view
+recurring,"Match filters: name text, amount range, day window",must,unconfirmed,yes,unconfirmed,unconfirmed,partial,yes,no,Copilot: editable filters; Sure: tolerance and early/late days,Simplifi has amount matching article
+recurring,Payday view with bills before next paycheck,should,no,no,yes,no,no,yes,no,Rocket Money: needs 3 paychecks; Sure: shortfall and bridge,Both useful
+recurring,Price-change detection on a recurring item,should,no,no,unconfirmed,no,no,yes,no,Sure,Sure only
+recurring,Subscription audit and cancel guidance,should,partial,no,yes,no,no,yes,no,Rocket Money: where each charge is billed from and self-cancel steps; Sure: audit insight,We skip the cancel concierge
+recurring,Link transactions to recurring items manually or through rules,should,unconfirmed,partial,unconfirmed,yes,yes,yes,no,"Lunch Money: rule action, bulk link",Simplifi: link to reminders
+recurring,"Occurrence actions: paid, skip, snooze, override amount",could,unconfirmed,partial,unconfirmed,partial,yes,yes,no,Sure,Simplifi skip one instance
+reports,Cash flow report,must,yes,yes,yes,yes,yes,yes,no,Copilot: tap bars to drill down,Monarch now calls the tab Reports
+reports,Sankey diagram,should,yes,no,no,no,no,yes,no,"Monarch (shareable, mobile); Sure (by category or by account)",
+reports,Treemap with drill-down,could,yes,no,no,no,no,no,no,Monarch,Aug 2026
+reports,Saved report views / query tool,should,yes,no,no,yes,no,partial,no,"Lunch Money: Analyze with five chart types, granularity",Monarch saves reports
+reports,Spending vs normal comparison,could,no,no,no,no,no,yes,no,Sure,
+reports,Top purchases and new merchants,could,no,no,no,yes,no,no,no,Lunch Money Stats,
+reports,Toggles to include recurring or excluded items in stats,could,no,no,no,yes,no,no,no,Lunch Money,
+insights,Month in Review and Year in Review slides,should,yes,yes,no,no,no,no,no,Copilot: shareable slides; Monarch: swipeable monthly review,
+insights,Weekly AI recap,could,yes,no,no,no,no,no,no,Monarch,
+insights,"Rule-based insight cards (anomaly, idle cash, savings rate, milestones)",should,partial,partial,partial,no,no,yes,no,"Sure: 8 template generators, dedupe, acknowledge","Template text, no LLM required"
+insights,Challenges and badges,could,no,no,yes,no,no,no,no,Rocket Money,
+accounts,Manual accounts for assets and liabilities,must,yes,yes,yes,yes,yes,yes,no,Sure: 10 typed account forms,
+accounts,"Net worth chart with assets, liabilities, equity toggle",must,yes,yes,yes,yes,not mapped,yes,no,Rocket Money: equity toggle; Lunch Money: manual and historical balances,
+accounts,Daily balance history including investment flows,must,unconfirmed,unconfirmed,unconfirmed,partial,unconfirmed,yes,no,Sure: cash and non-cash flow columns,Foundation for returns
+accounts,"Liability details (APR, term, due day, minimum payment)",should,no,partial,no,no,no,yes,no,Sure; Copilot: credit utilization,
+accounts,Property valuation from a provider,could,yes,yes,partial,no,no,yes,no,"Sure: RentCast, Realie, Chimnie; Copilot: Zillow, RentCast",Zillow data is licensed
+accounts,Multi-currency with a primary currency for totals,must,unconfirmed,no,no,yes,no,yes,no,Lunch Money: per-amount currency; Sure: rate history,Copilot is USD only
+accounts,Account sharing with permission levels,could,partial,no,no,no,no,yes,no,"Sure: full control, read/write, read-only",
+connectors,Several aggregators with per-institution switch that keeps history,should,yes,yes,no,no,no,yes,no,Monarch: Switch provider; Sure: provider tables per account,Highest value for reliability
+connectors,Connection status and re-link prompts,must,yes,yes,yes,yes,yes,yes,no,Sure: health strip and maturity badges,Top complaint theme in reviews
+connectors,Crypto exchange keys and wallet addresses,should,partial,yes,no,yes,no,yes,no,Sure: on-chain wallets; Lunch Money: 300+ coins manual,
+connectors,Broker and brokerage-style connections,could,yes,yes,partial,no,no,yes,no,"Sure: IBKR, Trading 212, Questrade, SnapTrade",
+connectors,CSV and PDF statement import with column mapping,must,unconfirmed,unconfirmed,no,yes,yes,yes,no,"Lunch Money: CSV and PDF; Sure: 12 import types, preflight",Rocket Money supports Apple Card statements
+connectors,"Imports from Mint, YNAB, Actual, QIF",could,partial,no,no,yes,yes,yes,no,Sure,
+connectors,Full export and re-import,should,no,no,no,no,no,yes,no,Sure: archive link and SureImport,Own-data safety
+connectors,Amazon itemization,should,yes,yes,no,no,no,no,no,"Copilot: amount equal and within 2 days; Monarch: browser extension, split by item",Fragile either way
+connectors,Venmo through email forwarding,could,no,yes,no,no,no,no,no,Copilot,
+connectors,Receipt email forwarding and receipt tab,should,yes,no,no,no,no,no,no,Monarch,
+investments,"Holdings with prices, allocation, top movers",must,yes,yes,partial,partial,not mapped,yes,no,Sure for data model; Monarch for views,
+investments,Performance that ignores deposits and withdrawals,must,unconfirmed,yes,no,no,not mapped,yes,no,Copilot: TWR-like; Sure: performance and flows reports,
+investments,Cost basis with source priority and lock,should,unconfirmed,unconfirmed,no,no,not mapped,yes,no,Sure,
+investments,Benchmarks and live balance estimate,could,unconfirmed,yes,no,no,not mapped,no,no,Copilot,
+investments,Trades with activity labels and fees,should,unconfirmed,unconfirmed,no,no,not mapped,yes,no,Sure,
+goals,Savings goals with on-track status and projection,should,yes,yes,yes,no,yes,yes,no,Monarch: Save Up with target date and contributions; Sure: projection chart,Rocket Money's version moves real money; skip that
+goals,Pay-down goals with interest and extra-payment what-if,could,yes,no,no,no,no,no,no,Monarch,
+goals,Allocate existing balances to goals; one account to many goals,should,yes,yes,no,no,no,yes,no,Copilot allocations; Monarch many-to-many,
+goals,Link transactions to goals,could,yes,no,no,no,no,yes,no,Monarch (bulk and rules); Sure pledges,
+planning,Forecasting with life events and scenarios,could,yes,no,no,no,no,no,no,Monarch (Plus),Use own assumptions
+assistant,In-app AI assistant over your data,should,yes,yes,yes,no,yes,yes,no,Sure: ~40 tools; Copilot: per-tab prompts,Lunch Money has none
+assistant,Assistant asks approval before changing data,should,unconfirmed,unconfirmed,unconfirmed,no,yes,unconfirmed,no,Simplifi,Pattern worth copying
+assistant,"Proactive suggestions (idle cash, duplicate charges, transaction fixes)",should,yes,yes,yes,no,no,partial,no,Monarch: savings found; Copilot: transaction fixes,
+assistant,"MCP server (read, optional write)",should,yes,partial,no,no,no,yes,no,Monarch: permission choice; Sure: OAuth dynamic registration,Copilot is read-only
+api,Personal API token and documented REST API,should,no,no,no,yes,no,yes,no,Lunch Money; Sure OpenAPI,
+alerts,Low-balance alert with default threshold,should,unconfirmed,unconfirmed,yes,no,unconfirmed,no,no,Rocket Money,
+security,Two-factor login; passkeys,should,unconfirmed,yes,yes,unconfirmed,unconfirmed,yes,no,"Sure: TOTP, WebAuthn, passkeys",
+platform,Home-screen widgets,could,yes,yes,no,no,no,no,no,"Copilot, Monarch",
+platform,Mobile companion,could,yes,yes,yes,partial,yes,partial,no,Lunch Money companion is deliberately small,
+platform,Customizable dashboard layout,should,yes,no,no,no,no,yes,no,Monarch; Sure,"Reorder, hide, resize"
