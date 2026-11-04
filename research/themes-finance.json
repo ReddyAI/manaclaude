@@ -1,0 +1,263 @@
+{
+ "themes": [
+  {
+   "id": "bank-connection-sync",
+   "label": "Bank connections break or sync late",
+   "kind": "complaint",
+   "patterns": [
+    "\\bdisconnect(ed|s|ing)?\\b",
+    "\\bre-?link(ing)?\\b",
+    "\\bsync(ing|s|ed)?\\b.{0,30}(fail|broken|stuck|issue|problem|not work)",
+    "connection (error|issue|problem|broke)",
+    "(won'?t|doesn'?t|can'?t|unable to) (connect|link|sync|update)",
+    "\\bplaid\\b.{0,40}(fail|issue|error|broke)",
+    "stale (data|balance)",
+    "not (updating|refreshing)"
+   ]
+  },
+  {
+   "id": "duplicates-pending",
+   "label": "Duplicate or pending transactions",
+   "kind": "complaint",
+   "patterns": [
+    "\\bduplicat(e|es|ed)\\b",
+    "\\bpending\\b.{0,40}(duplicate|twice|double|gone|disappear)",
+    "(counted|charged|shows?|listed) twice",
+    "double[- ]count"
+   ]
+  },
+  {
+   "id": "categorization",
+   "label": "Wrong or weak auto-categorization",
+   "kind": "complaint",
+   "patterns": [
+    "(wrong|incorrect|bad|poor|miscategor)\\w*.{0,20}categor",
+    "\\bmiscategori[sz]",
+    "categor(y|ies|ization|isation).{0,40}(wrong|incorrect|bad|off|inaccurate|terrible|doesn'?t|don'?t)",
+    "auto[- ]?categor.{0,40}(wrong|bad|miss|poor)"
+   ]
+  },
+  {
+   "id": "rules-limits",
+   "label": "Rules and bulk editing are too limited",
+   "kind": "complaint",
+   "patterns": [
+    "\\brules?\\b.{0,40}(limit|can'?t|cannot|missing|doesn'?t|don'?t|won'?t)",
+    "bulk (edit|updat|chang)",
+    "(can'?t|cannot|unable to) (split|edit|rename|delete)"
+   ]
+  },
+  {
+   "id": "budget-model",
+   "label": "Budget model does not fit how people spend",
+   "kind": "complaint",
+   "patterns": [
+    "\\bbudget\\w*\\b.{0,50}(confus|clunky|limited|rigid|inflexible|doesn'?t|don'?t|can'?t|cannot|hard|difficult)",
+    "\\brollover",
+    "\\bzero[- ]based\\b",
+    "\\benvelope",
+    "(irregular|annual|non-?monthly|sinking)"
+   ]
+  },
+  {
+   "id": "recurring-detection",
+   "label": "Recurring and subscription detection is wrong or missing",
+   "kind": "complaint",
+   "patterns": [
+    "\\brecurring\\b.{0,50}(wrong|miss|incorrect|detect|doesn'?t|don'?t|can'?t|not)",
+    "\\bsubscription\\w*\\b.{0,40}(miss|wrong|not (detect|found|show)|detect)",
+    "\\bbills?\\b.{0,30}(miss|wrong|not (detect|found))"
+   ]
+  },
+  {
+   "id": "subscription-cancel-billing",
+   "label": "Charged after cancelling, or cancelling is hard",
+   "kind": "complaint",
+   "patterns": [
+    "\\bcancel(l?ed|l?ing|lation)?\\b",
+    "\\brefund",
+    "(charged|billed).{0,40}(after|again|twice|without)",
+    "\\bfree trial\\b",
+    "(auto[- ]?renew|renewal)"
+   ]
+  },
+  {
+   "id": "reports-cashflow",
+   "label": "Reports and cash flow views lack depth",
+   "kind": "complaint",
+   "patterns": [
+    "\\breports?\\b.{0,40}(limit|lack|missing|basic|can'?t|cannot|poor|useless)",
+    "cash ?flow.{0,40}(wrong|confus|missing|limit|off)",
+    "\\bsankey\\b",
+    "\\btrends?\\b.{0,30}(missing|lack|limit)"
+   ]
+  },
+  {
+   "id": "investments-accuracy",
+   "label": "Investment balances, holdings or performance are off",
+   "kind": "complaint",
+   "patterns": [
+    "\\binvestments?\\b.{0,50}(wrong|incorrect|off|missing|inaccurate|lag|delay|bug|doesn'?t|don'?t)",
+    "\\bholdings?\\b",
+    "\\b(401k|ira|brokerage|fidelity|vanguard|schwab)\\b.{0,60}(wrong|missing|not|doesn'?t|disconnect|issue|problem)",
+    "(performance|returns?|gain|cost basis).{0,40}(wrong|incorrect|off|inaccurate|missing)"
+   ]
+  },
+  {
+   "id": "net-worth-accuracy",
+   "label": "Net worth or balances are wrong",
+   "kind": "complaint",
+   "patterns": [
+    "net worth.{0,50}(wrong|incorrect|off|inaccurate|bug|doesn'?t|don'?t|missing)",
+    "balances? .{0,30}(wrong|incorrect|off|inaccurate|mismatch)",
+    "(wrong|incorrect|inaccurate) balance"
+   ]
+  },
+  {
+   "id": "performance-bugs",
+   "label": "Bugs, crashes and slowness",
+   "kind": "complaint",
+   "patterns": [
+    "\\bbugs?\\b",
+    "\\bcrash(es|ed|ing)?\\b",
+    "\\bglitch",
+    "\\bfreez(e|es|ing)\\b",
+    "\\bslow\\b",
+    "\\blag(gy|s|ging)?\\b",
+    "\\bbroken\\b",
+    "keeps? (loading|spinning|crashing)",
+    "\\bstuck\\b"
+   ]
+  },
+  {
+   "id": "support",
+   "label": "Support is slow or unhelpful",
+   "kind": "complaint",
+   "patterns": [
+    "\\bsupport\\b.{0,40}(slow|unhelpful|useless|terrible|no (reply|response)|never|ignor|bad|poor|waited)",
+    "customer (service|support)",
+    "(never|no) (respon|repl|answer)",
+    "\\bchatbot\\b"
+   ]
+  },
+  {
+   "id": "ai-assistant",
+   "label": "AI assistant is wrong, slow or gated",
+   "kind": "complaint",
+   "patterns": [
+    "\\bAI\\b.{0,50}(wrong|useless|hallucin|slow|limit|gimmick|doesn'?t|don'?t|bad|inaccurate|paywall)",
+    "\\bassistant\\b.{0,40}(wrong|useless|slow|limit|bad|inaccurate)",
+    "\\bchat(bot)?\\b.{0,30}(wrong|useless|bad)"
+   ]
+  },
+  {
+   "id": "privacy-security",
+   "label": "Privacy and data security concerns",
+   "kind": "complaint",
+   "patterns": [
+    "\\bprivacy\\b",
+    "sell(s|ing)? (my|your|our)? ?data",
+    "\\bsecurity\\b",
+    "data (breach|leak|shar)",
+    "third[- ]part(y|ies)",
+    "\\bbreach"
+   ]
+  },
+  {
+   "id": "multi-currency-intl",
+   "label": "Poor international or multi-currency support",
+   "kind": "complaint",
+   "patterns": [
+    "multi-?currenc",
+    "\\bcurrenc(y|ies)\\b.{0,40}(convert|support|doesn'?t|don'?t|only|missing)",
+    "(canad|uk|europe|international|australia|outside (the )?us)\\w*.{0,60}(support|bank|not|doesn'?t|only|missing)",
+    "\\bUSD only\\b"
+   ]
+  },
+  {
+   "id": "ui-ux",
+   "label": "Confusing or cluttered interface",
+   "kind": "complaint",
+   "patterns": [
+    "\\bUI\\b.{0,30}(bad|clunky|confus|cluttered|ugly|worse|downgrade)",
+    "(confusing|cluttered|clunky|unintuitive|hard to (use|find|navigate)|redesign)",
+    "(new|latest) (update|version|design).{0,40}(worse|terrible|hate|broke|removed)"
+   ]
+  },
+  {
+   "id": "import-export",
+   "label": "Import and export gaps",
+   "kind": "complaint",
+   "patterns": [
+    "\\bimport(ing)?\\b.{0,40}(csv|fail|can'?t|doesn'?t|didn'?t|error|limit|missing|history)",
+    "\\bexport(ing)?\\b.{0,40}(csv|fail|can'?t|doesn'?t|didn'?t|limit|missing)",
+    "(historical|history|backfill).{0,40}(missing|limited|only|can'?t|doesn'?t|\\d+ (days|months))"
+   ]
+  },
+  {
+   "id": "mobile-widgets-platforms",
+   "label": "Missing platform, widget or offline support",
+   "kind": "request",
+   "patterns": [
+    "\\bandroid\\b",
+    "\\bwidgets?\\b",
+    "\\bapple watch\\b",
+    "\\bipad\\b",
+    "\\bdesktop\\b",
+    "\\bweb (app|version)\\b",
+    "\\bdark mode\\b",
+    "\\boffline\\b"
+   ]
+  },
+  {
+   "id": "collaboration-household",
+   "label": "Partner and household sharing",
+   "kind": "request",
+   "patterns": [
+    "\\b(spouse|partner|wife|husband|couple|household|shared|family|joint)\\b"
+   ]
+  },
+  {
+   "id": "integrations-missing",
+   "label": "Missing integrations or institutions",
+   "kind": "request",
+   "patterns": [
+    "\\bapi\\b",
+    "\\bmcp\\b",
+    "\\bintegrat\\w+",
+    "\\bamazon\\b",
+    "\\bvenmo\\b",
+    "\\bpaypal\\b",
+    "\\bzillow\\b",
+    "\\bcrypto\\b",
+    "\\bcoinbase\\b",
+    "\\bnot supported\\b",
+    "\\bsupport for\\b"
+   ]
+  },
+  {
+   "id": "goals-planning",
+   "label": "Goals, forecasting and planning gaps",
+   "kind": "request",
+   "patterns": [
+    "\\bgoals?\\b",
+    "\\bforecast\\w*",
+    "\\bretirement\\b",
+    "\\bproject(ion|ions)\\b",
+    "\\bsavings?\\b.{0,30}(goal|plan|target)"
+   ]
+  }
+ ],
+ "request_patterns": [
+  "\\bi wish\\b",
+  "\\bplease add\\b",
+  "\\bwould be (nice|great|good|helpful)\\b",
+  "\\bwould love\\b",
+  "\\bneeds? (a|an|the|to|more)\\b",
+  "\\bwhy (can'?t|doesn'?t|isn'?t|is there no)\\b",
+  "\\bmissing\\b",
+  "\\bno way to\\b",
+  "\\bhope (they|you|it)\\b",
+  "\\bfeature request\\b"
+ ]
+}
