@@ -1,0 +1,34 @@
+feature,area,priority,original,clone,notes
+"Spending Plan: Income, Bills, Planned Spend, Other Spend, Goals, Left This Month",spending plan,must,yes,no,One number to watch
+Plan built automatically from detected recurring series,spending plan,must,yes,no,
+Other Spend as everything not planned or recurring,spending plan,must,yes,no,Real-time remainder
+No double counting: transactions linked to a recurring reminder count under Bills,spending plan,must,yes,no,Clear rule
+Planned Spend items for flexible categories,spending plan,must,yes,no,
+"Rollover for Planned Spend, current and future months only",spending plan,should,yes,no,Limited to planned items
+Custom income amount per month,spending plan,must,yes,no,"Per month only, can revert to automatic"
+Included This Month / Excluded This Month groups per section,spending plan,should,yes,no,Makes exclusions visible
+Outstanding items: planned entries not yet matched to a transaction,spending plan,should,yes,no,Waits for confirmation
+"Plan starts in the subscription month, not retroactive",spending plan,could,yes,no,Limitation; we can backfill
+Plan ignores account balances,spending plan,should,yes,no,Pure flow view
+Savings goal contributions inside the plan,spending plan,could,yes,no,
+Linked transfers: categorize with the other account and auto-link the matching side,transfers,must,yes,no,Core of the scoped area
+Auto-create the missing side of a linked transfer,transfers,should,yes,no,
+Automatic transfer detection between connected accounts,transfers,must,yes,no,
+Go to other side navigation link,transfers,could,yes,no,
+"Built-in Credit Card Payment and Transfer categories (neutral, no second side)",transfers,must,yes,no,
+Transfers excluded from plan and reports by default,transfers,must,yes,no,Neither income nor expense
+Include one or both sides of a linked transfer in the plan,transfers,should,yes,no,Per side control
+"Recurring transfer series with Money Out, Money In or both sides",transfers,should,yes,no,
+Account-to-account transfer between banks,transfers,could,yes,skip,Regulated rail
+Exclude from Reports and exclude from Spending Plan flags on transactions and accounts,reports,must,yes,no,Two separate flags
+Investment accounts excluded from reports and plan by default,reports,should,yes,no,
+Bills & Income overview with past-due and calendar,recurring,should,yes,no,
+Link transactions to reminders; skip one instance,recurring,should,yes,no,
+Amount matching rules for recurring transactions,recurring,should,yes,no,
+Bills vs subscriptions distinction,recurring,could,yes,no,
+"Transaction rules: If payee/amount, Then rename, category, tag",rules,should,yes,no,Web only in original
+Reviewed column and flagged transactions,review,could,yes,no,
+Watchlists on categories or tags,reports,could,yes,no,
+Spending dashboard with savings rate (early access),reports,could,yes,no,
+Quicken AI Chat with approval before any change,assistant,should,yes,no,Approval step is a good pattern
+Space sharing,sharing,could,yes,no,AI chat not available in shared spaces
