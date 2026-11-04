@@ -58,7 +58,7 @@ New transactions arrive, a per-user model suggests categories, the owner reviews
 | S17 | Goal detail | tap | contributions, allocations, update progress | | |
 | S18 | Accounts | tab | net worth chart with timeframe, accounts grouped by type | graph, gear menu | |
 | S19 | Connect or create account | "+" | link bank, create manual account, manual holdings, crypto address, property | | |
-| S20 | Month in Review / Year in Review | end of Transactions tab at period end | shareable slides: spending, income, investments, trends | slide stack with share | legacy app icon unlock after year one |
+| S20 | Month in Review / Year in Review | end of Transactions tab at period end | shareable slides: spending, income, investments, trends | slide stack with share | legacy app icon awarded after year one |
 | S21 | Money Assistant chat (iOS) | arrow button on any tab | chat, per-tab prompts, per-element launch | chat sheet | |
 | S22 | Money Assistant settings | Settings, Features | toggle, personality, transaction fixes, proactive suggestions | | |
 | S23 | Settings | gear | connections, features (budgeting, tags), notifications, subscription, export, 2FA, referral codes | | |

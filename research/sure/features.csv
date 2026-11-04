@@ -24,7 +24,7 @@ Name suggestions while typing,transactions,could,yes,no,
 Locked fields survive sync (user overrides),transactions,must,yes,no,"locked_attributes, import_locked"
 Idempotency key and external id per entry,transactions,must,yes,no,See SURE-006
 "Categories tree with color and icon, lock, merge, bootstrap defaults",categories,must,yes,no,One level of nesting
-"Merchants (user and provider), merge, AI enhance",categories,should,yes,no,
+"Merchants (user and provider), merge, AI refine",categories,should,yes,no,
 Tags with color,categories,should,yes,no,
 Rules engine with nested conditions and 13 action types,rules,must,yes,no,"Name, amount, type, merchant, category, tag, details, notes, account"
 "Rule groups, ordering, activation, stop processing, effective date",rules,should,yes,no,

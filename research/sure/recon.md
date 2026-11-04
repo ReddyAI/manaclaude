@@ -56,7 +56,7 @@ Counts come from routes and view folders. Mobile (Flutter) shows login and balan
 | S19 | Bulk edit | `/transactions/bulk_update/new` | set category, merchant, tags, date for selection | form | partial permission |
 | S20 | Categorize queue | `/transactions/categorize` | step through uncategorized transactions, with rule preview | card, assign, preview rule | queue empty |
 | S21 | Categories | `/categories` | tree of categories, color, Lucide icon, lock, merge, bootstrap defaults | list, form, merge dialog, deletion dialog | empty, locked |
-| S22 | Merchants | `/family_merchants` | list, edit, merge, enhance with AI | list, merge | empty |
+| S22 | Merchants | `/family_merchants` | list, edit, merge, refine with AI | list, merge | empty |
 | S23 | Tags | `/tags` | list, color, delete all | list | empty |
 | S24 | Rules | `/rules` | rule groups, ordered rules, confirm and apply, apply all, clear AI cache | rule row, drag handle, group, activation toggle | empty, category CTA |
 | S25 | Rule editor | `/rules/new`, `/rules/:id/edit` | nested conditions and actions, effective date, stop processing | condition builder, action builder | validation |
@@ -73,7 +73,7 @@ Counts come from routes and view folders. Mobile (Flutter) shows login and balan
 | S36 | Reports | `/reports` | trends and insights, transactions breakdown, budget performance, net worth, investment flows and performance, spending vs normal | period picker, breakdown table, collapsible sections | empty |
 | S37 | Reports print and export | `/reports/print`, `/reports/export_transactions`, Google Sheets instructions | CSV and print view | | |
 | S38 | Insights | `/insights` | generated insight cards, refresh, acknowledge | card list | none |
-| S39 | Investments tab | account holdings tab, `/holdings`, `/trades` | holdings with cost basis, trades, activity labels | table, unlock cost basis, remap security | no holdings |
+| S39 | Investments tab | account holdings tab, `/holdings`, `/trades` | holdings with cost basis, trades, activity labels | table, release the lock on cost basis, remap security | no holdings |
 | S40 | Trade / holding forms | `/trades/new`, `/holdings/:id` | buy, sell, dividend, deposit, withdrawal; ticker lookup | form | manual ticker |
 | S41 | Valuation | `/valuations/new` | manual balance reconciliation with confirm step | form, confirm | |
 | S42 | Securities search | `/securities` | ticker lookup across price providers | combobox | |
@@ -148,7 +148,7 @@ F11 Goals
 
 F12 Investments
     connect broker -> holdings and trades import -> cost basis reconciled (manual > calculated > provider) -> performance in reports
-    edge: unlock cost basis, remap security, price sync, convert a transaction to a trade
+    edge: release the lock on cost basis, remap security, price sync, convert a transaction to a trade
 
 F13 Ask the assistant
     S55 -> question -> tool calls (accounts, transactions, budgets, holdings...) -> answer; can also create rules, categories, goals, bills, and import a statement
@@ -322,13 +322,13 @@ Detection clusters history by merchant or name, amount within tolerance and cons
 
 ## Investments and cost basis
 
-Accounts hold Holdings (daily snapshots) computed forward or reverse from Trades and provider data. Cost basis source priority: manual, then calculated, then provider; a locked basis is never overwritten; a zero provider basis is treated as unknown. Users can unlock basis, remap or reset a holding's security, and sync prices. Tax treatment per Investment subtype (taxable, tax-deferred, tax-exempt, tax-advantaged) drives badges and cash-flow filters. Activity labels classify trades; internal movements (transfer, sweep in/out, exchange) are excluded from budget. Reports include investment performance and investment flows.
+Accounts hold Holdings (daily snapshots) computed forward or reverse from Trades and provider data. Cost basis source priority: manual, then calculated, then provider; a locked basis is never overwritten; a zero provider basis is treated as unknown. Users can release a lock on the basis, remap or reset a holding's security, and sync prices. Tax treatment per Investment subtype (taxable, tax-deferred, tax-exempt, tax-advantaged) drives badges and cash-flow filters. Activity labels classify trades; internal movements (transfer, sweep in/out, exchange) are excluded from budget. Reports include investment performance and investment flows.
 
 ## AI assistant
 
 Three modes: builtin (LLM with function tools), external (a remote agent calls back via MCP), `mcp_only` (no in-app chat). Builtin tools (about 40): accounts, balance sheet, income statement, transactions, uncategorized transactions, categories, tags, merchants, budget, holdings, valuations, insights, rules (get, options, preview, create, apply), bills (get, details, audit, create, record payment), recurring, goals (create), paycheck plan, transfer match candidates and review/match, create or delete categories/tags/transactions, set opening balance, record valuation, statement tools (list, get, coverage, import bank statement), search family files (vector store). Token budgeting and history trimming. Separate AI lane in the job queue; chat reservation holds back background AI for 60 s. Langfuse tracing and LLM usage page. Consent toggle per user.
 
-Background AI: auto-categorization with a confidence threshold and shadow-rate evaluation, Bayes categorizer with its own evaluation and weight tuning, merchant detection and enhancement, PDF statement extraction. Insights never use AI; their text comes from templates.
+Background AI: auto-categorization with a confidence threshold and shadow-rate evaluation, Bayes categorizer with its own evaluation and weight tuning, merchant detection and refinement, PDF statement extraction. Insights never use AI; their text comes from templates.
 
 ## Insights (8 generators)
 
