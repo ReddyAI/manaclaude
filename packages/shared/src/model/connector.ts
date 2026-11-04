@@ -64,8 +64,6 @@ export interface ConnectorDefinition {
   freeSlotsUsed: number;
   /** True when the free slots are lifetime logins (Teller, Plaid Trial). */
   slotsAreLifetime: boolean;
-  /** Order when linking a new account of this kind; lower is tried first. null = not in the default order. */
-  linkOrder: number | null;
   /** Sure has an adapter we can port. */
   inSure: boolean;
 }
