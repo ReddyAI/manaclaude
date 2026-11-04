@@ -1,0 +1,41 @@
+feature,area,priority,original,clone,notes
+Subscription and bill auto-detection from linked transactions,recurring,must,yes,no,Core of the app
+"Recurring list: Upcoming (two-week calendar), All, Inactive",recurring,must,yes,no,No payment in last month = Inactive
+Manually add or remove a bill or subscription,recurring,should,yes,no,
+Cancel This For Me concierge with status notifications,recurring,could,yes,skip,Human/vendor service; not buildable for own use
+Self-cancel instructions per provider,recurring,could,yes,no,Static how-to per merchant is cheap
+"Cancel path hints for Apple, Google Play, Amazon, Roku, PayPal billing",recurring,should,yes,no,Tell the owner where a charge is billed from
+Missing-subscription troubleshooting prompts,recurring,could,yes,no,
+Payday view with safe-to-spend before next paycheck,recurring,should,yes,no,Needs 3 consistent paychecks
+Low-balance alert with default threshold and custom value,alerts,should,yes,no,Default $200
+Upcoming-bill and large-charge notifications,alerts,should,yes,no,
+"Budget setup in three steps: income, bills, categories",budgets,must,yes,no,
+"Non-spending categories: Tax-Deductible, Reimbursements, Ignored, Transfers, Income",budgets,must,yes,no,Clear and simple
+"Watchlist: track a category, merchant or tag without a budget",budgets,should,yes,no,Good for people who dislike budgets
+"Transaction Category Review: swipe right to confirm, left to change",review,must,yes,no,Ten at a time
+"Rules: change category, rename, assign to bill, ignore",rules,must,yes,no,Premium only in original
+"Split by amount, equal or percent, with optional ignore",transactions,must,yes,no,
+"Tags (mobile only) and Tax-Deductible tag, manual since 2026",transactions,should,yes,no,Auto-tagging removed because tax situations vary
+Search transactions,transactions,must,yes,no,
+Manual transactions,transactions,should,yes,no,
+Ignore a transaction or account,transactions,should,yes,no,
+"CSV export by date range, delivered by email link",transactions,should,yes,no,
+Reimbursements and shared bills guidance,transactions,could,yes,no,Workaround
+"Net worth: Summary, Assets, Debts tabs",net worth,must,yes,no,
+Equity toggle for home and vehicle,net worth,should,yes,no,Equity vs gross value
+Gray estimate segment where history is missing,net worth,could,yes,no,
+Include or exclude checking and homes in net worth,net worth,should,yes,no,
+Spending tab with category breakdown over time,insights,must,yes,no,
+"Challenges with badges (Financial Pulse, Weekly Snapshot, Bad Habit Breaker)",engagement,could,yes,no,Habit nudges
+"Learning Hub: videos, quizzes, articles",engagement,could,yes,skip,"Content, not product"
+Financial Goals in a partner-bank custodial account,goals,could,yes,skip,Regulated money movement
+Savings goals tracked against existing balances,goals,should,yes,no,Software-only version
+Bill negotiation service,savings,could,yes,skip,Labor service
+Bank fee reversal help,savings,could,yes,skip,Service
+Rowan: text-message AI assistant with alerts and actions,assistant,should,yes,no,"Questions, edits, start cancellations"
+Credit score from Experian,credit,could,yes,skip,Licensed
+"Link accounts via aggregator, status per institution, disconnect and reconnect",connectors,must,yes,no,
+Apple Card statement import,connectors,could,yes,no,CSV or statement upload
+Partner sharing with separate login and MFA,sharing,could,yes,no,
+"Android, iOS and web",platform,could,yes,no,Web is premium
+Referral program,billing,could,yes,skip,Selling concern

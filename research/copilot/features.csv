@@ -1,0 +1,63 @@
+feature,area,priority,original,clone,notes
+New-transaction review queue with blue dots and one-tap confirm,review,must,yes,no,Core loop
+Per-user ML categorization trained on reviewed transactions (30 to start),review,must,yes,no,"Name, amount, weekday inputs"
+"Bulk mark as reviewed and bulk edit with keyboard shortcuts (X, R, C, F)",review,should,yes,no,Mac and web
+"Transaction types: income, internal transfer, regular",transactions,must,yes,no,Simple three-way model
+Manual transaction and manual internal transfer,transactions,must,yes,no,Needed for manual card accounts
+"Split by amount, percent or equally with per-split date, category, type",transactions,must,yes,no,Red dot when sum mismatch
+Exclude transaction or use excluded category,transactions,should,yes,no,Cash Flow can add excluded spend back
+"Tags on any transaction type, filter by tag totals",transactions,should,yes,no,No budget on tags
+"Search and multi-filter with total spent, income and net for filtered set",transactions,must,yes,no,Web
+"CSV export (with filters on Mac, iPad, web)",transactions,should,yes,no,Includes recurring link and account mask
+"Refund guidance: same category, original date",transactions,should,yes,no,"Workaround, not a feature; we can do refund netting properly"
+"Display name changes to recurring name, original name kept in detail",transactions,could,yes,no,
+Name rules: exact or partial match,rules,must,yes,no,Created from the recategorize dialog
+Bank-category rules,rules,should,yes,no,Matches provider category
+"Category with emoji (Genmoji), color, group",categories,must,yes,no,
+Category groups with unassigned group budget,categories,should,yes,no,Group of Groceries and Restaurants
+Per-category budget editable by month,budgets,must,yes,no,
+Cumulative rollovers with a start month,budgets,should,yes,no,
+"Rebalance budgets with preview, this month only or onward",budgets,should,yes,no,Unique
+Optional budgeting: off compares to last month,budgets,could,yes,no,
+Free-to-spend figure and ideal-pace line on dashboard,dashboard,must,yes,no,Recurrings still to post excluded from chart
+Pace-colored category bars,budgets,should,yes,no,
+Category key metrics: year total and average monthly spend,budgets,should,yes,no,Averages skip current month
+"Recurrings with weekly, biweekly, monthly, non-monthly",recurring,must,yes,no,
+"Recurring match filters: name text, amount range, day window",recurring,must,yes,no,Editable underlined filters
+"Paid vs left-to-pay this month, grid or list",recurring,should,yes,no,
+Pause and archive recurrings,recurring,should,yes,no,
+Multiple recurrings for one merchant,recurring,should,yes,no,
+Shared expense pattern: payment recurring plus reimbursement recurring,recurring,could,yes,no,Workaround
+"Cash Flow tab: income, spending, net with drill-down",cash flow,must,yes,no,
+"Dashboard: upcoming recurrings, net income, new transactions",dashboard,should,yes,no,
+Month in Review and Year in Review shareable slides,insights,should,yes,no,Delight feature
+"Investments tab: returns or balances, holdings",investments,must,yes,no,
+Benchmark comparison against 8 ETFs,investments,should,yes,no,
+Live balance estimate from market data (dashed line),investments,should,yes,no,Between daily syncs
+Time-weighted-style performance that ignores deposits,investments,must,yes,no,Do this properly
+No investment history backfill,investments,could,yes,skip,"Limitation to avoid, not copy"
+Savings goals with account allocation (not new transfers),goals,should,yes,no,"Active, Ready to Spend, Archived"
+Spending from a goal adjusts it,goals,could,yes,no,
+Net worth chart with timeframe and per-account change,accounts,must,yes,no,
+Manual accounts and manual holdings,accounts,must,yes,no,
+"Real estate: Zillow, RentCast or manual; home equity with mortgage",accounts,could,yes,no,Zillow is licensed
+Crypto exchange keys and wallet addresses,accounts,could,yes,no,Hides holdings under 1 cent
+Hide and close accounts,accounts,should,yes,no,
+Joint account handling guidance,accounts,could,yes,no,
+Live credit utilization,accounts,could,yes,no,
+"Multiple data sources behind one app (Plaid, MX, Mastercard, Akoya, direct)",connectors,should,yes,no,Fallback when one fails
+"Direct integrations: Apple Card/Cash/Savings, Capital One, Public, Coinbase",connectors,could,yes,no,
+"Amazon order matching (amount equal, within 2 days)",connectors,should,yes,no,One account per device
+"Venmo via email forwarding, real time",connectors,should,yes,no,Own forwarding address
+Money Assistant chat with per-tab prompts and per-element launch,assistant,should,yes,no,iOS only
+Proactive transaction fixes and idle-cash suggestions,assistant,should,yes,no,Toggle each
+Assistant personality selection,assistant,could,yes,no,
+"Assistant can view, create, delete name rules",assistant,could,yes,no,
+"MCP connector with OAuth, read-only",api,should,yes,no,Read-only by design
+Widgets (Daily Spending and others),platform,could,yes,no,iOS
+"iPhone, iPad, Mac, web apps",platform,could,yes,no,Web since Dec 2025
+Notifications,platform,should,yes,no,
+Magic-link login and 2FA,security,should,yes,no,
+Share account by forwarding a magic link,security,could,yes,skip,Grants full control; avoid
+"USD only, US institutions only",currency,could,yes,skip,Limitation to avoid
+Referral and gift codes,billing,could,yes,skip,Selling concern
