@@ -1,0 +1,59 @@
+feature,area,priority,original,clone,notes
+"Customizable dashboard widgets (drag, hide), separate web and mobile layouts",dashboard,must,yes,no,"Net worth, recent transactions, investments, budget, spending, goals"
+Swipeable monthly review / progress report (mobile),insights,should,yes,no,"Cash flow, plan progress, top categories, net worth"
+Weekly AI recap of spending and net worth,insights,should,yes,no,Turned off by removing the card (summary)
+"Multiple data aggregators (Plaid, MX, Finicity) with per-institution Switch provider that keeps history",connectors,must,yes,no,Best-in-class connectivity story
+Recommend a better provider for an institution,connectors,could,yes,no,
+Manual accounts with manual transactions,accounts,must,yes,no,
+Account list sort by balance and custom order,accounts,should,yes,no,
+"Net worth chart with assets, liabilities, filters",net worth,must,yes,no,
+Property value sync via Zillow,accounts,could,yes,no,Licensed data
+Transactions list with search across all accounts,transactions,must,yes,no,
+Needs Review queue with swipe to review (mobile),review,must,yes,no,Core review loop
+Tag a household member to review a transaction,review,should,yes,no,Assignment
+AI categorization of incoming transactions,review,must,yes,no,
+Exclude filters in transactions (e.g. not this category),transactions,should,yes,no,Added Oct 2026
+Hide transactions (does not clear review),transactions,should,yes,no,Summary
+"Per-transaction activity log (landed, pending to posted, edits)",transactions,should,yes,no,"Added July 2026, web first"
+Pending edits preserved when posted version replaces them,transactions,must,yes,no,Matches even if bank gives no link
+Split transactions; manual split counts as reviewed,transactions,must,yes,no,Summary
+"Smart Split rules, retroactive or new only",rules,should,yes,no,Summary
+"Rules: category, rename, tags, hide, review status, goal link",rules,must,yes,no,Summary of actions
+Rules ordering and retroactive apply,rules,should,yes,no,
+"Receipt email forwarding with match, notes and auto split",receipts,should,yes,no,Forward to a fixed address; verified emails only
+Receipts tab with matched or pending state,receipts,should,yes,no,
+Receipt scanning with camera,receipts,could,yes,no,Mentioned in June update; flow not read
+Retail Sync extension for Amazon US and Target (itemize and categorize),receipts,could,yes,no,"Fragile; 3 months initial sync, auto-sync 24 h"
+"Budget: Flex mode (Fixed, Non-monthly, Flexible; one flex number)",budgets,must,yes,no,Flex number = income - fixed - non-monthly - goals (summary)
+Budget: Category mode,budgets,must,yes,no,Both modes in one app
+Rollovers for non-monthly categories,budgets,should,yes,no,
+Budget forecast for future months and budget widget,budgets,could,yes,no,
+"Custom groups, categories, emojis and ordering",budgets,should,yes,no,
+Budget notifications,alerts,could,yes,no,
+"Recurring detection, review of newly found streams",recurring,must,yes,no,
+Recurring calendar with paid check marks and list view,recurring,must,yes,no,
+Reminders before expected charges,recurring,should,yes,no,
+"Reports: spending by category, income, cash flow, net worth, savings",reports,must,yes,no,
+"Sankey cash flow diagram, shareable",reports,must,yes,no,Fan favorite
+"Treemap view with drill-down group, category, merchant, transaction",reports,should,yes,no,Added Aug 2026
+Save a report view,reports,should,yes,no,
+Reports on mobile,reports,should,yes,no,June 2026
+Goals: Save Up with on/off-track and projected completion,goals,must,yes,no,
+Goals: Pay Down with interest and extra-payment modeling,goals,should,yes,no,
+Allocate any asset account to goals; one account to many goals,goals,should,yes,no,
+"Link transactions to goals manually, in bulk, or via rules",goals,should,yes,no,
+Goal reconciliation history with undo,goals,could,yes,no,
+Pay-down plan saved into the budget,goals,could,yes,no,
+"Investments: holdings, allocation, top movers, performance",investments,must,yes,no,
+Forecasting (Plus): net worth projection with life events,planning,should,yes,no,Own assumptions
+Side-by-side scenario comparison,planning,could,yes,no,
+Early withdrawal penalties modeled for IRAs and 401(k)s,planning,could,yes,no,
+Business income tracking (multiple income sources),planning,could,yes,no,Plus tier
+AI assistant chat with budget and savings questions,assistant,should,yes,no,
+"Assistant surfaces savings opportunities unprompted (duplicate charges, idle cash, mortgage rate)",assistant,should,yes,no,"Savings found, Oct 2026"
+"MCP connector (Read or Read and write) for Claude, ChatGPT, Gemini, Cursor",api,should,yes,no,Write is opt-in
+"Household with partner or advisor, shared goals",sharing,could,yes,no,No extra cost per member
+iOS widgets,platform,could,yes,no,
+"Android and iOS apps, web app",platform,could,yes,no,
+Mint import,imports,could,yes,no,Older feature
+Annual and monthly subscription tiers,billing,could,yes,skip,Selling concern
