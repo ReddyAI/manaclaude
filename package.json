@@ -1,0 +1,23 @@
+{
+  "name": "manaclaude",
+  "private": true,
+  "description": "Personal finance app: Expo app, Cloudflare Worker backend, shared model and connectors.",
+  "license": "AGPL-3.0-or-later",
+  "workspaces": [
+    "packages/*",
+    "connectors",
+    "backend",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+  }
+}
