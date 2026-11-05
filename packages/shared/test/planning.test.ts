@@ -8,6 +8,7 @@ import {
   goalProgress,
   monthlyEquivalent,
   monthlyPeriod,
+  previousPeriod,
   priceIncrease,
   projectFire,
   realReturn,
@@ -401,7 +402,8 @@ describe('recaps', () => {
     expect(recap.topCategories[0]).toMatchObject({ categoryId: 'cat_dining', amount: 18_000 });
     expect(recap.biggestTransactions[0]!.amount).toBe(10_000);
     expect(recap.source).toBe('local');
-    expect(recap.headline).toContain('$230.00'.replace('.00', ''));
+    expect(recap.headline).toContain('$230');
+    expect(recap.headline).toContain('over the last 7 days');
   });
 
   it('builds a month in review for a past month and stops the current one at today', () => {
@@ -422,6 +424,23 @@ describe('recaps', () => {
     // Every top category amount is positive and sorted high to low.
     const amounts = recap.topCategories.map((c) => c.amount);
     expect([...amounts].sort((a, b) => b - a)).toEqual(amounts);
+  });
+
+  it('compares a half-finished month with the same days of the month before', () => {
+    expect(previousPeriod(monthlyPeriod('2026-11', '2026-11-05'))).toEqual({
+      start: '2026-10-01',
+      end: '2026-10-05',
+    });
+    expect(previousPeriod(monthlyPeriod('2026-10', '2026-11-05'))).toEqual({
+      start: '2026-09-01',
+      end: '2026-09-30',
+    });
+    expect(previousPeriod(weeklyPeriod('2026-11-05'))).toEqual({
+      start: '2026-10-23',
+      end: '2026-10-29',
+    });
+    // 31 days into a 30-day month stays inside it.
+    expect(previousPeriod(monthlyPeriod('2026-10', '2026-10-31')).end).toBe('2026-09-30');
   });
 
   it('shows the same spending in INR using each transaction day rate', () => {

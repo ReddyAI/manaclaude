@@ -38,13 +38,21 @@ export function monthlyPeriod(month: string, today: LocalDate): RecapPeriod {
   return { kind: 'monthly', start: firstDayOfMonth(month), end: end > today ? today : end };
 }
 
-/** The period right before this one, same length (previous calendar month for monthly). */
-function previousPeriod(period: RecapPeriod): { start: LocalDate; end: LocalDate } {
+/**
+ * The period right before this one. Weekly: the 7 days before. Monthly: the
+ * previous calendar month, cut to the same number of days when the current
+ * month is not over yet (so a half month is compared with the first half).
+ */
+export function previousPeriod(period: RecapPeriod): { start: LocalDate; end: LocalDate } {
   if (period.kind === 'weekly') {
     return { start: addDays(period.start, -7), end: addDays(period.start, -1) };
   }
-  const prev = addMonthsToMonth(period.start.slice(0, 7), -1);
-  return { start: firstDayOfMonth(prev), end: lastDayOfMonth(prev) };
+  const month = period.start.slice(0, 7);
+  const prev = addMonthsToMonth(month, -1);
+  const prevEnd = lastDayOfMonth(prev);
+  if (period.end >= lastDayOfMonth(month)) return { start: firstDayOfMonth(prev), end: prevEnd };
+  const sameLength = addDays(firstDayOfMonth(prev), daysBetween(period.start, period.end));
+  return { start: firstDayOfMonth(prev), end: sameLength < prevEnd ? sameLength : prevEnd };
 }
 
 function netWorthOn(data: FinanceDataset, currency: CurrencyCode, date: LocalDate): number | null {
@@ -117,8 +125,18 @@ export function buildRecap(data: FinanceDataset, options: BuildRecapOptions): Re
   const endNw = netWorthOn(data, currency, period.end);
   const netWorthChange = startNw !== null && endNw !== null ? endNw - startNw : null;
 
-  const label = period.kind === 'weekly' ? 'this week' : formatMonth(period.start.slice(0, 7));
-  const vsLabel = period.kind === 'weekly' ? 'the week before' : 'the month before';
+  const label =
+    period.kind === 'weekly'
+      ? 'over the last 7 days'
+      : `in ${formatMonth(period.start.slice(0, 7))}`;
+  const partial =
+    period.kind === 'monthly' && period.end < lastDayOfMonth(period.start.slice(0, 7));
+  const vsLabel =
+    period.kind === 'weekly'
+      ? 'the week before'
+      : partial
+        ? 'the same days last month'
+        : 'the month before';
   const diff = current.spending - before.spending;
   const pct = before.spending > 0 ? Math.round((Math.abs(diff) / before.spending) * 100) : null;
   const money = (v: number) => formatMoney(v, currency, { cents: 'never' });

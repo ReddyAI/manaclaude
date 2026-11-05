@@ -26,7 +26,7 @@ describe('Recaps', () => {
     expect(current).toMatch(/You spent/);
     await fireEvent.press(screen.getByLabelText('October 2026'));
     const october = screen.getByTestId('recap-headline').props.children;
-    expect(october).toMatch(/October 2026/);
+    expect(october).toMatch(/in October 2026/);
     expect(october).not.toBe(current);
   });
 

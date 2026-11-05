@@ -192,52 +192,54 @@ export function InvestmentsScreen() {
       testID="screen-investments"
     >
       <Card>
-        <HStack gap="lg" align="center">
-          <DonutChart
-            size="small"
-            accessibilityLabel="Allocation by asset class"
-            segments={allocation.map((a) => ({
-              key: a.assetClass,
-              value: a.value,
-              color: theme.colors.category[ASSET_CLASS_COLOR[a.assetClass]],
-            }))}
-          />
-          <VStack gap="xs" flex={1}>
-            <Text variant="label" tone="muted">
-              Invested
-            </Text>
-            <DualAmount
-              {...pickDual(display, totals, (t) => t.value)}
-              size="large"
-              align="left"
-              format={{ cents: 'never' }}
-              testID="invest-total"
+        <VStack gap="md">
+          <HStack gap="lg" align="center">
+            <DonutChart
+              size="small"
+              accessibilityLabel="Allocation by asset class"
+              segments={allocation.map((a) => ({
+                key: a.assetClass,
+                value: a.value,
+                color: theme.colors.category[ASSET_CLASS_COLOR[a.assetClass]],
+              }))}
             />
-            <HStack gap="xs" wrap>
+            <VStack gap="xs" flex={1}>
+              <Text variant="label" tone="muted">
+                Invested
+              </Text>
               <DualAmount
-                {...pickDual(display, totals, (t) => t.unrealized)}
-                size="small"
-                colorize="signed"
+                {...pickDual(display, totals, (t) => t.value)}
+                size="large"
                 align="left"
-                format={{ cents: 'never', sign: 'always' }}
-                testID="invest-unrealized"
+                format={{ cents: 'never' }}
+                testID="invest-total"
               />
-              <Text variant="caption" tone="muted">
-                unrealized
-              </Text>
-            </HStack>
+              <HStack gap="xs" wrap>
+                <DualAmount
+                  {...pickDual(display, totals, (t) => t.unrealized)}
+                  size="small"
+                  colorize="signed"
+                  align="left"
+                  format={{ cents: 'never', sign: 'always' }}
+                  testID="invest-unrealized"
+                />
+                <Text variant="caption" tone="muted">
+                  unrealized
+                </Text>
+              </HStack>
+            </VStack>
+          </HStack>
+          <VStack gap="xs">
+            {allocation.map((a) => (
+              <HStack key={a.assetClass} gap="xs">
+                <Dot color={theme.colors.category[ASSET_CLASS_COLOR[a.assetClass]]} />
+                <Text variant="caption" tone="muted" style={styles.flex}>
+                  {ASSET_CLASS_LABEL[a.assetClass]}
+                </Text>
+                <Text variant="caption" numeric>{`${Math.round(a.share * 100)}%`}</Text>
+              </HStack>
+            ))}
           </VStack>
-        </HStack>
-        <VStack gap="xs">
-          {allocation.map((a) => (
-            <HStack key={a.assetClass} gap="xs">
-              <Dot color={theme.colors.category[ASSET_CLASS_COLOR[a.assetClass]]} />
-              <Text variant="caption" tone="muted" style={styles.flex}>
-                {ASSET_CLASS_LABEL[a.assetClass]}
-              </Text>
-              <Text variant="caption" numeric>{`${Math.round(a.share * 100)}%`}</Text>
-            </HStack>
-          ))}
         </VStack>
       </Card>
 
