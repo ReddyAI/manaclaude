@@ -567,7 +567,7 @@ async function commitLocked(
   }
   const ids = addedTxns.map((t) => t.id);
   await runRules(db, ids);
-  await recordAtmWithdrawals(db, addedTxns);
+  const atm = await recordAtmWithdrawals(db, addedTxns);
   const match = await runTransferMatcher(db);
   return {
     importId,
@@ -576,7 +576,7 @@ async function commitLocked(
     skipped,
     accountsCreated: created.map((a) => a.id),
     transactionIds: ids,
-    linked: match.linked,
+    linked: match.linked + atm,
     suggested: match.suggested,
   };
 }

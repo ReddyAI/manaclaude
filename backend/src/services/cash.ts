@@ -1,6 +1,7 @@
 import type { Account, CurrencyCode, Id, LocalDate, Transaction } from '@manaclaude/shared';
 import { insertStatement, selectAll, selectOne } from '../db/table';
-import { accountsTable, transactionsTable } from '../db/tables';
+import { accountsTable, transactionsTable, transferLinksTable } from '../db/tables';
+import { linkFromCandidate } from './matcher';
 import { badRequest } from '../util/errors';
 import { newId, nowIso } from '../util/ids';
 import { makeTransaction } from './transactions';
@@ -99,7 +100,7 @@ const ATM = /\b(atm|cash withdrawal|cash wdl|atw|nwd)\b/i;
 /**
  * ATM withdrawals become transfers into cash: for each unlinked ATM debit
  * outside a cash account, add the matching deposit to the default cash account
- * in that currency (once; keyed by the withdrawal id). The matcher links them.
+ * in that currency (once; keyed by the withdrawal id) and link the pair.
  */
 export async function recordAtmWithdrawals(db: D1Database, transactions?: Transaction[]): Promise<number> {
   const candidates = (
@@ -138,10 +139,22 @@ export async function recordAtmWithdrawals(db: D1Database, transactions?: Transa
     );
     const inserted = await insertStatement(db, transactionsTable, deposit, 'ignore').run();
     if ((inserted.meta.changes ?? 0) === 0) continue;
-    await db
-      .prepare('UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?')
-      .bind(-out.amount, now, cash.id)
-      .run();
+    // The deposit exists because of this withdrawal, so link the pair right away.
+    const link = linkFromCandidate(
+      { out, in: deposit, kind: 'atm_withdrawal', score: 1, impliedRate: 1 },
+      'auto',
+      'matcher',
+      now,
+    );
+    await db.batch([
+      db
+        .prepare('UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?')
+        .bind(-out.amount, now, cash.id),
+      insertStatement(db, transferLinksTable, link),
+      db
+        .prepare('UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL')
+        .bind(link.id, now, out.id, deposit.id),
+    ]);
     created += 1;
   }
   return created;

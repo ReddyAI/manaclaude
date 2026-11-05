@@ -110,14 +110,14 @@ export async function applySyncResult(
   }
   await batchInChunks(db, statements);
   await runRules(db, plan.inserts.map((t) => t.id));
-  await recordAtmWithdrawals(db, plan.inserts);
+  const atm = await recordAtmWithdrawals(db, plan.inserts);
   const match = await runTransferMatcher(db);
   return {
     accountsCreated,
     inserted: plan.inserts.length,
     updated: plan.updates.length,
     removed: plan.removals.length,
-    linked: match.linked,
+    linked: match.linked + atm,
     suggested: match.suggested,
   };
 }

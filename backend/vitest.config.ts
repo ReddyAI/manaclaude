@@ -18,6 +18,7 @@ export default defineConfig(async () => {
             APP_API_TOKEN: 'test-app-token',
             MCP_OWNER_PASSWORD: 'test-owner-password',
             ALLOW_SAMPLE_SEED: 'true',
+            PUBLIC_URL: 'https://mana.test',
           },
         },
       }),

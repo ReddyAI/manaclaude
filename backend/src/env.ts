@@ -47,6 +47,8 @@ export interface Env {
   AI_DAILY_CALL_LIMIT?: string;
   /** "true" lets POST /v1/dev/seed load the invented sample data (local only). */
   ALLOW_SAMPLE_SEED?: string;
+  /** Public base URL of this Worker (https://manaclaude-api.<you>.workers.dev). The MCP resource is PUBLIC_URL/mcp. */
+  PUBLIC_URL?: string;
   /** Allowed browser origin for the web app (CORS). "*" in local dev. */
   APP_ORIGIN?: string;
 }

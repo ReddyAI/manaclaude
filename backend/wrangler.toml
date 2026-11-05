@@ -19,6 +19,8 @@ AI_VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
 ANTHROPIC_MODEL = "claude-opus-5-5"
 AI_DAILY_CALL_LIMIT = "300"
 APP_ORIGIN = "*"
+# Change to https://manaclaude-api.<your-subdomain>.workers.dev after the first deploy.
+PUBLIC_URL = "http://localhost:8787"
 
 [[d1_databases]]
 binding = "DB"
