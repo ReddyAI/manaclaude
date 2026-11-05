@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Mana",
+    "name": "Billionaire",
     "slug": "manaclaude",
     "version": "0.1.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
-    "scheme": "mana",
+    "scheme": "billionaire",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#000814",
     "ios": {
@@ -15,9 +15,10 @@
     "android": {
       "package": "com.reddyai.manaclaude",
       "adaptiveIcon": {
-        "backgroundColor": "#000814",
+        "backgroundColor": "#3B6BFF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "monochromeImage": "./assets/images/android-icon-monochrome.png",
+        "backgroundImage": "./assets/images/android-icon-background.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -40,8 +41,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Mana reads a receipt photo you pick so it can be attached to a transaction.",
-          "cameraPermission": "Mana uses the camera to photograph a receipt for a transaction."
+          "photosPermission": "Billionaire reads a receipt photo you pick so it can be attached to a transaction.",
+          "cameraPermission": "Billionaire uses the camera to photograph a receipt for a transaction."
         }
       ],
       [

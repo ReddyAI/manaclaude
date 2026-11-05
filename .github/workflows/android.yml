@@ -66,12 +66,12 @@ jobs:
         run: |
           short_sha="${GITHUB_SHA::7}"
           mkdir -p out
-          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "out/mana-${short_sha}.apk"
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "out/billionaire-${short_sha}.apk"
           ls -la out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: mana-android-apk
+          name: billionaire-android-apk
           path: out/*.apk
           if-no-files-found: error
           retention-days: 30

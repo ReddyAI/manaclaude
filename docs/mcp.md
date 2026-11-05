@@ -46,9 +46,9 @@ These steps follow Anthropic's help article on [custom connectors with remote MC
 
 1. On claude.ai or Claude Desktop, open Settings > Connectors.
 2. Click "Add custom connector".
-3. Name it "Mana" and paste the server URL ending in `/mcp`. Leave "Advanced settings" empty; Claude registers itself.
-4. Click "Add", then "Connect". A Mana page opens: type your owner password and press Allow.
-5. In a chat, open the tools menu and turn Mana on. Ask something only your data can answer, like "What did I spend on restaurants last month?"
+3. Name it "Billionaire" and paste the server URL ending in `/mcp`. Leave "Advanced settings" empty; Claude registers itself.
+4. Click "Add", then "Connect". A Billionaire page opens: type your owner password and press Allow.
+5. In a chat, open the tools menu and turn Billionaire on. Ask something only your data can answer, like "What did I spend on restaurants last month?"
 6. If you turn on write tools later, open the connector's settings in Claude to choose which tools need approval. Leave them on "needs approval".
 
 Claude Desktop only adds remote servers through Settings > Connectors, not through `claude_desktop_config.json`.
@@ -59,9 +59,9 @@ Perplexity doesn't have an official help page for this that I could find; these 
 
 1. On perplexity.ai (web or desktop, not the phone app), open Settings > Connectors.
 2. Click "+ Custom connector" and choose Remote.
-3. Name it "Mana", paste the server URL ending in `/mcp`, and pick OAuth as the sign-in method.
-4. Save. A Mana page opens in the browser: type your owner password and press Allow.
-5. In a new thread, turn Mana on in the sources menu and ask a question about your accounts.
+3. Name it "Billionaire", paste the server URL ending in `/mcp`, and pick OAuth as the sign-in method.
+4. Save. A Billionaire page opens in the browser: type your owner password and press Allow.
+5. In a new thread, turn Billionaire on in the sources menu and ask a question about your accounts.
 
 If Perplexity says the server did not return a client secret, or asks for a client ID and secret, create a confidential client and paste both into the connector's advanced settings. Use the redirect (callback) URL Perplexity shows in that form:
 
