@@ -13,7 +13,7 @@ import {
 import { convertAmount } from '../fx/convert';
 import { formatMoney } from '../money/format';
 import { reportTreatment, type TreatmentContext } from '../policy/treatment';
-import { summarizeSpending, UNCATEGORIZED } from '../policy/summary';
+import { summarizeSpending } from '../policy/summary';
 
 /**
  * Recaps built from the transactions on the device. Session B's recap job
@@ -184,5 +184,3 @@ export function buildRecap(data: FinanceDataset, options: BuildRecapOptions): Re
     createdAt: created,
   };
 }
-
-export { UNCATEGORIZED };

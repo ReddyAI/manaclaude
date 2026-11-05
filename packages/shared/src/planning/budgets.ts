@@ -1,5 +1,4 @@
-import type { BudgetFlexType, CategoryBudget } from '../model/budget';
-import type { Goal } from '../model/budget';
+import type { BudgetFlexType, CategoryBudget, Goal } from '../model/budget';
 import type { CurrencyCode, Id, MinorUnits, YearMonth } from '../model/common';
 import type { RecurringItem } from '../model/recurring';
 import { addMonthsToMonth } from '../dates/dates';

@@ -3,21 +3,17 @@ import { View } from 'react-native';
 import {
   addMonths,
   classifyAccountType,
-  decToNumber,
   formatShortDate,
-  lotPerformance,
   type AccountType,
-  type Holding,
   type Security,
 } from '@manaclaude/shared';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { BottomSheet } from '../../design/components/BottomSheet';
 import { Card } from '../../design/components/Card';
 import { DonutChart, LineChart } from '../../design/components/charts/Charts';
-import { Badge, Dot, SegmentedControl } from '../../design/components/Controls';
-import { Avatar, SectionHeader } from '../../design/components/Decor';
+import { Dot, SegmentedControl } from '../../design/components/Controls';
+import { SectionHeader } from '../../design/components/Decor';
 import { HStack, VStack } from '../../design/components/Layout';
-import { ListRow } from '../../design/components/ListRow';
+import { Icon } from '../../design/components/Icon';
 import { MoneyText } from '../../design/components/MoneyText';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
@@ -27,6 +23,7 @@ import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
+import { goTo } from '../planning/navigate';
 
 type Range = '3M' | '6M' | '1Y';
 const RANGE_MONTHS: Record<Range, number> = { '3M': 3, '6M': 6, '1Y': 12 };
@@ -78,7 +75,6 @@ export function NetWorthScreen() {
   const currency = display.reportCurrency;
   const [range, setRange] = useState<Range>('1Y');
   const [scrub, setScrub] = useState<number | null>(null);
-  const [lotsFor, setLotsFor] = useState<Holding | null>(null);
 
   const m = useMemo(() => {
     const nw = currentNetWorth(data, currency);
@@ -118,11 +114,6 @@ export function NetWorthScreen() {
   const shown = point?.value ?? m.nw.netWorth;
   const first = m.history[0]?.value ?? shown;
   const change = shown - first;
-  const lots = lotsFor ? data.taxLots.filter((l) => l.holdingId === lotsFor.id) : [];
-  const lotsSecurity = lotsFor
-    ? data.securities.find((s) => s.id === lotsFor.securityId)
-    : undefined;
-
   const assetTypes = [...m.byType.entries()]
     .filter(([t, v]) => classifyAccountType(t) === 'asset' && v !== 0)
     .sort((a, b) => b[1] - a[1]);
@@ -232,7 +223,7 @@ export function NetWorthScreen() {
       </View>
 
       <SectionHeader title="Investments" />
-      <Card>
+      <Card onPress={() => goTo('/networth/investments')} accessibilityLabel="Open investments">
         <HStack gap="lg">
           <DonutChart
             size="small"
@@ -247,10 +238,11 @@ export function NetWorthScreen() {
             <Text variant="label" tone="muted">
               Invested
             </Text>
-            <MoneyText
+            <Amount
               amount={m.invested}
               currency={currency}
               size="large"
+              align="left"
               format={{ cents: 'never' }}
             />
             <HStack gap="xs">
@@ -277,96 +269,24 @@ export function NetWorthScreen() {
                 >{`${Math.round((v / Math.max(1, m.invested)) * 100)}%`}</Text>
               </HStack>
             ))}
+            <Text variant="caption" tone="accent">
+              Lots, realized gains, dividends and S&P 500 benchmark
+            </Text>
           </VStack>
         </HStack>
       </Card>
-      <Card padding="none">
-        {m.holdings.map(({ h, sec, value, gain, cost }) => (
-          <ListRow
-            key={h.id}
-            title={sec?.symbol ?? h.securityId}
-            subtitle={`${decToNumber(h.quantity).toLocaleString(undefined, { maximumFractionDigits: 4 })} · ${sec?.name ?? ''}`}
-            leading={
-              <Avatar
-                label={sec?.symbol ?? '?'}
-                color={ASSET_CLASS_COLOR[sec?.assetClass ?? 'other']}
-              />
-            }
-            onPress={() => setLotsFor(h)}
-            showChevron
-            trailing={
-              <VStack align="flex-end" gap="xxs">
-                <MoneyText amount={value} currency={currency} format={{ cents: 'never' }} />
-                {gain !== null && cost ? (
-                  <Text
-                    variant="caption"
-                    tone={gain >= 0 ? 'income' : 'spending'}
-                    numeric
-                  >{`${gain >= 0 ? '+' : '−'}${Math.abs((gain / cost) * 100).toFixed(1)}%`}</Text>
-                ) : null}
-              </VStack>
-            }
-            testID={`holding-${h.id}`}
-          />
-        ))}
+      <Card onPress={() => goTo('/planning')} accessibilityLabel="Open retirement and goals">
+        <HStack gap="md">
+          <Icon name="piggy-bank" tone="netWorth" />
+          <VStack flex={1} gap="xxs">
+            <Text variant="bodyStrong">Retirement and goals</Text>
+            <Text variant="caption" tone="muted">
+              FIRE projection with your return, inflation and savings
+            </Text>
+          </VStack>
+          <Icon name="chevron-right" tone="muted" />
+        </HStack>
       </Card>
-
-      <BottomSheet
-        visible={lotsFor !== null}
-        onClose={() => setLotsFor(null)}
-        title={lotsSecurity ? `${lotsSecurity.symbol} lots` : 'Lots'}
-        scrollable
-      >
-        <VStack gap="xs">
-          <HStack style={styles.lotHeader}>
-            {['Acquired', 'Qty', 'Cost', 'Gain', 'Term'].map((h) => (
-              <Text key={h} variant="micro" tone="muted" uppercase style={styles.lotCell}>
-                {h}
-              </Text>
-            ))}
-          </HStack>
-          {lots.map((lot) => {
-            const perf = lotPerformance(lot, lotsFor?.price ?? '0', today);
-            return (
-              <HStack key={lot.id} style={styles.lotRow}>
-                <Text variant="caption" numeric style={styles.lotCell}>
-                  {formatShortDate(lot.acquiredOn, today)}
-                </Text>
-                <Text variant="caption" numeric style={styles.lotCell}>
-                  {decToNumber(lot.quantity).toLocaleString(undefined, {
-                    maximumFractionDigits: 4,
-                  })}
-                </Text>
-                <View style={styles.lotCell}>
-                  <MoneyText
-                    amount={lot.costBasis}
-                    currency={lot.currency}
-                    size="small"
-                    format={{ cents: 'never' }}
-                  />
-                </View>
-                <View style={styles.lotCell}>
-                  <MoneyText
-                    amount={perf.gain}
-                    currency={lot.currency}
-                    size="small"
-                    colorize="signed"
-                    format={{ cents: 'never' }}
-                  />
-                </View>
-                <View style={styles.lotCell}>
-                  <Badge label={perf.term} tone={perf.term === 'long' ? 'income' : 'neutral'} />
-                </View>
-              </HStack>
-            );
-          })}
-          <Text variant="caption" tone="faint">
-            {lots[0]?.source === 'broker'
-              ? 'Lots from the broker.'
-              : 'Lots derived from buys and sells, first in first out.'}
-          </Text>
-        </VStack>
-      </BottomSheet>
     </Screen>
   );
 }
@@ -375,11 +295,4 @@ const styles = StyleSheet.create((theme) => ({
   grid: { flexDirection: { xs: 'column', sm: 'row' }, gap: theme.space.md },
   half: { flex: { xs: undefined, sm: 1 } },
   flex: { flex: 1 },
-  lotHeader: {
-    paddingVertical: theme.space.xs,
-    borderBottomWidth: theme.size.hairline,
-    borderColor: theme.colors.border,
-  },
-  lotRow: { paddingVertical: theme.space.xs },
-  lotCell: { flex: 1 },
 }));

@@ -13,3 +13,5 @@ apps/mobile/android/
 apps/mobile/ios/
 package-lock.json
 LICENSE
+# Claude Code skills (third-party prompts, not our code)
+.claude/

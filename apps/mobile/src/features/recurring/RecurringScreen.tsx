@@ -1,97 +1,117 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { daysBetween, formatShortDate, type RecurringItem } from '@manaclaude/shared';
+import {
+  PER_MONTH,
+  convertAmount,
+  daysBetween,
+  formatShortDate,
+  monthlyEquivalent,
+  priceIncrease,
+  upcomingCharges,
+  type RecurringItem,
+  type SubscriptionDecision,
+} from '@manaclaude/shared';
 import { StyleSheet } from 'react-native-unistyles';
+import { BottomSheet } from '../../design/components/BottomSheet';
+import { Button } from '../../design/components/Button';
 import { Card } from '../../design/components/Card';
-import { Badge, type BadgeTone } from '../../design/components/Controls';
-import { Banner, IconBadge, SectionHeader } from '../../design/components/Decor';
+import { Badge, SegmentedControl, type BadgeTone } from '../../design/components/Controls';
+import { Banner, EmptyState, IconBadge, SectionHeader } from '../../design/components/Decor';
 import { HStack, VStack } from '../../design/components/Layout';
 import { ListRow } from '../../design/components/ListRow';
 import { MoneyText } from '../../design/components/MoneyText';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
+import { haptic } from '../../design/haptics';
 import { useLookups, useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
-import { Amount } from '../currency/Amount';
+import { Amount, DualAmount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
-import { useMoneyDisplay } from '../currency/useMoneyDisplay';
+import { pickDual, useMoneyDisplay } from '../currency/useMoneyDisplay';
+import { setDecision, setRecurringStatus } from './actions';
 
-const PER_MONTH: Record<RecurringItem['frequency'], number> = {
-  weekly: 52 / 12,
-  biweekly: 26 / 12,
-  monthly: 1,
-  quarterly: 1 / 3,
-  semiannual: 1 / 6,
-  annual: 1 / 12,
-};
-
-const DECISION: Record<
-  NonNullable<RecurringItem['decision']>,
-  { label: string; tone: BadgeTone }
-> = {
+const DECISION: Record<SubscriptionDecision, { label: string; tone: BadgeTone }> = {
   keep: { label: 'Keep', tone: 'income' },
   cancel: { label: 'Cancel', tone: 'danger' },
   review: { label: 'Review', tone: 'pending' },
 };
 
-/** Latest charge vs the one before, when it went up. */
-function priceIncrease(r: RecurringItem): { from: number; to: number } | null {
-  const h = r.priceHistory;
-  if (h.length < 2) return null;
-  const last = h[h.length - 1]!.amount;
-  const prev = [...h].reverse().find((p) => p.amount !== last)?.amount;
-  if (prev === undefined || Math.abs(last) <= Math.abs(prev)) return null;
-  return { from: Math.abs(prev), to: Math.abs(last) };
+const UPCOMING_DAYS = 30;
+
+function whenLabel(date: string | null, today: string): string {
+  if (!date) return 'Not scheduled';
+  const due = daysBetween(today, date);
+  if (due === 0) return 'Today';
+  if (due === 1) return 'Tomorrow';
+  return formatShortDate(date, today);
 }
 
 /**
- * Recurring bills, subscriptions and income (session C owns this screen;
- * it adds editing, keep/cancel/review actions and detection from the backend).
+ * Recurring bills, subscriptions and income (session C): upcoming charges,
+ * keep / cancel / review decisions and price-increase alerts.
  */
 export function RecurringScreen() {
   const data = useFinance();
   const lookups = useLookups();
   const today = useToday();
   const display = useMoneyDisplay();
-  const currency = display.reportCurrency;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = data.recurring.find((r) => r.id === selectedId) ?? null;
 
-  const { bills, subscriptions, income, monthlyOut, increases } = useMemo(() => {
+  const m = useMemo(() => {
     const active = data.recurring.filter((r) => r.status === 'active');
     const sortByDue = (a: RecurringItem, b: RecurringItem) =>
       (a.nextDueDate ?? '').localeCompare(b.nextDueDate ?? '');
-    const monthlyOut = active
-      .filter((r) => r.expectedAmount < 0)
-      .reduce(
-        (s, r) =>
-          s +
-          (display.convert(-r.expectedAmount, r.currency, currency) ?? 0) * PER_MONTH[r.frequency],
+    const monthlyOut = display.dual((cur) =>
+      Math.round(
+        active
+          .filter((r) => r.expectedAmount < 0)
+          .reduce(
+            (s, r) =>
+              s +
+              (convertAmount(-r.expectedAmount, r.currency, cur, data.fxRates) ?? 0) *
+                PER_MONTH[r.frequency],
+            0,
+          ),
+      ),
+    );
+    const upcoming = upcomingCharges(active, today, UPCOMING_DAYS).filter(
+      (u) => u.item.kind !== 'income',
+    );
+    const dueTotal = display.dual((cur) =>
+      upcoming.reduce(
+        (s, u) =>
+          s - (convertAmount(u.item.expectedAmount, u.item.currency, cur, data.fxRates) ?? 0),
         0,
-      );
+      ),
+    );
+    const increases = active
+      .map((r) => ({ r, inc: priceIncrease(r) }))
+      .filter((x): x is { r: RecurringItem; inc: NonNullable<typeof x.inc> } => x.inc !== null);
+    const toReview = active.filter((r) => r.kind === 'subscription' && r.decision === 'review');
     return {
       bills: active.filter((r) => r.kind === 'bill').sort(sortByDue),
       subscriptions: active.filter((r) => r.kind === 'subscription').sort(sortByDue),
       income: active.filter((r) => r.kind === 'income').sort(sortByDue),
-      monthlyOut: Math.round(monthlyOut),
-      increases: active.map((r) => ({ r, inc: priceIncrease(r) })).filter((x) => x.inc !== null),
+      cancelled: data.recurring.filter((r) => r.status === 'cancelled'),
+      monthlyOut,
+      upcoming,
+      dueTotal,
+      increases,
+      toReview,
     };
-  }, [data.recurring, display, currency]);
+  }, [data.recurring, data.fxRates, display, today]);
 
   const row = (r: RecurringItem) => {
     const cat = r.categoryId ? lookups.categoriesById.get(r.categoryId) : undefined;
-    const due = r.nextDueDate ? daysBetween(today, r.nextDueDate) : null;
-    const when = r.nextDueDate
-      ? due === 0
-        ? 'Today'
-        : due === 1
-          ? 'Tomorrow'
-          : formatShortDate(r.nextDueDate)
-      : 'Not scheduled';
     return (
       <ListRow
         key={r.id}
         title={r.name}
-        subtitle={`${when} · ${r.frequency}${r.isVariable ? ' · varies' : ''}`}
+        subtitle={`${whenLabel(r.nextDueDate, today)} · ${r.frequency}${r.isVariable ? ' · varies' : ''}`}
         leading={<IconBadge icon={cat?.icon ?? 'repeat'} color={cat?.color ?? 'c1'} />}
+        onPress={() => setSelectedId(r.id)}
+        showChevron
         trailing={
           <VStack align="flex-end" gap="xxs">
             <Amount amount={r.expectedAmount} currency={r.currency} colorize="flow" />
@@ -105,6 +125,8 @@ export function RecurringScreen() {
     );
   };
 
+  const selectedInc = selected ? priceIncrease(selected) : null;
+
   return (
     <Screen title="Recurring" actions={<CurrencyChip />} testID="screen-recurring">
       <Card>
@@ -112,43 +134,200 @@ export function RecurringScreen() {
           <Text variant="label" tone="muted">
             Bills and subscriptions per month
           </Text>
-          <MoneyText
-            amount={monthlyOut}
-            currency={currency}
+          <DualAmount
+            {...pickDual(display, m.monthlyOut, (v) => v)}
             size="large"
+            align="left"
             format={{ cents: 'never' }}
+            testID="recurring-monthly"
           />
           <Text variant="caption" tone="muted">
-            {`${bills.length} bills · ${subscriptions.length} subscriptions`}
+            {`${m.bills.length} bills · ${m.subscriptions.length} subscriptions`}
           </Text>
         </VStack>
       </Card>
-      {increases.map(({ r, inc }) =>
-        inc ? (
-          <Banner key={r.id} tone="pending" icon="trending-up">
-            <Text variant="bodyStrong">{`${r.name} went up`}</Text>
-            <HStack gap="xs">
-              <MoneyText amount={inc.from} currency={r.currency} size="small" tone="muted" />
-              <Text variant="caption" tone="muted">
-                to
-              </Text>
-              <MoneyText amount={inc.to} currency={r.currency} size="small" />
-            </HStack>
-          </Banner>
-        ) : null,
-      )}
+
+      {m.increases.map(({ r, inc }) => (
+        <Banner key={r.id} tone="pending" icon="trending-up">
+          <Text
+            variant="bodyStrong"
+            testID={`increase-${r.id}`}
+          >{`${r.name} went up ${Math.round(inc.pct * 100)}%`}</Text>
+          <HStack gap="xs" wrap>
+            <MoneyText amount={inc.from} currency={r.currency} size="small" tone="muted" />
+            <Text variant="caption" tone="muted">
+              to
+            </Text>
+            <MoneyText amount={inc.to} currency={r.currency} size="small" />
+            <Text variant="caption" tone="muted">
+              since {formatShortDate(inc.since, today)}, about
+            </Text>
+            <MoneyText amount={inc.yearlyImpact} currency={r.currency} size="small" />
+            <Text variant="caption" tone="muted">
+              more a year
+            </Text>
+          </HStack>
+        </Banner>
+      ))}
+
+      {m.toReview.length > 0 ? (
+        <Banner tone="accent" icon="info">
+          <Text variant="bodyStrong">{`${m.toReview.length} subscription${m.toReview.length === 1 ? '' : 's'} to review`}</Text>
+          <Text variant="caption" tone="muted">
+            {m.toReview.map((r) => r.name).join(', ')}
+          </Text>
+        </Banner>
+      ) : null}
+
+      <View>
+        <SectionHeader
+          title={`Next ${UPCOMING_DAYS} days`}
+          trailing={
+            <DualAmount
+              {...pickDual(display, m.dueTotal, (v) => v)}
+              size="small"
+              format={{ cents: 'never' }}
+              testID="recurring-due-total"
+            />
+          }
+        />
+        {m.upcoming.length === 0 ? (
+          <EmptyState
+            icon="calendar"
+            title="Nothing due"
+            message="No bills or subscriptions in this window."
+          />
+        ) : (
+          <Card padding="none">
+            {m.upcoming.map(({ item, date }) => {
+              const cat = item.categoryId ? lookups.categoriesById.get(item.categoryId) : undefined;
+              return (
+                <ListRow
+                  key={`${item.id}-${date}`}
+                  title={item.name}
+                  subtitle={`${whenLabel(date, today)}${item.isVariable ? ' · about' : ''}`}
+                  leading={<IconBadge icon={cat?.icon ?? 'repeat'} color={cat?.color ?? 'c1'} />}
+                  onPress={() => setSelectedId(item.id)}
+                  trailing={<Amount amount={item.expectedAmount} currency={item.currency} />}
+                  testID={`upcoming-${item.id}-${date}`}
+                />
+              );
+            })}
+          </Card>
+        )}
+      </View>
+
       <View>
         <SectionHeader title="Subscriptions" />
-        <Card padding="none">{subscriptions.map(row)}</Card>
+        <Card padding="none">{m.subscriptions.map(row)}</Card>
       </View>
       <View>
         <SectionHeader title="Bills" />
-        <Card padding="none">{bills.map(row)}</Card>
+        <Card padding="none">{m.bills.map(row)}</Card>
       </View>
-      <View style={styles.last}>
+      <View>
         <SectionHeader title="Income" />
-        <Card padding="none">{income.map(row)}</Card>
+        <Card padding="none">{m.income.map(row)}</Card>
       </View>
+      {m.cancelled.length > 0 ? (
+        <View style={styles.last}>
+          <SectionHeader title="Cancelled" />
+          <Card padding="none">
+            {m.cancelled.map((r) => (
+              <ListRow
+                key={r.id}
+                title={r.name}
+                subtitle="Cancelled"
+                dimmed
+                onPress={() => setSelectedId(r.id)}
+                trailing={<Amount amount={r.expectedAmount} currency={r.currency} />}
+                testID={`recurring-${r.id}`}
+              />
+            ))}
+          </Card>
+        </View>
+      ) : (
+        <View style={styles.last} />
+      )}
+
+      <BottomSheet
+        visible={selected !== null}
+        onClose={() => setSelectedId(null)}
+        title={selected?.name ?? ''}
+        testID="recurring-sheet"
+      >
+        {selected ? (
+          <VStack gap="md">
+            <HStack justify="space-between">
+              <VStack gap="xxs">
+                <Text variant="label" tone="muted">
+                  {selected.isVariable ? 'About' : 'Next charge'}
+                </Text>
+                <Amount
+                  amount={selected.expectedAmount}
+                  currency={selected.currency}
+                  align="left"
+                />
+              </VStack>
+              <VStack gap="xxs" align="flex-end">
+                <Text variant="label" tone="muted">
+                  Per month
+                </Text>
+                <Amount amount={monthlyEquivalent(selected)} currency={selected.currency} />
+              </VStack>
+            </HStack>
+            <Text variant="caption" tone="muted">
+              {`${selected.frequency}, next ${whenLabel(selected.nextDueDate, today)}`}
+            </Text>
+            {selectedInc ? (
+              <Banner tone="pending" icon="trending-up">
+                <Text variant="caption">
+                  {`Up ${Math.round(selectedInc.pct * 100)}% since ${formatShortDate(selectedInc.since, today)}`}
+                </Text>
+              </Banner>
+            ) : null}
+            {selected.kind === 'subscription' ? (
+              <VStack gap="xs">
+                <Text variant="label" tone="muted">
+                  Your decision
+                </Text>
+                <SegmentedControl
+                  accessibilityLabel="Decision"
+                  value={selected.decision ?? 'review'}
+                  onChange={(d) => {
+                    setDecision(selected.id, d);
+                    haptic('selection');
+                  }}
+                  options={[
+                    { value: 'keep', label: 'Keep' },
+                    { value: 'review', label: 'Review' },
+                    { value: 'cancel', label: 'Cancel' },
+                  ]}
+                />
+              </VStack>
+            ) : null}
+            {selected.status === 'cancelled' ? (
+              <Button
+                label="Mark as active again"
+                variant="secondary"
+                onPress={() => setRecurringStatus(selected.id, 'active')}
+                testID="recurring-reactivate"
+              />
+            ) : selected.kind === 'subscription' ? (
+              <Button
+                label="I cancelled it"
+                variant="danger"
+                onPress={() => {
+                  setRecurringStatus(selected.id, 'cancelled');
+                  haptic('confirm');
+                  setSelectedId(null);
+                }}
+                testID="recurring-mark-cancelled"
+              />
+            ) : null}
+          </VStack>
+        ) : null}
+      </BottomSheet>
     </Screen>
   );
 }
