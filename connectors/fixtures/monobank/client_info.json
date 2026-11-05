@@ -1,0 +1,36 @@
+{
+  "clientId": "demo-client",
+  "name": "Demo Client",
+  "accounts": [
+    {
+      "id": "mono-acc-uah",
+      "sendId": "demo1",
+      "balance": 1250075,
+      "creditLimit": 0,
+      "type": "black",
+      "currencyCode": 980,
+      "cashbackType": "UAH",
+      "maskedPan": ["537541******1234"],
+      "iban": "UA000000000000000000000000000"
+    },
+    {
+      "id": "mono-acc-credit",
+      "sendId": "demo2",
+      "balance": 70000,
+      "creditLimit": 100000,
+      "type": "platinum",
+      "currencyCode": 980,
+      "maskedPan": ["537541******5678"]
+    },
+    {
+      "id": "mono-acc-usd",
+      "sendId": "demo3",
+      "balance": 20500,
+      "creditLimit": 0,
+      "type": "black",
+      "currencyCode": 840,
+      "maskedPan": ["537541******9999"]
+    }
+  ],
+  "jars": []
+}

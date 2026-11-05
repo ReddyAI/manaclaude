@@ -1,0 +1,16 @@
+{
+  "result": [
+    {
+      "id": "cstx-1",
+      "type": "Buy",
+      "date": "2026-03-10T00:00:00.000Z",
+      "coinData": { "count": 0.02, "symbol": "BTC", "currentValue": 1236.5 }
+    },
+    {
+      "id": "cstx-2",
+      "type": "Sell",
+      "date": "2026-07-01T00:00:00.000Z",
+      "coinData": { "count": -0.01, "symbol": "BTC", "currentValue": 700 }
+    }
+  ]
+}

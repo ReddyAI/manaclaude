@@ -1,0 +1,10 @@
+{
+  "result": [
+    {
+      "count": 500.25,
+      "coin": { "id": "USD", "symbol": "USD", "name": "US Dollar", "price": 1, "isFiat": true },
+      "isFiat": true
+    }
+  ],
+  "meta": { "page": 2, "limit": 2, "itemCount": 3, "pageCount": 2 }
+}

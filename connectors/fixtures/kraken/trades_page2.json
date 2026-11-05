@@ -1,0 +1,20 @@
+{
+  "error": [],
+  "result": {
+    "count": 3,
+    "trades": {
+      "TQ3CCC-CCCCC-CCCCCC": {
+        "ordertxid": "OCCC",
+        "pair": "XXBTZUSD",
+        "time": 1785000000.0,
+        "type": "sell",
+        "ordertype": "limit",
+        "price": "70000.0",
+        "cost": "700.00000",
+        "fee": "1.75000",
+        "vol": "0.01000000",
+        "margin": "0.0"
+      }
+    }
+  }
+}

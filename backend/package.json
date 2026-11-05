@@ -6,15 +6,26 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "wrangler dev",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "dev": "wrangler d1 migrations apply manaclaude --local && wrangler dev --local",
+    "dev:remote-ai": "wrangler dev",
+    "db:migrate:local": "wrangler d1 migrations apply manaclaude --local",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "smoke:mcp": "node scripts/mcp-smoke.mjs",
+    "typecheck": "tsc -p tsconfig.json && tsc -p deploy/tsconfig.json",
+    "test": "vitest run && vitest run -c vitest.deploy.config.ts",
+    "deploy:prepare": "node deploy/prepare.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0",
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
     "@manaclaude/connectors": "0.1.0",
-    "@manaclaude/shared": "0.1.0"
+    "@manaclaude/shared": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "hono": "^4.13.16",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.5.1",
     "@cloudflare/workers-types": "^5.20261101.1",
     "typescript": "~6.0.3",
     "vitest": "4.1.11",

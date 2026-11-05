@@ -1,0 +1,21 @@
+{
+  "accounts": [],
+  "liabilities": {
+    "credit": [
+      {
+        "account_id": "pl_acc_card",
+        "aprs": [
+          { "apr_percentage": 24.99, "apr_type": "purchase_apr" },
+          { "apr_percentage": 29.99, "apr_type": "cash_apr" }
+        ],
+        "is_overdue": false,
+        "last_statement_balance": 1100,
+        "minimum_payment_amount": 35,
+        "next_payment_due_date": "2026-11-22"
+      }
+    ],
+    "mortgage": null,
+    "student": null
+  },
+  "request_id": "req_demo_liab"
+}

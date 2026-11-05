@@ -1,0 +1,35 @@
+[
+  {
+    "id": "acc_demo_chk_01",
+    "enrollment_id": "enr_demo_01",
+    "institution": { "id": "demo_lakeshore", "name": "Lakeshore Bank" },
+    "name": "Everyday Checking",
+    "type": "depository",
+    "subtype": "checking",
+    "currency": "USD",
+    "last_four": "4821",
+    "status": "open"
+  },
+  {
+    "id": "acc_demo_cc_01",
+    "enrollment_id": "enr_demo_01",
+    "institution": { "id": "demo_lakeshore", "name": "Lakeshore Bank" },
+    "name": "Cashback Visa",
+    "type": "credit",
+    "subtype": "credit_card",
+    "currency": "USD",
+    "last_four": "1180",
+    "status": "open"
+  },
+  {
+    "id": "acc_demo_old_01",
+    "enrollment_id": "enr_demo_01",
+    "institution": { "id": "demo_lakeshore", "name": "Lakeshore Bank" },
+    "name": "Closed Savings",
+    "type": "depository",
+    "subtype": "savings",
+    "currency": "USD",
+    "last_four": "9999",
+    "status": "closed"
+  }
+]

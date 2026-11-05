@@ -36,6 +36,20 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 96
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Mana reads a receipt photo you pick so it can be attached to a transaction.",
+          "cameraPermission": "Mana uses the camera to photograph a receipt for a transaction."
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "disableIOS": true,
+          "androidIntentFilters": ["image/*"]
+        }
       ]
     ],
     "experiments": {

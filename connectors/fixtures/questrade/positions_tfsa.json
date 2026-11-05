@@ -1,0 +1,22 @@
+{
+  "positions": [
+    {
+      "symbol": "XIU.TO",
+      "symbolId": 1,
+      "openQuantity": 100,
+      "currentMarketValue": 4000.0,
+      "currentPrice": 40.0,
+      "averageEntryPrice": 35.0,
+      "totalCost": 3500.0
+    },
+    {
+      "symbol": "AAPL",
+      "symbolId": 2,
+      "openQuantity": 5,
+      "currentMarketValue": 1000.0,
+      "currentPrice": 200.0,
+      "averageEntryPrice": 150.0,
+      "totalCost": 750.0
+    }
+  ]
+}

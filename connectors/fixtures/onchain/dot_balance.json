@@ -1,0 +1,8 @@
+{
+  "nonce": "1",
+  "free": "100000000000",
+  "reserved": "20000000000",
+  "miscFrozen": "0",
+  "feeFrozen": "0",
+  "locks": []
+}

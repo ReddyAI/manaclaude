@@ -1,0 +1,6 @@
+{
+  "error_type": "INVALID_REQUEST",
+  "error_code": "PRODUCTS_NOT_SUPPORTED",
+  "error_message": "this item does not support investments",
+  "request_id": "req_demo_err2"
+}

@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "id": "rb-t-post",
+      "accountId": "rb-1",
+      "status": "posted",
+      "date": "2026-11-05",
+      "description": "STREAMBOX AU",
+      "amount": "-9.99",
+      "direction": "debit",
+      "merchantName": "StreamBox"
+    }
+  ],
+  "hasMore": false
+}

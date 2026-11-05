@@ -1,0 +1,7 @@
+{
+  "error_type": "ITEM_ERROR",
+  "error_code": "ITEM_LOGIN_REQUIRED",
+  "error_message": "the login details of this item have changed",
+  "display_message": "The bank login needs attention.",
+  "request_id": "req_demo_err"
+}

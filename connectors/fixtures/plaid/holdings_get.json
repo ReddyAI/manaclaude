@@ -1,0 +1,88 @@
+{
+  "accounts": [],
+  "holdings": [
+    {
+      "account_id": "pl_acc_brk",
+      "security_id": "sec_vti",
+      "quantity": 30,
+      "institution_price": 280.5,
+      "institution_price_as_of": "2026-11-04",
+      "institution_value": 8415,
+      "cost_basis": 7050,
+      "iso_currency_code": "USD",
+      "tax_lots": [
+        { "id": "lot_vti_1", "quantity": 10, "cost_basis": 2200, "acquired_date": "2025-01-15" },
+        { "id": "lot_vti_2", "quantity": 20, "cost_basis": 4850, "acquired_date": "2025-09-02" }
+      ]
+    },
+    {
+      "account_id": "pl_acc_brk",
+      "security_id": "sec_msft",
+      "quantity": 12,
+      "institution_price": 410.25,
+      "institution_price_as_of": "2026-11-04",
+      "institution_value": 4923,
+      "cost_basis": 4300,
+      "iso_currency_code": "USD"
+    },
+    {
+      "account_id": "pl_acc_brk",
+      "security_id": "sec_cash",
+      "quantity": 1972.4,
+      "institution_price": 1,
+      "institution_price_as_of": "2026-11-04",
+      "institution_value": 1972.4,
+      "cost_basis": null,
+      "iso_currency_code": "USD"
+    },
+    {
+      "account_id": "pl_acc_401k",
+      "security_id": "sec_fund",
+      "quantity": 250.5,
+      "institution_price": 160.66,
+      "institution_price_as_of": "2026-11-04",
+      "institution_value": 40246.83,
+      "cost_basis": 31000,
+      "iso_currency_code": "USD"
+    }
+  ],
+  "securities": [
+    {
+      "security_id": "sec_vti",
+      "ticker_symbol": "VTI",
+      "name": "Total Market ETF",
+      "type": "etf",
+      "is_cash_equivalent": false,
+      "iso_currency_code": "USD",
+      "market_identifier_code": "ARCX"
+    },
+    {
+      "security_id": "sec_msft",
+      "ticker_symbol": "MSFT",
+      "name": "Example Software Corp",
+      "type": "equity",
+      "is_cash_equivalent": false,
+      "iso_currency_code": "USD",
+      "market_identifier_code": "XNAS"
+    },
+    {
+      "security_id": "sec_cash",
+      "ticker_symbol": "CUR:USD",
+      "name": "U S Dollar",
+      "type": "cash",
+      "is_cash_equivalent": true,
+      "iso_currency_code": "USD",
+      "market_identifier_code": null
+    },
+    {
+      "security_id": "sec_fund",
+      "ticker_symbol": "IDXFX",
+      "name": "Index 500 Fund",
+      "type": "mutual fund",
+      "is_cash_equivalent": false,
+      "iso_currency_code": "USD",
+      "market_identifier_code": null
+    }
+  ],
+  "request_id": "req_demo_holdings"
+}

@@ -1,0 +1,70 @@
+{
+  "data": [
+    {
+      "type": "transactions",
+      "id": "up-t-3",
+      "attributes": {
+        "status": "SETTLED",
+        "rawText": "COLES 0412",
+        "description": "Coles",
+        "amount": { "currencyCode": "AUD", "value": "-54.20", "valueInBaseUnits": -5420 },
+        "foreignAmount": null,
+        "settledAt": "2026-10-30T12:00:00+11:00",
+        "createdAt": "2026-10-30T11:58:00+11:00"
+      },
+      "relationships": {
+        "account": { "data": { "id": "up-acc-spend" } },
+        "transferAccount": { "data": null }
+      }
+    },
+    {
+      "type": "transactions",
+      "id": "up-t-4",
+      "attributes": {
+        "status": "SETTLED",
+        "rawText": "COLES 0412",
+        "description": "Coles",
+        "amount": { "currencyCode": "AUD", "value": "-54.20", "valueInBaseUnits": -5420 },
+        "foreignAmount": null,
+        "settledAt": "2026-10-30T15:00:00+11:00",
+        "createdAt": "2026-10-30T14:58:00+11:00"
+      },
+      "relationships": {
+        "account": { "data": { "id": "up-acc-spend" } },
+        "transferAccount": { "data": null }
+      }
+    },
+    {
+      "type": "transactions",
+      "id": "up-t-5",
+      "attributes": {
+        "status": "SETTLED",
+        "rawText": null,
+        "description": "Round Up",
+        "amount": { "currencyCode": "AUD", "value": "-0.80", "valueInBaseUnits": -80 },
+        "foreignAmount": null,
+        "settledAt": "2026-10-29T10:00:00+11:00",
+        "createdAt": "2026-10-29T10:00:00+11:00"
+      },
+      "relationships": {
+        "account": { "data": { "id": "up-acc-spend" } },
+        "transferAccount": { "data": { "id": "up-acc-saver" } }
+      }
+    },
+    {
+      "type": "transactions",
+      "id": "up-t-6",
+      "attributes": {
+        "status": "SETTLED",
+        "rawText": "PARIS BISTRO",
+        "description": "Paris Bistro",
+        "amount": { "currencyCode": "AUD", "value": "-68.40", "valueInBaseUnits": -6840 },
+        "foreignAmount": { "currencyCode": "EUR", "value": "-40.00", "valueInBaseUnits": -4000 },
+        "settledAt": "2026-10-28T10:00:00+11:00",
+        "createdAt": "2026-10-28T10:00:00+11:00"
+      },
+      "relationships": { "account": { "data": { "id": "up-acc-spend" } } }
+    }
+  ],
+  "links": { "prev": null, "next": null }
+}

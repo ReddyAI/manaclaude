@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_account": "acc_ak_chk",
+      "updated_at": "2026-11-04T01:00:00Z",
+      "date": "2026-11-04T00:00:00.000Z",
+      "description": "STREAMBOX",
+      "amount": -9.99,
+      "type": "EFTPOS"
+    }
+  ]
+}

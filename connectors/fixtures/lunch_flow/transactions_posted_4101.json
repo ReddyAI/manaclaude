@@ -1,0 +1,15 @@
+{
+  "transactions": [
+    {
+      "id": "lf-t-9",
+      "accountId": 4101,
+      "amount": -9.99,
+      "currency": "USD",
+      "date": "2026-11-05",
+      "merchant": "StreamBox",
+      "description": "STREAMBOX SUBSCRIPTION",
+      "isPending": false
+    }
+  ],
+  "total": 1
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "m-u1",
+    "time": 1793620800,
+    "description": "Online shop",
+    "hold": false,
+    "amount": -1500,
+    "operationAmount": -1380,
+    "currencyCode": 978,
+    "balance": 20500
+  }
+]

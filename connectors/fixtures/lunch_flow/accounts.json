@@ -1,0 +1,37 @@
+{
+  "accounts": [
+    {
+      "id": 4101,
+      "name": "Everyday Checking",
+      "institution_name": "Lakeshore Bank",
+      "provider": "mx",
+      "currency": "USD",
+      "status": "ACTIVE"
+    },
+    {
+      "id": 4102,
+      "name": "Cashback Visa",
+      "institution_name": "Lakeshore Bank",
+      "provider": "mx",
+      "currency": "USD",
+      "status": "ACTIVE"
+    },
+    {
+      "id": 4103,
+      "name": "Individual Account",
+      "institution_name": "Northfield Investments",
+      "provider": "snaptrade",
+      "currency": "USD",
+      "status": "ACTIVE"
+    },
+    {
+      "id": 4104,
+      "name": "Dormant",
+      "institution_name": "Lakeshore Bank",
+      "provider": "mx",
+      "currency": "USD",
+      "status": "DISCONNECTED"
+    }
+  ],
+  "total": 4
+}

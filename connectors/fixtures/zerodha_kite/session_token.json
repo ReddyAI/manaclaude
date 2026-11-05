@@ -1,0 +1,8 @@
+{
+  "status": "success",
+  "data": {
+    "user_id": "AB1234",
+    "access_token": "demo-access-token-next-day",
+    "public_token": "demo-public"
+  }
+}

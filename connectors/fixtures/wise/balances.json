@@ -1,0 +1,16 @@
+[
+  {
+    "id": 5001,
+    "currency": "USD",
+    "amount": { "value": 1250.75, "currency": "USD" },
+    "type": "STANDARD",
+    "name": null
+  },
+  {
+    "id": 5002,
+    "currency": "EUR",
+    "amount": { "value": 300.0, "currency": "EUR" },
+    "type": "STANDARD",
+    "name": "Euro jar"
+  }
+]

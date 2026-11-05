@@ -1,0 +1,22 @@
+{
+  "positions": [
+    {
+      "instrumentId": "IE00BK5BQT80",
+      "name": "All-World ETF",
+      "netSize": "12.5",
+      "averageBuyIn": "98.40"
+    },
+    {
+      "instrumentId": "US0000000001",
+      "name": "Example Devices Inc",
+      "netSize": "2",
+      "averageBuyIn": "180.00"
+    },
+    {
+      "instrumentId": "DE0000000002",
+      "name": "Sold Out AG",
+      "netSize": "0",
+      "averageBuyIn": "50.00"
+    }
+  ]
+}

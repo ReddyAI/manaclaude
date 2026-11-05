@@ -1,0 +1,18 @@
+{
+  "property": [
+    {
+      "city": "Austin",
+      "zipCode": "73301",
+      "formattedAddress": "1 Wrong City Rd",
+      "modelValue": 100000
+    },
+    {
+      "city": "San Antonio",
+      "zipCode": "78244",
+      "formattedAddress": "5500 Demo Lake Dr, San Antonio, TX",
+      "modelValue": null,
+      "totalMarketValue": 398000,
+      "useCode": "1001"
+    }
+  ]
+}

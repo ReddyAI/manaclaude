@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "type": "transactions",
+      "id": "up-t-9",
+      "attributes": {
+        "status": "SETTLED",
+        "rawText": "BLUE BEAN CAFE SYDNEY",
+        "description": "Blue Bean Cafe",
+        "amount": { "currencyCode": "AUD", "value": "-6.50", "valueInBaseUnits": -650 },
+        "foreignAmount": null,
+        "settledAt": "2026-11-05T08:00:00+11:00",
+        "createdAt": "2026-11-04T08:15:00+11:00"
+      },
+      "relationships": { "account": { "data": { "id": "up-acc-spend" } } }
+    }
+  ],
+  "links": { "next": null }
+}

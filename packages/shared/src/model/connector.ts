@@ -9,6 +9,7 @@ import type {
 } from './common';
 import type { AccountSubtype, AccountType } from './account';
 import type { InvestmentActivityType, SecurityType, ExchangeCode } from './investment';
+import type { TransactionKind } from './transaction';
 
 export type ConnectorKind =
   | 'bank'
@@ -102,6 +103,8 @@ export interface ProviderAccount {
   availableBalance: MinorUnits | null;
   creditLimit: MinorUnits | null;
   mask: string | null;
+  /** Loans and cards: annual interest rate in percent ("24.99"), when the provider says. */
+  interestRate?: DecimalString | null;
 }
 
 export interface ProviderTransaction {
@@ -120,6 +123,12 @@ export interface ProviderTransaction {
   pendingExternalId: string | null;
   /** Provider's category label, used as a hint only. */
   categoryHint: string | null;
+  /**
+   * The provider says this moves money between the user's own accounts (Up's
+   * transferAccount, round-ups). Sets the kind of a NEW row only; the transfer
+   * matcher and the user decide afterwards.
+   */
+  kindHint?: TransactionKind | null;
 }
 
 export interface ProviderTaxLot {
@@ -167,6 +176,17 @@ export interface SyncResult {
   activities: ProviderActivity[];
   /** Store and pass back on the next sync. */
   nextCursor: string | null;
+  /**
+   * True when `transactions` holds only what changed since the cursor (Plaid's
+   * transactions/sync), so a pending row missing from it has not been dropped.
+   */
+  deltaOnly?: boolean;
+  /**
+   * Credentials the provider rotated during this sync (Questrade hands out a new
+   * refresh token on every use). The backend must store them, under the same
+   * secret names, before the next sync or the login is lost.
+   */
+  updatedSecrets?: Record<string, string>;
 }
 
 /** Minimal fetch shape so adapters run the same in the Worker and in tests. */
@@ -181,11 +201,30 @@ export type FetchLike = (
   text(): Promise<string>;
 }>;
 
+/** Minimal WebSocket shape for the few providers that stream their data (Trade Republic). */
+export interface SocketLike {
+  send(text: string): void;
+  onMessage(handler: (text: string) => void): void;
+  onClose(handler: () => void): void;
+  close(): void;
+}
+
+export type SocketConnector = (
+  url: string,
+  headers?: Record<string, string>,
+) => Promise<SocketLike>;
+
 export interface ConnectorContext {
-  /** Secrets for this connector, read from Worker secrets. Never logged. */
+  /**
+   * Secrets for this connector, read from Worker secrets, plus the settings and
+   * credentials of the one connection being synced (access token, address).
+   * Never logged.
+   */
   secrets: Record<string, string>;
   fetch: FetchLike;
   now(): Date;
+  /** Open an outbound WebSocket. Only Trade Republic needs it; the Worker may leave it out. */
+  connectSocket?: SocketConnector;
 }
 
 /** Thrown by adapters when the login needs the user (expired token, MFA). The app shows "Repair". */

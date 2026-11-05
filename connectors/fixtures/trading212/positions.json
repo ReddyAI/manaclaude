@@ -1,0 +1,26 @@
+[
+  {
+    "instrument": {
+      "ticker": "AAPL_US_EQ",
+      "name": "Example Devices Inc",
+      "isin": "US0000000001",
+      "currency": "USD"
+    },
+    "quantity": 10,
+    "quantityAvailableForTrading": 10,
+    "currentPrice": 200.0,
+    "averagePricePaid": 150.0
+  },
+  {
+    "instrument": {
+      "ticker": "VUSAl_EQ",
+      "name": "US 500 UCITS ETF",
+      "isin": "IE0000000002",
+      "currency": "GBX"
+    },
+    "quantity": 20,
+    "quantityAvailableForTrading": 20,
+    "currentPrice": 9850,
+    "averagePricePaid": 8000
+  }
+]

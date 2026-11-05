@@ -1,0 +1,15 @@
+{
+  "result": [
+    {
+      "count": 0.05,
+      "coin": { "id": "bitcoin", "symbol": "BTC", "name": "Bitcoin", "price": 68000.1 },
+      "totalWorth": 3400.01
+    },
+    {
+      "count": 1.2,
+      "coin": { "id": "ethereum", "symbol": "ETH", "name": "Ethereum", "price": 2450.25 },
+      "totalWorth": 2940.3
+    }
+  ],
+  "meta": { "page": 1, "limit": 2, "itemCount": 3, "pageCount": 2 }
+}

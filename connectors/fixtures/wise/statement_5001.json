@@ -1,0 +1,65 @@
+{
+  "accountHolder": { "type": "PERSONAL" },
+  "transactions": [
+    {
+      "type": "DEBIT",
+      "date": "2026-11-03T10:15:00.000Z",
+      "amount": { "value": -42.1, "currency": "USD" },
+      "totalFees": { "value": 0.5, "currency": "USD" },
+      "details": {
+        "type": "CARD",
+        "description": "Card transaction of 38.00 EUR issued by Bistro Lune",
+        "merchant": { "name": "Bistro Lune" }
+      },
+      "exchangeDetails": { "forAmount": { "value": 38.0, "currency": "EUR" } },
+      "referenceNumber": "CARD-1"
+    },
+    {
+      "type": "DEBIT",
+      "date": "2026-10-30T09:00:00.000Z",
+      "amount": { "value": -4.5, "currency": "USD" },
+      "totalFees": { "value": 0, "currency": "USD" },
+      "details": {
+        "type": "CARD",
+        "description": "Card transaction at Corner Coffee",
+        "merchant": { "name": "Corner Coffee" }
+      },
+      "exchangeDetails": null,
+      "referenceNumber": "CARD-2"
+    },
+    {
+      "type": "DEBIT",
+      "date": "2026-10-30T09:05:00.000Z",
+      "amount": { "value": -4.5, "currency": "USD" },
+      "totalFees": { "value": 0, "currency": "USD" },
+      "details": {
+        "type": "CARD",
+        "description": "Card transaction at Corner Coffee",
+        "merchant": { "name": "Corner Coffee" }
+      },
+      "exchangeDetails": null,
+      "referenceNumber": "CARD-3"
+    },
+    {
+      "type": "CREDIT",
+      "date": "2026-11-01T08:00:00.000Z",
+      "amount": { "value": 1000.0, "currency": "USD" },
+      "totalFees": { "value": 0, "currency": "USD" },
+      "details": {
+        "type": "TRANSFER",
+        "description": "Received money from Acme Inc",
+        "senderName": "Acme Inc",
+        "paymentReference": "Invoice 42"
+      },
+      "referenceNumber": "TRANSFER-9"
+    },
+    {
+      "type": "DEBIT",
+      "date": "2026-10-20T08:00:00.000Z",
+      "amount": { "value": -200.0, "currency": "USD" },
+      "totalFees": { "value": 1.2, "currency": "USD" },
+      "details": { "type": "CONVERSION", "description": "Converted 198.80 USD to 185.00 EUR" },
+      "referenceNumber": "CONVERSION-7"
+    }
+  ]
+}

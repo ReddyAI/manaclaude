@@ -1,0 +1,13 @@
+[
+  {
+    "id": "m-9",
+    "time": 1793793600,
+    "description": "Taxi",
+    "mcc": 4121,
+    "hold": false,
+    "amount": -8800,
+    "operationAmount": -8800,
+    "currencyCode": 980,
+    "balance": 1250075
+  }
+]

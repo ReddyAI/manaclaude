@@ -1,0 +1,34 @@
+{
+  "Accounts": [
+    {
+      "AccountID": "soph-acc-001",
+      "AccountName": "Everyday Checking",
+      "AccountType": "Checking",
+      "AccountSubType": "Checking",
+      "AccountBalance": 3120.55,
+      "BalanceCurrency": "USD",
+      "AccountNumber": "000012349876",
+      "AccountStatus": "Active",
+      "InstitutionName": "Summit Card Services"
+    },
+    {
+      "AccountID": "soph-acc-002",
+      "AccountName": "Travel Rewards Card",
+      "AccountType": "CreditCard",
+      "AccountSubType": "Credit Card",
+      "AccountBalance": -612.08,
+      "BalanceCurrency": "USD",
+      "AccountNumber": "6604",
+      "AccountStatus": "Active",
+      "InstitutionName": "Summit Card Services"
+    },
+    {
+      "AccountID": "soph-acc-003",
+      "AccountName": "Old Savings",
+      "AccountType": "Savings",
+      "AccountBalance": 0,
+      "BalanceCurrency": "USD",
+      "AccountStatus": "Closed"
+    }
+  ]
+}

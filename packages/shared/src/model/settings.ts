@@ -1,4 +1,4 @@
-import type { CurrencyCode } from './common';
+import type { CurrencyCode, MinorUnits } from './common';
 
 /** Header currency chip: USD only, INR only, both, or each account's own currency. */
 export type DisplayCurrencyMode = 'USD' | 'INR' | 'BOTH' | 'NATIVE';
@@ -57,6 +57,34 @@ export const DEFAULT_MONEY_POLICIES: MoneyPolicies = {
   pendingTransactions: 'include',
 };
 
+/** Retirement / FIRE assumptions (Planning screen). Money is in `currency` minor units. */
+export interface PlanningAssumptions {
+  currency: CurrencyCode;
+  currentAge: number;
+  retirementAge: number;
+  /** Nominal yearly return as a fraction (0.07 = 7%). */
+  annualReturn: number;
+  /** Yearly inflation as a fraction. */
+  inflation: number;
+  /** Saved each month until retirement. */
+  monthlyContribution: MinorUnits;
+  /** Yearly spending you want in retirement, in today's money. */
+  annualExpenses: MinorUnits;
+  /** Safe withdrawal rate (0.04 = 4%). */
+  withdrawalRate: number;
+}
+
+export const DEFAULT_PLANNING: PlanningAssumptions = {
+  currency: 'USD',
+  currentAge: 34,
+  retirementAge: 55,
+  annualReturn: 0.07,
+  inflation: 0.03,
+  monthlyContribution: 250_000,
+  annualExpenses: 6_000_000,
+  withdrawalRate: 0.04,
+};
+
 export interface Settings {
   displayCurrencyMode: DisplayCurrencyMode;
   /** The large currency in BOTH mode. */
@@ -75,6 +103,12 @@ export interface Settings {
   mcpWriteToolsEnabled: boolean;
   /** 0 = Sunday, 1 = Monday. */
   weekStartsOn: 0 | 1;
+  /** Flex budgeting: group budgets as fixed, flexible and non-monthly. Off by default. */
+  flexBudgeting?: boolean;
+  /** New budget lines start with rollover on. */
+  defaultRollover?: boolean;
+  /** Retirement / FIRE assumptions. Missing means DEFAULT_PLANNING. */
+  planning?: PlanningAssumptions;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

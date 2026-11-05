@@ -1,0 +1,8 @@
+{
+  "username": "demo",
+  "accounts": [
+    { "account_number": "ABCD1234", "type": "mutual", "status": "active" },
+    { "account_number": "PENS5678", "type": "pension", "status": "active" },
+    { "account_number": "OLD00000", "type": "mutual", "status": "closed" }
+  ]
+}

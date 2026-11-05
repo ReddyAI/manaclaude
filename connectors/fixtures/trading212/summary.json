@@ -1,0 +1,7 @@
+{
+  "id": 40123456,
+  "currency": "GBP",
+  "totalValue": 4250.75,
+  "cash": { "availableToTrade": 120.5, "inPies": 0, "reservedForOrders": 0 },
+  "investments": { "currentValue": 4130.25, "totalCost": 3600 }
+}

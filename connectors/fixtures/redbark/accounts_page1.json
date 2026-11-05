@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "id": "rb-1",
+      "connectionId": "conn-a",
+      "name": "Everyday",
+      "institutionName": "Harbour Bank AU",
+      "type": "transaction",
+      "currency": "AUD"
+    }
+  ],
+  "hasMore": true
+}

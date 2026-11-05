@@ -1,0 +1,25 @@
+{
+  "session_id": "eb-session-demo",
+  "status": "AUTHORIZED",
+  "aspsp": { "name": "Nordic Demo Bank", "country": "FI" },
+  "access": { "valid_until": "2027-01-15T00:00:00Z" },
+  "accounts": ["eb-acc-1", "eb-acc-2"],
+  "accounts_data": [
+    {
+      "uid": "eb-acc-1",
+      "account_id": { "iban": "FI0000000000001234" },
+      "name": "Daily account",
+      "currency": "EUR",
+      "cash_account_type": "CACC",
+      "product": "Current account"
+    },
+    {
+      "uid": "eb-acc-2",
+      "account_id": { "iban": "FI0000000000005678" },
+      "name": "Credit card",
+      "currency": "EUR",
+      "cash_account_type": "CARD",
+      "product": "Credit card"
+    }
+  ]
+}

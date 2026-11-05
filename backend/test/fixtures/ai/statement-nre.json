@@ -1,0 +1,32 @@
+{
+  "accountName": "NRE Savings",
+  "accountMask": "XXXX7731",
+  "currency": "INR",
+  "periodStart": "01/10/2026",
+  "periodEnd": "31/10/2026",
+  "openingBalance": "3,50,000.00",
+  "closingBalance": "5,25,760.00",
+  "transactions": [
+    {
+      "date": "17/10/2026",
+      "description": "INWARD REMITTANCE WISE REF 88123",
+      "debit": null,
+      "credit": "1,76,240.00",
+      "balance": "5,26,240.00"
+    },
+    {
+      "date": "22/10/2026",
+      "description": "UPI-CHAI POINT-8812@okbank",
+      "debit": "240.00",
+      "credit": null,
+      "balance": "5,26,000.00"
+    },
+    {
+      "date": "28/10/2026",
+      "description": "DEBIT CARD ANNUAL FEE",
+      "debit": "240.00",
+      "credit": null,
+      "balance": "5,25,760.00"
+    }
+  ]
+}

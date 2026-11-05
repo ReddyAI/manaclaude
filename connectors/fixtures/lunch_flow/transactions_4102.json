@@ -1,0 +1,25 @@
+{
+  "transactions": [
+    {
+      "id": "lf-c-1",
+      "accountId": 4102,
+      "amount": -86.42,
+      "currency": "USD",
+      "date": "2026-11-02",
+      "merchant": "Northside Grocery",
+      "description": "NORTHSIDE GROCERY",
+      "isPending": false
+    },
+    {
+      "id": "lf-c-2",
+      "accountId": 4102,
+      "amount": 500,
+      "currency": "USD",
+      "date": "2026-10-28",
+      "merchant": "",
+      "description": "PAYMENT THANK YOU",
+      "isPending": false
+    }
+  ],
+  "total": 2
+}

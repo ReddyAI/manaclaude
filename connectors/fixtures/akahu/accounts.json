@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_id": "acc_ak_chk",
+      "name": "Everyday",
+      "status": "ACTIVE",
+      "formatted_account": "01-0123-0456789-00",
+      "type": "CHECKING",
+      "connection": { "name": "Harbour Bank" },
+      "balance": { "current": 1520.35, "available": 1500.35, "currency": "NZD" }
+    },
+    {
+      "_id": "acc_ak_card",
+      "name": "Platinum Card",
+      "status": "ACTIVE",
+      "formatted_account": "4567-XXXX-XXXX-1180",
+      "type": "CREDITCARD",
+      "connection": { "name": "Harbour Bank" },
+      "balance": { "current": -480.2, "available": 4519.8, "limit": 5000, "currency": "NZD" }
+    },
+    {
+      "_id": "acc_ak_old",
+      "name": "Old Account",
+      "status": "INACTIVE",
+      "type": "SAVINGS",
+      "balance": { "current": 0, "currency": "NZD" }
+    }
+  ]
+}

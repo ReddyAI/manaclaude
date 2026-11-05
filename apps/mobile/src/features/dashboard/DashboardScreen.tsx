@@ -25,7 +25,9 @@ import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
+import { CashQuickAddButton } from '../transactions/CashQuickAdd';
 import { describeTransaction, isListed } from '../transactions/display';
+import { reviewCount } from '../transactions/reviewQueue';
 import { TransactionDetailSheet } from '../transactions/TransactionDetailSheet';
 import { TransactionRow } from '../transactions/TransactionRow';
 
@@ -51,7 +53,7 @@ export function DashboardScreen() {
     const monthAgo = history.find((p) => p.date >= addDays(today, -30));
     const upcoming = upcomingRecurring(data, today, 14);
     const recent = data.transactions.filter((t) => isListed(t, lookups)).slice(0, 6);
-    const toReview = data.transactions.filter((t) => !t.reviewed && !t.splitParentId).length;
+    const toReview = reviewCount(data.transactions, lookups);
     const billsLeft = upcomingRecurring(data, today, spending.daysInMonth - spending.dayOfMonth)
       .filter((r) => r.expectedAmount < 0 && r.kind !== 'transfer')
       .reduce((s, r) => s + (display.convert(-r.expectedAmount, r.currency, currency) ?? 0), 0);
@@ -141,6 +143,7 @@ export function DashboardScreen() {
         title="Home"
         subtitle={formatMonth(spending.month)}
         actions={<CurrencyChip />}
+        overlay={<CashQuickAddButton />}
         testID="screen-dashboard"
       >
         <Card>
@@ -169,6 +172,36 @@ export function DashboardScreen() {
             </Text>
           </VStack>
         </Card>
+        <View style={styles.statRow}>
+          <Card style={styles.stat}>
+            <VStack gap="xxs">
+              <Text variant="label" tone="muted">
+                Bills still due
+              </Text>
+              <Amount
+                amount={metrics.billsLeft}
+                currency={currency}
+                align="left"
+                format={{ cents: 'never' }}
+                testID="bills-left"
+              />
+            </VStack>
+          </Card>
+          <Card
+            style={styles.stat}
+            onPress={() => router.navigate('/transactions/review')}
+            accessibilityLabel="Transactions to review"
+          >
+            <VStack gap="xxs">
+              <Text variant="label" tone="muted">
+                To review
+              </Text>
+              <Text variant="amount" numeric>
+                {metrics.toReview}
+              </Text>
+            </VStack>
+          </Card>
+        </View>
         {spendingCard}
       </Screen>
     );
@@ -184,6 +217,7 @@ export function DashboardScreen() {
       title="Home"
       subtitle={formatMonth(spending.month)}
       actions={<CurrencyChip />}
+      overlay={<CashQuickAddButton />}
       testID="screen-dashboard"
     >
       <Banner icon="info">
@@ -264,7 +298,7 @@ export function DashboardScreen() {
           </Card>
           <Card
             padding="none"
-            onPress={() => router.navigate('/transactions')}
+            onPress={() => router.navigate('/transactions/review')}
             accessibilityLabel="Transactions to review"
           >
             <ListRow
@@ -333,6 +367,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.space.md,
     alignItems: 'flex-start',
   },
+  statRow: { flexDirection: 'row', gap: theme.space.md },
+  stat: { flex: 1 },
   col: { flex: { xs: undefined, md: 1 }, gap: theme.space.md, width: '100%' },
   cardHeader: {
     flexDirection: 'row',

@@ -30,6 +30,18 @@ const LINK_KIND_LABEL: Record<TransferLink['kind'], string> = {
   atm_withdrawal: 'Cash withdrawal',
 };
 
+/** Sort order of every transaction list: newest date first, then id. */
+export function compareNewestFirst(a: Transaction, b: Transaction): number {
+  return a.date === b.date ? b.id.localeCompare(a.id) : b.date.localeCompare(a.date);
+}
+
+/** The link the matcher suggested but nobody confirmed yet. */
+export function suggestedLink(txn: Transaction, lookups: Lookups): TransferLink | null {
+  if (!txn.transferLinkId) return null;
+  const link = lookups.linksById.get(txn.transferLinkId);
+  return link?.status === 'suggested' ? link : null;
+}
+
 export function activeLink(txn: Transaction, lookups: Lookups): TransferLink | null {
   if (!txn.transferLinkId) return null;
   const link = lookups.linksById.get(txn.transferLinkId);
@@ -78,11 +90,13 @@ export function groupByDay(
   transactions: readonly Transaction[],
   lookups: Lookups,
   today: string,
+  /** One account's list shows both sides of a transfer; the combined list shows it once. */
+  options: { bothSides?: boolean } = {},
 ): TransactionListItem[] {
   const items: TransactionListItem[] = [];
   let currentDay = '';
   for (const t of transactions) {
-    if (!isListed(t, lookups)) continue;
+    if (options.bothSides ? t.splitParentId : !isListed(t, lookups)) continue;
     if (t.date !== currentDay) {
       currentDay = t.date;
       items.push({ type: 'header', key: `h_${t.date}`, title: formatDayHeader(t.date, today) });

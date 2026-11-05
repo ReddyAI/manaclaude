@@ -1,0 +1,50 @@
+{
+  "items": [
+    {
+      "order": {
+        "id": 1001,
+        "side": "BUY",
+        "status": "FILLED",
+        "ticker": "AAPL_US_EQ",
+        "instrument": { "ticker": "AAPL_US_EQ", "name": "Example Devices Inc", "currency": "USD" },
+        "createdAt": "2026-02-10T10:00:00Z",
+        "currency": "USD"
+      },
+      "fill": {
+        "id": 5001,
+        "quantity": 10,
+        "price": 150.0,
+        "filledAt": "2026-02-10T10:00:05Z",
+        "walletImpact": { "currency": "GBP", "netValue": 1190.5 }
+      }
+    },
+    {
+      "order": {
+        "id": 1002,
+        "side": "SELL",
+        "status": "FILLED",
+        "ticker": "VUSAl_EQ",
+        "instrument": { "ticker": "VUSAl_EQ", "name": "US 500 UCITS ETF", "currency": "GBX" },
+        "createdAt": "2026-03-02T10:00:00Z"
+      },
+      "fill": {
+        "id": 5002,
+        "quantity": 5,
+        "price": 8600,
+        "filledAt": "2026-03-02T10:00:05Z",
+        "walletImpact": { "currency": "GBP", "netValue": 430.0 }
+      }
+    },
+    {
+      "order": {
+        "id": 1003,
+        "side": "BUY",
+        "status": "CANCELLED",
+        "ticker": "AAPL_US_EQ",
+        "createdAt": "2026-03-03T10:00:00Z"
+      },
+      "fill": null
+    }
+  ],
+  "nextPagePath": "/api/v0/equity/history/orders?cursor=1002&limit=50"
+}

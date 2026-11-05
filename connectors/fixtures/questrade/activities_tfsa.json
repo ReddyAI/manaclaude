@@ -1,0 +1,88 @@
+{
+  "activities": [
+    {
+      "tradeDate": "2026-02-10T00:00:00.000000-05:00",
+      "transactionDate": "2026-02-12T00:00:00.000000-05:00",
+      "action": "Buy",
+      "symbol": "XIU.TO",
+      "description": "ISHARES S&P/TSX 60",
+      "currency": "CAD",
+      "quantity": 60,
+      "price": 34.0,
+      "grossAmount": -2040.0,
+      "commission": -4.95,
+      "netAmount": -2044.95,
+      "type": "Trades"
+    },
+    {
+      "tradeDate": "2026-03-10T00:00:00.000000-05:00",
+      "transactionDate": "2026-03-12T00:00:00.000000-05:00",
+      "action": "Buy",
+      "symbol": "XIU.TO",
+      "description": "ISHARES S&P/TSX 60",
+      "currency": "CAD",
+      "quantity": 40,
+      "price": 36.5,
+      "grossAmount": -1460.0,
+      "commission": -4.95,
+      "netAmount": -1464.95,
+      "type": "Trades"
+    },
+    {
+      "tradeDate": "2026-03-10T00:00:00.000000-05:00",
+      "transactionDate": "2026-03-12T00:00:00.000000-05:00",
+      "action": "Buy",
+      "symbol": "XIU.TO",
+      "description": "ISHARES S&P/TSX 60",
+      "currency": "CAD",
+      "quantity": 40,
+      "price": 36.5,
+      "grossAmount": -1460.0,
+      "commission": -4.95,
+      "netAmount": -1464.95,
+      "type": "Trades"
+    },
+    {
+      "tradeDate": "2026-03-10T00:00:00.000000-05:00",
+      "transactionDate": "2026-03-12T00:00:00.000000-05:00",
+      "action": "Sell",
+      "symbol": "XIU.TO",
+      "description": "ISHARES S&P/TSX 60",
+      "currency": "CAD",
+      "quantity": -40,
+      "price": 38.0,
+      "grossAmount": 1520.0,
+      "commission": -4.95,
+      "netAmount": 1515.05,
+      "type": "Trades"
+    },
+    {
+      "tradeDate": "2026-04-01T00:00:00.000000-05:00",
+      "transactionDate": "2026-04-01T00:00:00.000000-05:00",
+      "action": "",
+      "symbol": "",
+      "description": "CONTRIBUTION",
+      "currency": "CAD",
+      "quantity": 0,
+      "price": 0,
+      "grossAmount": 500.0,
+      "commission": 0,
+      "netAmount": 500.0,
+      "type": "Deposits"
+    },
+    {
+      "tradeDate": "2026-05-01T00:00:00.000000-05:00",
+      "transactionDate": "2026-05-01T00:00:00.000000-05:00",
+      "action": "",
+      "symbol": "XIU.TO",
+      "description": "DIV",
+      "currency": "CAD",
+      "quantity": 0,
+      "price": 0,
+      "grossAmount": 20.0,
+      "commission": 0,
+      "netAmount": 20.0,
+      "type": "Dividends"
+    }
+  ]
+}

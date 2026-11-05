@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "id": "ev-4",
+      "timestamp": 1793361600000,
+      "title": "Example Devices Inc",
+      "body": "Sell",
+      "cashChangeAmount": 380.5,
+      "eventType": "TRADING_TRADE_EXECUTED",
+      "action": { "payload": "US0000000001" }
+    },
+    {
+      "id": "ev-5",
+      "timestamp": 1793275200000,
+      "title": "Withdrawal",
+      "body": "Outgoing transfer",
+      "cashChangeAmount": 200.0,
+      "eventType": "OUTGOING_TRANSFER"
+    },
+    {
+      "id": "ev-6",
+      "timestamp": 1793188800000,
+      "title": "Dividend",
+      "body": "Dividend",
+      "cashChangeAmount": 4.2,
+      "eventType": "DIVIDEND"
+    }
+  ],
+  "cursors": { "after": null }
+}

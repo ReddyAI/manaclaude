@@ -19,6 +19,7 @@ apps/mobile/ios/
 .wrangler/
 .dev.vars
 .dev.vars.*
+!.dev.vars.example
 
 # secrets and local env (never commit)
 .env
@@ -35,3 +36,4 @@ coverage/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+backend/wrangler.deploy.toml

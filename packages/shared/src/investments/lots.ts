@@ -17,6 +17,9 @@ import {
  * investments screens. Session C owns this file; session D calls it.
  */
 
+/** Which open lot a sell uses first. FIFO is the default (US and Indian tax rules). */
+export type LotMethod = 'fifo' | 'lifo' | 'hifo';
+
 export interface DeriveLotsInput {
   /** Activities for ONE account and ONE security, any order. */
   activities: readonly InvestmentActivity[];
@@ -24,6 +27,8 @@ export interface DeriveLotsInput {
   accountId: Id;
   securityId: Id;
   currency: CurrencyCode;
+  /** Lot selection for sells. Default 'fifo'. */
+  method?: LotMethod;
 }
 
 export interface DeriveLotsResult {
@@ -58,7 +63,31 @@ const ORDER: Record<InvestmentActivity['type'], number> = {
   withdrawal: 4,
 };
 
+/** Index of the open lot a sell takes from next. */
+function pickLot(open: readonly WorkingLot[], method: LotMethod): number {
+  if (method === 'lifo') return open.length - 1;
+  if (method === 'hifo') {
+    let best = 0;
+    let bestUnit = -1;
+    open.forEach((lot, i) => {
+      // Highest cost per unit first.
+      const unit = Number(lot.costBasis) / Number(lot.quantity);
+      if (unit > bestUnit) {
+        bestUnit = unit;
+        best = i;
+      }
+    });
+    return best;
+  }
+  return 0;
+}
+
+/**
+ * Open lots and realized gains from one account's activities in one security.
+ * First in, first out unless `input.method` says otherwise.
+ */
 export function deriveLotsFifo(input: DeriveLotsInput): DeriveLotsResult {
+  const method = input.method ?? 'fifo';
   const warnings: string[] = [];
   const realized: RealizedGain[] = [];
   let dividends = 0;
@@ -98,7 +127,8 @@ export function deriveLotsFifo(input: DeriveLotsInput): DeriveLotsResult {
         const totalQty = act.quantity;
         let proceedsLeft = act.type === 'sell' ? act.amount : 0;
         while (!isZeroDec(remaining) && open.length > 0) {
-          const lot = open[0]!;
+          const idx = pickLot(open, method);
+          const lot = open[idx]!;
           const take = minDec(remaining, lot.quantity);
           const lotCost =
             cmpDec(take, lot.quantity) === 0
@@ -127,7 +157,7 @@ export function deriveLotsFifo(input: DeriveLotsInput): DeriveLotsResult {
           }
           lot.quantity = subDec(lot.quantity, take);
           lot.costBasis -= lotCost;
-          if (isZeroDec(lot.quantity)) open.shift();
+          if (isZeroDec(lot.quantity)) open.splice(idx, 1);
           remaining = afterTake;
         }
         if (!isZeroDec(remaining)) {

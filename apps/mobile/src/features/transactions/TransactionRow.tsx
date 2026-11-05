@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { IconBadge } from '../../design/components/Decor';
@@ -10,12 +11,19 @@ export function TransactionRow({
   row,
   lookups,
   onPress,
+  caption,
+  signedTransfers = false,
 }: {
   row: TransactionListRow;
   lookups: Lookups;
   onPress?: () => void;
+  /** Small element under the amount, such as the AI confidence. */
+  caption?: ReactNode;
+  /** An account's own list shows its side of a transfer with a sign; the combined list shows it once, unsigned. */
+  signedTransfers?: boolean;
 }) {
   const { txn, transfer } = row;
+  const unsigned = transfer && !signedTransfers;
   const category = txn.categoryId ? lookups.categoriesById.get(txn.categoryId) : undefined;
   const leading = transfer ? (
     <IconBadge icon="link" color="c9" />
@@ -34,19 +42,23 @@ export function TransactionRow({
       testID={`txn-${txn.id}`}
       accessibilityLabel={`${row.title}, ${row.subtitle}`}
       trailing={
-        <Amount
-          amount={transfer ? Math.abs(txn.amount) : txn.amount}
-          currency={txn.currency}
-          date={txn.date}
-          colorize={transfer ? 'none' : 'flow'}
-          tone={transfer ? 'muted' : undefined}
-        />
+        <View style={styles.trailing}>
+          <Amount
+            amount={unsigned ? Math.abs(txn.amount) : txn.amount}
+            currency={txn.currency}
+            date={txn.date}
+            colorize={unsigned ? 'none' : 'flow'}
+            tone={unsigned ? 'muted' : undefined}
+          />
+          {caption}
+        </View>
       }
     />
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
+  trailing: { alignItems: 'flex-end', gap: theme.space.xxs },
   unreviewed: {
     position: 'absolute',
     top: 0,
