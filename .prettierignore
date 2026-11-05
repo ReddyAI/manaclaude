@@ -1,0 +1,15 @@
+# research/ belongs to the research session; never reformat it
+research/
+# saved verbatim from Sankar's message
+docs/project-brief.md
+docs/requirements-addendum.md
+readme
+node_modules/
+dist/
+coverage/
+.expo/
+.wrangler/
+apps/mobile/android/
+apps/mobile/ios/
+package-lock.json
+LICENSE

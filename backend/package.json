@@ -1,0 +1,23 @@
+{
+  "name": "@manaclaude/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker + D1 backend: API, imports, transfer matching, receipts, FX, AI provider layer, MCP server.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@manaclaude/connectors": "0.1.0",
+    "@manaclaude/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261101.1",
+    "typescript": "~6.0.3",
+    "vitest": "4.1.11",
+    "wrangler": "^4.149.0"
+  }
+}

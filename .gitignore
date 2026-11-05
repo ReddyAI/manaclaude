@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+
+# Expo / React Native
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+apps/mobile/android/
+apps/mobile/ios/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Cloudflare
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# secrets and local env (never commit)
+.env
+.env.*
+!.env.example
+
+# test and build output
+coverage/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json

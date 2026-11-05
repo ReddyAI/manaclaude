@@ -1,0 +1,29 @@
+# Cloudflare Worker for Mana. Session B owns this file.
+# No secrets here: the repo is public. Put secrets in .dev.vars locally
+# (see .dev.vars.example) and `wrangler secret put NAME` for production.
+name = "manaclaude-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-15"
+compatibility_flags = ["nodejs_compat"]
+
+# Hourly: Open Exchange Rates latest.json. Daily: ECB rates via Frankfurter, connector syncs.
+[triggers]
+crons = ["0 * * * *", "30 6 * * *"]
+
+# Bindings are added by session B once Sankar has a Cloudflare account.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "manaclaude"
+# database_id = "<created with: wrangler d1 create manaclaude>"
+# migrations_dir = "migrations"
+#
+# [[r2_buckets]]
+# binding = "FILES"          # receipts and the statement vault
+# bucket_name = "manaclaude-files"
+#
+# [ai]
+# binding = "AI"             # Workers AI
+#
+# [[mtls_certificates]]
+# binding = "TELLER_CERT"    # Teller client certificate
+# certificate_id = "<from: wrangler mtls-certificate upload>"

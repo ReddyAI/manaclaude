@@ -1,0 +1,24 @@
+{
+  "name": "@manaclaude/connectors",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connector registry and one adapter per data provider (Teller, Sophtron, Plaid, SnapTrade, ...). Runs inside the Worker.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./registry": "./src/registry.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@manaclaude/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3",
+    "vitest": "4.1.11"
+  }
+}
