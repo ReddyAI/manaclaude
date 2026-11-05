@@ -83,4 +83,5 @@ Adding a dependency: add it to your own workspace only, `npm install <pkg> -w <w
 - [docs/data-model.md](docs/data-model.md): entities, sign rules, transfers, splits, user edits
 - [docs/design-system.md](docs/design-system.md): looks, tokens, components, haptics
 - [docs/backend-plan.md](docs/backend-plan.md): backend plan with the five build checks as test cases
+- [docs/setup.md](docs/setup.md): one-time Cloudflare and GitHub secrets setup, provider keys, Zerodha redirect URL
 - [docs/parallel-sessions.md](docs/parallel-sessions.md): prompts for sessions A to D

@@ -67,6 +67,11 @@ module.exports = defineConfig([
     },
   },
   {
+    // Deploy scripts run in GitHub Actions and talk to the run log on purpose.
+    files: ['backend/deploy/**/*.ts'],
+    rules: { 'no-console': 'off' },
+  },
+  {
     files: ['**/*.test.{ts,tsx}', '**/__tests__/**/*.{ts,tsx}', 'apps/mobile/jest.setup.ts'],
     languageOptions: { globals: { jest: 'readonly' } },
     // jest.mock factories have to use require().

@@ -1,5 +1,6 @@
 # Builds the web app (static single-page export) and uploads it as an artifact.
-# Deploying to Cloudflare Pages is added once there is a Cloudflare account.
+# The Cloudflare Pages deploy lives in deploy-worker.yml, so one run deploys the
+# Worker and the web app together and prints all the addresses.
 name: Web build
 
 on:

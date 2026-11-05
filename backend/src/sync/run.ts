@@ -122,7 +122,13 @@ export async function syncConnection(
     }
     if (!outcome.result) {
       const failed = outcome.connection;
-      await markConnectionError(env.DB, connection, failed.status, failed.lastError ?? 'Sync failed.', now);
+      await markConnectionError(
+        env.DB,
+        connection,
+        failed.status,
+        failed.lastError ?? 'Sync failed.',
+        now,
+      );
       return {
         ...base,
         outcome: outcome.kind,
@@ -138,7 +144,13 @@ export async function syncConnection(
     const status: ConnectionStatus = repair ? 'needs_repair' : 'error';
     const message = e instanceof Error ? e.message : 'Sync failed.';
     await markConnectionError(env.DB, connection, status, message, now);
-    return { ...base, outcome: repair ? 'needs_repair' : 'error', status, error: message.slice(0, 200), summary: null };
+    return {
+      ...base,
+      outcome: repair ? 'needs_repair' : 'error',
+      status,
+      error: message.slice(0, 200),
+      summary: null,
+    };
   }
 }
 

@@ -32,8 +32,8 @@ An assistant only sees the write tools when both of these are true: Settings > A
 
 ## Before you connect
 
-1. Deploy the Worker and set its secrets (see "Cloudflare setup" in [backend-plan.md](backend-plan.md)). `MCP_OWNER_PASSWORD` must be set; without it the sign-in page refuses.
-2. Set the `PUBLIC_URL` repository variable (or the value in `backend/wrangler.toml`) to your workers.dev URL and deploy again. OAuth tokens are bound to `PUBLIC_URL/mcp`.
+1. Deploy the Worker with the steps in [setup.md](setup.md). Add the `MCP_OWNER_PASSWORD` GitHub secret first; without it the sign-in page refuses.
+2. Copy the MCP address from the deploy run summary. The deploy sets `PUBLIC_URL` itself, and OAuth tokens are bound to `PUBLIC_URL/mcp`.
 3. Check it from a terminal. This walks the same OAuth flow the assistants use and lists the tools:
 
 ```bash

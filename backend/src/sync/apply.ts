@@ -224,8 +224,7 @@ export async function applySyncResult(
     activitiesTouched = inv.activityInserts.length + inv.activityUpdates.length;
     for (const s of inv.securityInserts)
       invStatements.push(insertStatement(db, securitiesTable, s, 'ignore'));
-    for (const h of inv.holdingInserts)
-      invStatements.push(insertStatement(db, holdingsTable, h));
+    for (const h of inv.holdingInserts) invStatements.push(insertStatement(db, holdingsTable, h));
     for (const u of inv.holdingUpdates)
       invStatements.push(updateStatement(db, holdingsTable, { id: u.id }, u.changes));
     for (const id of inv.holdingRemovals)

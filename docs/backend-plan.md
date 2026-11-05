@@ -54,45 +54,9 @@ Every import is two steps. The preview stores the original in the vault, parses,
 
 ## Cloudflare setup
 
-Once there is a Cloudflare account (free plan):
+Setup is done once through GitHub secrets and the "Deploy to Cloudflare" workflow; the steps are in [setup.md](setup.md). The workflow needs only `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. It creates or reuses the D1 database, the R2 bucket and the OAuth KV namespace by name, applies the migrations, uploads the Teller certificate when its two PEM secrets exist, finds the Worker's public URL, deploys the Worker and the web app, and copies the optional secrets into Worker secrets of the same name. The code is in `backend/deploy/` and its tests in `backend/deploy/test/`.
 
-1. Create the resources (each command prints an id):
-
-```bash
-cd backend && npx wrangler login
-```
-
-```bash
-npx wrangler d1 create manaclaude
-```
-
-```bash
-npx wrangler r2 bucket create manaclaude-files
-```
-
-```bash
-npx wrangler kv namespace create OAUTH_KV
-```
-
-2. Workers AI needs no setup beyond the `[ai]` binding already in `wrangler.toml`.
-3. In GitHub, Settings > Secrets and variables > Actions: add secrets `CLOUDFLARE_API_TOKEN` (start from the "Edit Cloudflare Workers" template and check it can edit D1, R2 and Workers KV) and `CLOUDFLARE_ACCOUNT_ID`; add variables `D1_DATABASE_ID` and `OAUTH_KV_ID` with the ids from step 1. The deploy workflow fills them into `wrangler.toml`, applies migrations and deploys.
-4. Set the Worker secrets (each asks for the value):
-
-```bash
-npx wrangler secret put APP_API_TOKEN
-```
-
-```bash
-npx wrangler secret put MCP_OWNER_PASSWORD
-```
-
-```bash
-npx wrangler secret put OXR_APP_ID
-```
-
-Optional: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (paid key only). Connector secrets are named `<CONNECTOR_ID>_<NAME>`, for example `TELLER_APP_ID`.
-
-5. After the first deploy, set the `PUBLIC_URL` variable to `https://manaclaude-api.<your-subdomain>.workers.dev` and run the workflow again (Actions > Deploy Worker > Run workflow). Then connect Claude and Perplexity with [mcp.md](mcp.md).
+Worker secrets used by the code: `APP_API_TOKEN`, `MCP_OWNER_PASSWORD`, `CREDENTIALS_SECRET` (encrypts saved logins), `OXR_APP_ID`, `TELLER_APPLICATION_ID`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV`, `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY`, `SOPHTRON_USER_ID`, `SOPHTRON_ACCESS_KEY`, `KITE_API_KEY`, `KITE_API_SECRET`, `ANTHROPIC_API_KEY`. Which connector reads which name is in `backend/src/sync/secrets.ts` and `connectors/README.md`. Per-login credentials (access tokens and the like) are stored encrypted in the `connection_credentials` table (`backend/src/sync/credentials.ts`).
 
 Local development needs none of this: copy `backend/.dev.vars.example` to `backend/.dev.vars`, fill in a token and password, and run `npm run dev -w @manaclaude/backend` (local D1, R2 and KV; Workers AI calls answer 503 `ai_unavailable` because Workers AI only runs on Cloudflare). `npm run dev:remote-ai -w @manaclaude/backend` uses real Workers AI after `wrangler login`.
 

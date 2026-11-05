@@ -25,11 +25,7 @@ import {
   transactionsTable,
 } from '../src/db/tables';
 import type { Env } from '../src/env';
-import {
-  deleteCredentials,
-  loadCredentials,
-  saveCredentials,
-} from '../src/sync/credentials';
+import { deleteCredentials, loadCredentials, saveCredentials } from '../src/sync/credentials';
 import { workerSecretsFor } from '../src/sync/secrets';
 import { fetchForConnector, syncAllConnections, syncConnection } from '../src/sync/run';
 import { freshDb, testEnv } from './helpers';
@@ -350,9 +346,9 @@ describe('property values refresh at most monthly', () => {
 
     const later = new Date(NOW.getTime() + 41 * 86_400_000); // 31 days after the forced refresh
     const f3 = fakeFetch(routes());
-    expect((await syncConnection(withKey, 'conn_rc', { fetch: f3, now: () => later })).outcome).toBe(
-      'ok',
-    );
+    expect(
+      (await syncConnection(withKey, 'conn_rc', { fetch: f3, now: () => later })).outcome,
+    ).toBe('ok');
     expect(f3.calls).toHaveLength(1);
   });
 });
@@ -360,7 +356,9 @@ describe('property values refresh at most monthly', () => {
 describe('daily sync of all connections', () => {
   it('syncs healthy and errored connections, skips needs_repair and disconnected ones', async () => {
     await addConnection(connection('conn_ok', 'teller'));
-    await addConnection(connection('conn_err', 'teller', { status: 'error', lastError: 'timeout' }));
+    await addConnection(
+      connection('conn_err', 'teller', { status: 'error', lastError: 'timeout' }),
+    );
     await addConnection(connection('conn_dead', 'teller', { status: 'needs_repair' }));
     await addConnection(connection('conn_off', 'teller', { status: 'disconnected' }));
     for (const id of ['conn_ok', 'conn_err', 'conn_dead', 'conn_off']) {

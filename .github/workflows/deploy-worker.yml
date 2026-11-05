@@ -1,41 +1,47 @@
-# Deploys the Cloudflare Worker (backend/) after tests pass. Does nothing until
-# the CLOUDFLARE_API_TOKEN secret exists, so it is safe before the Cloudflare
-# account is set up. Setup steps: docs/backend-plan.md, "Cloudflare setup".
-name: Deploy Worker
+# Deploys everything to Cloudflare from the two secrets CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID: the Worker (with its D1 database, R2 bucket, OAuth KV
+# namespace and optional Teller certificate) and the web app (Cloudflare Pages).
+# Every other GitHub secret listed under "Copy secrets" is optional and is copied
+# into a Worker secret of the same name when it exists.
+# It does nothing until CLOUDFLARE_API_TOKEN exists. Steps: docs/setup.md.
+name: Deploy to Cloudflare
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - 'packages/shared/**'
-      - 'connectors/**'
-      - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 
 concurrency:
-  group: deploy-worker
+  group: deploy-cloudflare
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
+  worker:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      worker_url: ${{ steps.prepare.outputs.worker_url }}
+      mcp_url: ${{ steps.prepare.outputs.mcp_url }}
+      web_url: ${{ steps.prepare.outputs.web_url }}
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - name: Check for the Cloudflare token
+      - name: Check for the Cloudflare secrets
         id: gate
         run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::CLOUDFLARE_API_TOKEN is not set; skipping the Worker deploy."
+            echo "::notice::CLOUDFLARE_API_TOKEN is not set; skipping the Cloudflare deploy."
+          elif [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID is not set. Add it next to CLOUDFLARE_API_TOKEN (docs/setup.md)."
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v4
@@ -47,30 +53,110 @@ jobs:
           cache: npm
       - run: npm ci
         if: steps.gate.outputs.ready == 'true'
-      - name: Backend tests
+      - name: Backend and deploy-script tests
         if: steps.gate.outputs.ready == 'true'
         run: npm test -w @manaclaude/backend
 
-      # Resource ids live in repository variables so the public repo keeps placeholders.
-      - name: Fill in resource ids
+      # Creates or reuses, by name: D1 "manaclaude", R2 "manaclaude-files", the
+      # OAuth KV namespace, the Teller certificate (only when both PEM secrets
+      # exist), the workers.dev address and the Pages project. Writes
+      # backend/wrangler.deploy.toml with the real ids and the Worker's URL.
+      - name: Create or reuse Cloudflare resources
+        id: prepare
         if: steps.gate.outputs.ready == 'true'
-        working-directory: backend
         env:
-          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
-          OAUTH_KV_ID: ${{ vars.OAUTH_KV_ID }}
-          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
-        run: |
-          [ -n "$D1_DATABASE_ID" ] && sed -i "s/00000000-0000-0000-0000-000000000000/$D1_DATABASE_ID/" wrangler.toml
-          [ -n "$OAUTH_KV_ID" ] && sed -i "s/00000000000000000000000000000000/$OAUTH_KV_ID/" wrangler.toml
-          [ -n "$PUBLIC_URL" ] && sed -i "s#^PUBLIC_URL = .*#PUBLIC_URL = \"$PUBLIC_URL\"#" wrangler.toml
-          grep -q "00000000-0000-0000-0000-000000000000" wrangler.toml && { echo "::error::Set the D1_DATABASE_ID repository variable."; exit 1; } || true
+          TELLER_CERT_PEM: ${{ secrets.TELLER_CERT_PEM }}
+          TELLER_KEY_PEM: ${{ secrets.TELLER_KEY_PEM }}
+        run: node backend/deploy/prepare.ts
 
       - name: Apply D1 migrations
         if: steps.gate.outputs.ready == 'true'
         working-directory: backend
-        run: npx wrangler d1 migrations apply manaclaude --remote
+        run: npx wrangler d1 migrations apply manaclaude --remote --config wrangler.deploy.toml
 
-      - name: Deploy
+      - name: Deploy the Worker
         if: steps.gate.outputs.ready == 'true'
         working-directory: backend
-        run: npx wrangler deploy
+        run: npx wrangler deploy --config wrangler.deploy.toml
+
+      # Same name on both sides. A GitHub secret that is not set is skipped, and
+      # a Worker secret that already exists is left as it is.
+      - name: Copy secrets into the Worker
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: backend
+        env:
+          APP_API_TOKEN: ${{ secrets.APP_API_TOKEN }}
+          MCP_OWNER_PASSWORD: ${{ secrets.MCP_OWNER_PASSWORD }}
+          CREDENTIALS_SECRET: ${{ secrets.CREDENTIALS_SECRET }}
+          OXR_APP_ID: ${{ secrets.OXR_APP_ID }}
+          TELLER_APPLICATION_ID: ${{ secrets.TELLER_APPLICATION_ID }}
+          PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+          PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+          PLAID_ENV: ${{ secrets.PLAID_ENV }}
+          SNAPTRADE_CLIENT_ID: ${{ secrets.SNAPTRADE_CLIENT_ID }}
+          SNAPTRADE_CONSUMER_KEY: ${{ secrets.SNAPTRADE_CONSUMER_KEY }}
+          SOPHTRON_USER_ID: ${{ secrets.SOPHTRON_USER_ID }}
+          SOPHTRON_ACCESS_KEY: ${{ secrets.SOPHTRON_ACCESS_KEY }}
+          KITE_API_KEY: ${{ secrets.KITE_API_KEY }}
+          KITE_API_SECRET: ${{ secrets.KITE_API_SECRET }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node deploy/secrets.ts
+
+      - name: Check that the Worker answers
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          WORKER_URL: ${{ steps.prepare.outputs.worker_url }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS "$WORKER_URL/health"; then echo; exit 0; fi
+            echo "Not answering yet (attempt $attempt); waiting."
+            sleep 10
+          done
+          echo "::warning::$WORKER_URL/health did not answer. A brand-new workers.dev address can take a minute; re-run the workflow if it stays down."
+
+  web:
+    needs: worker
+    if: needs.worker.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      deployed: ${{ steps.pages.outcome == 'success' }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # The Worker's address is public, so it can be built into the app. The API
+      # token is not: it is never put in a web build.
+      - name: Export the web build
+        working-directory: apps/mobile
+        env:
+          CI: '1'
+          EXPO_PUBLIC_API_URL: ${{ needs.worker.outputs.worker_url }}
+        run: npx expo export --platform web --output-dir dist
+      - name: Deploy to Cloudflare Pages
+        id: pages
+        run: npx wrangler pages deploy apps/mobile/dist --project-name manaclaude --branch main --commit-dirty=true
+
+  summary:
+    needs: [worker, web]
+    if: ${{ always() && needs.worker.outputs.ready == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Print the addresses
+        env:
+          WORKER_URL: ${{ needs.worker.outputs.worker_url }}
+          MCP_URL: ${{ needs.worker.outputs.mcp_url }}
+          WEB_URL: ${{ needs.worker.outputs.web_url }}
+          WEB_DEPLOYED: ${{ needs.web.outputs.deployed }}
+        run: node backend/deploy/summary.ts

@@ -38,7 +38,12 @@ async function keyFor(env: Env): Promise<CryptoKey> {
     'deriveKey',
   ]);
   return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: enc.encode('mana-credentials-v1'), info: new Uint8Array() },
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: enc.encode('mana-credentials-v1'),
+      info: new Uint8Array(),
+    },
     base,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -83,7 +88,9 @@ export async function saveCredentials(
   opts: { replace?: boolean } = {},
 ): Promise<void> {
   const key = await keyFor(env);
-  const merged = opts.replace ? { ...values } : { ...(await loadCredentials(env, connectionId)), ...values };
+  const merged = opts.replace
+    ? { ...values }
+    : { ...(await loadCredentials(env, connectionId)), ...values };
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const cipher = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },

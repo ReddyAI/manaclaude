@@ -19,8 +19,6 @@ import { simplefinAdapter } from './simplefin';
 import { realieAdapter } from './realie';
 import { redbarkAdapter } from './redbark';
 import { rentcastAdapter } from './rentcast';
-
-export { shouldRefreshValuation } from './rentcast';
 import { snaptradeAdapter } from './snaptrade';
 import { sophtronAdapter } from './sophtron';
 import { tellerAdapter } from './teller';
@@ -34,6 +32,8 @@ import { yahooFinanceAdapter, yahooFinanceProvider } from './yahoo_finance';
 import type { MarketDataProvider } from '../market/types';
 import { wazirxAdapter } from './wazirx';
 import { zerodhaKiteAdapter } from './zerodha_kite';
+
+export { shouldRefreshValuation } from './rentcast';
 
 /**
  * Adapter lookup by connector id. Session D adds one file per adapter under
