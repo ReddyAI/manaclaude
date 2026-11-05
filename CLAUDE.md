@@ -44,7 +44,7 @@ research/                    research session only
 | A: Dashboard, Transactions, Accounts                                   | `apps/mobile/src/features/{dashboard,transactions,accounts}/`, `features/currency/CurrencyChip.tsx`, `features/settings/sections/DisplaySection.tsx`, new routes under `src/app/{transactions,accounts,dashboard}/`, `packages/shared/src/sample/transactions.ts`                                                                                             |
 | B: Backend, imports, AI, MCP                                           | `backend/`, `packages/shared/src/{fx,policy,api,import}/`, `features/settings/sections/{AiSection,MoneyPoliciesSection}.tsx`, `docs/backend-plan.md`, `docs/mcp.md`                                                                                                                                                                                           |
 | C: Budgets, recurring, net worth, investments, recaps, USD/INR display | `apps/mobile/src/features/{budgets,recurring,networth,planning,recaps}/`, `features/currency/{useMoneyDisplay.ts,Amount.tsx}`, `features/settings/sections/BudgetsSection.tsx`, new routes under `src/app/{budgets,recurring,networth,planning,recaps}/`, `packages/shared/src/investments/`, `packages/shared/src/sample/{budgets,recurring,investments}.ts` |
-| D: Connectors                                                          | `connectors/` (registry, adapters, fixtures), `packages/shared/src/sample/accounts.ts` (sample connections)                                                                                                                                                                                                                                                   |
+| D: Connectors                                                          | `connectors/` (registry, adapters, pure sync merge logic in `src/sync/`, slot tracking, fixtures), `packages/shared/src/sample/accounts.ts` (sample connections)                                                                                                                                                                                              |
 | Shared (additive only)                                                 | `packages/shared/src/{model,money,dates}/`, `packages/shared/src/sample/index.ts`, `apps/mobile/src/{design,data,navigation}/`, `apps/mobile/src/app/_layout.tsx`, `src/app/(tabs)/`, `features/settings/SettingsScreen.tsx` (one import line per new section), root config files, `.github/workflows/` (add new files; B adds the Worker deploy)             |
 
 New screens: add a route file under `src/app/<area>/` (for example `src/app/transactions/[id].tsx`) that re-exports a screen from your feature folder. The root Stack picks it up; no layout edit needed. New settings: add a file in `features/settings/sections/` and one line in `SettingsScreen.tsx`.
@@ -64,7 +64,7 @@ New screens: add a route file under `src/app/<area>/` (for example `src/app/tran
 
 ## Commands
 
-Node 24 and npm 11 (npm 10 crashes on this lockfile). In this cloud environment run Expo CLI with `EXPO_OFFLINE=1` because api.expo.dev is blocked.
+Node 24 and npm 11 (npm 10 crashes while resolving this workspace). The cloud container defaults to Node 22, so run `export PATH=/opt/node24/bin:$PATH` first. Run Expo CLI with `EXPO_OFFLINE=1` here because api.expo.dev is blocked.
 
 ```bash
 npm ci                                  # install everything
