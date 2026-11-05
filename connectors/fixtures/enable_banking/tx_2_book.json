@@ -1,0 +1,23 @@
+{
+  "transactions": [
+    {
+      "entry_reference": "EB-C1",
+      "transaction_amount": { "currency": "EUR", "amount": "120.00" },
+      "credit_debit_indicator": "DBIT",
+      "status": "BOOK",
+      "booking_date": "2026-11-02",
+      "remittance_information": ["HOTEL"],
+      "creditor": { "name": "Hotel Aurora" }
+    },
+    {
+      "entry_reference": "EB-C2",
+      "transaction_amount": { "currency": "EUR", "amount": "300.00" },
+      "credit_debit_indicator": "CRDT",
+      "status": "BOOK",
+      "booking_date": "2026-10-28",
+      "remittance_information": ["PAYMENT"],
+      "debtor": { "name": "Own account" }
+    }
+  ],
+  "continuation_key": null
+}

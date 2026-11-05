@@ -4,6 +4,7 @@ import { binanceAdapter } from './binance';
 import { coinbaseAdapter } from './coinbase';
 import { coinspotAdapter } from './coinspot';
 import { coinstatsAdapter } from './coinstats';
+import { enableBankingAdapter } from './enable_banking';
 import { fioAdapter } from './fio';
 import { ibkrFlexAdapter } from './ibkr_flex';
 import { indexaAdapter } from './indexa';
@@ -14,11 +15,15 @@ import { onchainAdapter } from './onchain';
 import { plaidAdapter } from './plaid';
 import { questradeAdapter } from './questrade';
 import { simplefinAdapter } from './simplefin';
+import { realieAdapter } from './realie';
+import { redbarkAdapter } from './redbark';
+import { rentcastAdapter } from './rentcast';
 import { snaptradeAdapter } from './snaptrade';
 import { sophtronAdapter } from './sophtron';
 import { tellerAdapter } from './teller';
 import { trading212Adapter } from './trading212';
 import { upAdapter } from './up';
+import { wiseAdapter } from './wise';
 import { wazirxAdapter } from './wazirx';
 import { zerodhaKiteAdapter } from './zerodha_kite';
 
@@ -49,6 +54,11 @@ const list: ConnectorAdapter[] = [
   trading212Adapter,
   questradeAdapter,
   indexaAdapter,
+  wiseAdapter,
+  enableBankingAdapter,
+  redbarkAdapter,
+  rentcastAdapter,
+  realieAdapter,
 ];
 
 export const ADAPTERS: Readonly<Record<string, ConnectorAdapter>> = Object.fromEntries(

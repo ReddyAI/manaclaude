@@ -1,0 +1,12 @@
+{
+  "transactions": [
+    {
+      "type": "CREDIT",
+      "date": "2026-10-20T08:00:00.000Z",
+      "amount": { "value": 185.0, "currency": "EUR" },
+      "totalFees": { "value": 0, "currency": "EUR" },
+      "details": { "type": "CONVERSION", "description": "Converted 198.80 USD to 185.00 EUR" },
+      "referenceNumber": "CONVERSION-8"
+    }
+  ]
+}

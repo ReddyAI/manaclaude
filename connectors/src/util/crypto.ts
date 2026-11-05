@@ -124,6 +124,7 @@ function readSequence(bytes: Uint8Array): DerNode[] {
 const OID_EC_PUBLIC_KEY = new Uint8Array([0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]);
 const OID_P256 = new Uint8Array([0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]);
 const OID_ED25519 = new Uint8Array([0x06, 0x03, 0x2b, 0x65, 0x70]);
+const OID_RSA = new Uint8Array([0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01]);
 
 /** "-----BEGIN EC PRIVATE KEY-----..." to its label and DER bytes. */
 export function parsePem(pem: string): { label: string; der: Bytes } {
@@ -152,6 +153,48 @@ export function sec1ToPkcs8P256(sec1: Uint8Array): Bytes {
     der(0x30, OID_EC_PUBLIC_KEY, OID_P256),
     der(0x04, inner),
   );
+}
+
+/** PKCS1 "RSA PRIVATE KEY" to PKCS8. */
+export function rsaPkcs1ToPkcs8(pkcs1: Uint8Array): Bytes {
+  return der(
+    0x30,
+    der(0x02, new Uint8Array([0])),
+    der(0x30, OID_RSA, new Uint8Array([0x05, 0x00])),
+    der(0x04, pkcs1),
+  );
+}
+
+async function importRsa(pem: string): Promise<CryptoKey> {
+  const { label, der: keyDer } = parsePem(pem);
+  const pkcs8 = label === 'RSA PRIVATE KEY' ? rsaPkcs1ToPkcs8(keyDer) : keyDer;
+  return crypto.subtle.importKey(
+    'pkcs8',
+    pkcs8,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+}
+
+/** Base64 RSA-SHA256 signature of `message` (Wise strong customer authentication). */
+export async function signRsaSha256(pem: string, message: string): Promise<string> {
+  const key = await importRsa(pem);
+  return toBase64(
+    new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, utf8(message))),
+  );
+}
+
+/** RS256 JWT (Enable Banking). */
+export async function signJwtRs256(
+  pem: string,
+  header: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  const key = await importRsa(pem);
+  const message = `${toBase64Url(utf8(JSON.stringify({ ...header, alg: 'RS256', typ: 'JWT' })))}.${toBase64Url(utf8(JSON.stringify(payload)))}`;
+  const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, utf8(message)));
+  return `${message}.${toBase64Url(sig)}`;
 }
 
 export function ed25519SeedToPkcs8(seed: Uint8Array): Bytes {

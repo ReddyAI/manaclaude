@@ -1,0 +1,16 @@
+{
+  "balances": [
+    {
+      "name": "Available",
+      "balance_type": "ITAV",
+      "balance_amount": { "currency": "EUR", "amount": "900.00" },
+      "reference_date": "2026-11-04"
+    },
+    {
+      "name": "Booked",
+      "balance_type": "CLBD",
+      "balance_amount": { "currency": "EUR", "amount": "1520.35" },
+      "reference_date": "2026-11-04"
+    }
+  ]
+}

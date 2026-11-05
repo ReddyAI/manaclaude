@@ -1,0 +1,4 @@
+[
+  { "id": 1001, "type": "PERSONAL", "fullName": "Demo Person" },
+  { "id": 2002, "type": "BUSINESS", "fullName": "Demo Biz" }
+]

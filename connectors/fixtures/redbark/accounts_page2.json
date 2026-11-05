@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "id": "rb-2",
+      "connectionId": "conn-a",
+      "name": "Platinum Card",
+      "institutionName": "Harbour Bank AU",
+      "type": "credit_card",
+      "currency": { "code": "AUD" }
+    }
+  ],
+  "hasMore": false
+}

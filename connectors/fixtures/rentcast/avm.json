@@ -1,0 +1,11 @@
+{
+  "price": 412500,
+  "priceRangeLow": 389000,
+  "priceRangeHigh": 436000,
+  "subjectProperty": {
+    "formattedAddress": "5500 Demo Lake Dr, San Antonio, TX 78244",
+    "propertyType": "Single Family",
+    "yearBuilt": 1998,
+    "squareFootage": 1850
+  }
+}

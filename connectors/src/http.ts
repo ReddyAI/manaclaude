@@ -37,6 +37,14 @@ export interface HttpClientOptions {
   sign?: (input: SignInput) => Promise<Record<string, string>>;
   /** Extra attempts after a 429, 5xx or network error. Default 2. */
   retries?: number;
+  /**
+   * Answer a challenge once: look at a failed response (Wise's strong customer
+   * authentication) and return headers to retry the same request with, or null.
+   */
+  challenge?: (res: {
+    status: number;
+    headers: { get(name: string): string | null };
+  }) => Promise<Record<string, string> | null>;
 }
 
 export interface RequestOptions {
@@ -114,6 +122,7 @@ export class HttpClient {
 
     const maxAttempts = (this.options.retries ?? 2) + 1;
     let lastError: unknown;
+    let challenged = false;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let res: Awaited<ReturnType<ConnectorContext['fetch']>>;
       try {
@@ -135,6 +144,15 @@ export class HttpClient {
         }
       }
 
+      if (this.options.challenge && !challenged) {
+        const extra = await this.options.challenge(res);
+        if (extra) {
+          challenged = true;
+          Object.assign(headers, extra);
+          attempt--; // the challenge answer is not a retry
+          continue;
+        }
+      }
       const text = await res.text().catch(() => '');
       let parsed: unknown = text;
       try {

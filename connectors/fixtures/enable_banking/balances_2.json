@@ -1,0 +1,10 @@
+{
+  "balances": [
+    {
+      "name": "Booked",
+      "balance_type": "CLBD",
+      "balance_amount": { "currency": "EUR", "amount": "-480.20" },
+      "reference_date": "2026-11-04"
+    }
+  ]
+}
