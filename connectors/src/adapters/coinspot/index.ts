@@ -74,9 +74,8 @@ interface CsOrder {
 
 export async function syncCoinSpot(
   ctx: ConnectorContext,
-  _connection: Connection,
+  connection: Connection,
 ): Promise<SyncResult> {
-  void _connection;
   const http = new HttpClient(ctx, {
     provider: 'CoinSpot',
     baseUrl: COINSPOT_API,
@@ -84,7 +83,8 @@ export async function syncCoinSpot(
   });
   const result = emptyResult();
   const today = todayUtc(ctx.now());
-  const accountId = 'coinspot_main';
+  // One account per login: the connection id keeps a second login of the same exchange from colliding.
+  const accountId = `coinspot_main_${connection.id}`;
 
   const bal = await post<{
     balances: Record<string, { balance: number; audbalance: number; rate: number }>[];

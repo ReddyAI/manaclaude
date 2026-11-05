@@ -80,13 +80,13 @@ interface BinanceTrade {
 
 export async function syncBinance(
   ctx: ConnectorContext,
-  _connection: Connection,
+  connection: Connection,
 ): Promise<SyncResult> {
-  void _connection;
   const http = client(ctx);
   const result = emptyResult();
   const today = todayUtc(ctx.now());
-  const accountId = 'binance_spot';
+  // One account per login: the connection id keeps a second login of the same exchange from colliding.
+  const accountId = `binance_spot_${connection.id}`;
 
   const account = await signed<{ balances: { asset: string; free: string; locked: string }[] }>(
     ctx,

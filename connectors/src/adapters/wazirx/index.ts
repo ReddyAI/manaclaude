@@ -79,13 +79,13 @@ async function signedGet<T>(
 
 export async function syncWazirX(
   ctx: ConnectorContext,
-  _connection: Connection,
+  connection: Connection,
 ): Promise<SyncResult> {
-  void _connection;
   const http = client(ctx);
   const result = emptyResult();
   const today = todayUtc(ctx.now());
-  const accountId = 'wazirx_main';
+  // One account per login: the connection id keeps a second login of the same exchange from colliding.
+  const accountId = `wazirx_main_${connection.id}`;
 
   const funds = await signedGet<WxFund[]>(ctx, http, '/funds');
   if (!Array.isArray(funds)) throw new ProviderDataError('WazirX', 'funds');

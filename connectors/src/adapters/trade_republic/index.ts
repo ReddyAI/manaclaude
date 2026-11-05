@@ -196,15 +196,15 @@ async function within<T>(ms: number, what: string, work: Promise<T>): Promise<T>
 
 export async function syncTradeRepublic(
   ctx: ConnectorContext,
-  _connection: Connection,
+  connection: Connection,
 ): Promise<SyncResult> {
-  void _connection;
   const cookie = connectionSecret(ctx, 'TRADEREPUBLIC_SESSION', 'Trade Republic');
   const today = todayUtc(ctx.now());
   const result = emptyResult();
   const session = await TradeRepublicSession.open(ctx, cookie);
   try {
-    const accountId = 'traderepublic_main';
+    // One account per login: the connection id keeps a second login of the same exchange from colliding.
+    const accountId = `traderepublic_main_${connection.id}`;
     const portfolio = await session.request<{ positions?: Position[] }>({
       type: 'compactPortfolio',
     });

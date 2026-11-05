@@ -113,9 +113,8 @@ interface TradeRow {
 
 export async function syncKraken(
   ctx: ConnectorContext,
-  _connection: Connection,
+  connection: Connection,
 ): Promise<SyncResult> {
-  void _connection;
   const key = connectionSecret(ctx, 'KRAKEN_API_KEY', 'Kraken');
   const quote = (optionalSecret(ctx, 'KRAKEN_QUOTE') ?? 'USD').toUpperCase();
   const http = new HttpClient(ctx, {
@@ -126,7 +125,8 @@ export async function syncKraken(
   });
   const result = emptyResult();
   const today = todayUtc(ctx.now());
-  const accountId = 'kraken_main';
+  // One account per login: the connection id keeps a second login of the same exchange from colliding.
+  const accountId = `kraken_main_${connection.id}`;
 
   const balances = await priv<Record<string, { balance: string; hold_trade?: string }>>(
     ctx,

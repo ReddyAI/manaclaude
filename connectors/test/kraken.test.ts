@@ -31,6 +31,12 @@ const ctxFor = (r = routes()) => makeCtx(SECRETS, fakeFetch(r));
 const date = (s: number) => new Date(s * 1000).toISOString().slice(0, 10);
 
 describe('kraken adapter', () => {
+  it('gives two logins two different accounts so the second is not a conflict', async () => {
+    const a = await krakenAdapter.sync(ctxFor(), makeConnection('kraken', { id: 'conn_kraken_a' }));
+    const b = await krakenAdapter.sync(ctxFor(), makeConnection('kraken', { id: 'conn_kraken_b' }));
+    expect(a.accounts[0]?.externalId).not.toBe(b.accounts[0]?.externalId);
+  });
+
   it('signs private calls: base64(HMAC-SHA512(secret, path + SHA256(nonce + body)))', async () => {
     const fetch = fakeFetch(routes());
     await krakenAdapter.sync(makeCtx(SECRETS, fetch), makeConnection('kraken'));
