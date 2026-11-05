@@ -1,0 +1,6 @@
+{
+  "response": {
+    "results": [{ "id": "__ID__", "category": "Coffee", "confidence": 0.88 }]
+  },
+  "usage": { "prompt_tokens": 412, "completion_tokens": 31, "total_tokens": 443 }
+}

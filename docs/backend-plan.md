@@ -1,18 +1,108 @@
 # Backend plan
 
-Session B owns this plan and `backend/`. It starts from a Worker skeleton that bundles with wrangler and answers `GET /health`. Everything below is the plan; adjust it as the build teaches you something, and keep this file current.
+Session B owns this file and `backend/`. It describes the Worker as built; keep it current.
 
 ## Shape
 
-- **Runtime:** one Cloudflare Worker (`backend/src/index.ts`), free plan. A small router (Hono is fine) under `/v1`.
-- **Database:** D1 with SQL migrations in `backend/migrations/` (`wrangler d1 migrations apply`). Tables mirror the shared model: `accounts`, `balance_snapshots`, `transactions`, `transfer_links`, `categories`, `category_groups`, `tags`, `transaction_tags`, `merchants`, `rules`, `budgets`, `goals`, `recurring_items`, `securities`, `holdings`, `tax_lots`, `investment_activities`, `prices`, `receipts`, `fx_rates`, `connections`, `connector_slots`, `imports`, `settings`, `idempotency_keys`. Money columns are `INTEGER` minor units next to a `TEXT` currency column; quantities are `TEXT` decimals.
-- **Key constraints:** unique `(account_id, source, external_id)` where `external_id` is not null; unique `(account_id, import_fingerprint)` where not null; unique `(out_transaction_id)` and `(in_transaction_id)` on active transfer links; unique `idempotency_keys(key)`.
-- **Files:** R2 bucket `FILES` for receipt images and the statement vault (original PDFs and CSVs, never deleted by imports).
-- **Crons:** hourly `0 * * * *` fetches Open Exchange Rates `latest.json` (USD base, app ID in the `OXR_APP_ID` secret); daily `30 6 * * *` fetches ECB rates from `api.frankfurter.dev` (fallback and history) and runs connector syncs.
-- **AI provider layer:** Workers AI by default; Anthropic or OpenAI when their key is set as a Worker secret. `settings.aiEnabled = false` stops every AI call. Never a free tier that allows training on or human review of inputs.
-- **MCP:** `/mcp`, Streamable HTTP with OAuth (`@cloudflare/workers-oauth-provider` and the MCP agent pattern). Read tools first; write tools behind `settings.mcpWriteToolsEnabled`. Setup steps for Claude and Perplexity in `docs/mcp.md`.
-- **API for the app:** `GET /v1/dataset` returns a `FinanceDataset` so the app can swap sample data for real data without screen changes. Then small write endpoints (`POST /v1/transactions/:id/review`, `/split`, `/link`, `/unlink`, `/category`, `POST /v1/cash`, `POST /v1/imports`, `POST /v1/receipts`). Put request and response types in `packages/shared/src/api/`.
-- **Tests:** Vitest with `@cloudflare/vitest-pool-workers` (compatible with the repo's Vitest 4.1) and a local D1 database per test file. Pure logic (reportTreatment, splits, lots, FX) already lives in `packages/shared` with its own tests; the backend tests cover persistence, idempotency and matching.
+- **Runtime:** one Cloudflare Worker (`backend/src/index.ts`), free plan. `workers-oauth-provider` sits in front: `/mcp` needs an OAuth token, everything else goes to a Hono app (`backend/src/api/app.ts`). The bundle is about 610 KB gzipped (the free plan allows 3 MB).
+- **Database:** D1, schema in `backend/migrations/0001_init.sql`, mapped to the shared model in `backend/src/db/tables.ts` (one line per field, snake_case columns). Money columns are `INTEGER` minor units next to a `TEXT` currency; quantities are `TEXT` decimals.
+- **Key constraints:** unique `(account_id, source, external_id)` where `external_id` is set; unique `(account_id, import_fingerprint)` where set; unique `(out_transaction_id, in_transaction_id)` on transfer links (a rejected pair stays stored, so it is never proposed again); unique active link per side; `split_locks(parent_id)` and `idempotency_keys(key)` for splits; `imports.status` moves `preview` to `committing` to `committed` with a conditional update so a double commit can't run.
+- **Files:** R2 bucket `FILES`. Receipts under `receipts/<yyyy-mm>/<id>`; the statement vault under `vault/<yyyy-mm>/<importId>/<file>` with the SHA-256 in `imports`. Imports never delete originals; undoing an import removes its rows and keeps the file.
+- **Crons:** hourly `0 * * * *` fetches Open Exchange Rates `latest.json` (USD base, `OXR_APP_ID` secret; one row per pair per day, latest wins). Daily `30 6 * * *` fetches ECB rates from `api.frankfurter.dev`, backfills history back to the oldest transaction, syncs every connection, then runs the AI jobs (merchants, categorize, recurring, alerts, and recaps when a week or month just ended).
+- **After every import or sync:** rules on the new rows, ATM withdrawals get their cash-side deposit and link, then the transfer matcher.
+- **AI provider layer** (`backend/src/ai/provider.ts`): Workers AI by default (`@cf/meta/llama-3.3-70b-instruct-fp8-fast` for text, `@cf/meta/llama-4-scout-17b-16e-instruct` for receipts, `toMarkdown` for PDFs), capped at `AI_DAILY_CALL_LIMIT` calls a day. Anthropic (official SDK, `claude-opus-5-5`, server-side fallbacks on, low effort, JSON schema output), OpenAI, OpenAI-compatible and paid Gemini when chosen in Settings and their key is a Worker secret. `settings.aiEnabled = false` makes `getAi()` throw before anything is sent; jobs then fall back to rules, learned corrections and templates.
+- **MCP:** `/mcp`, stateless Streamable HTTP (no Durable Objects), OAuth with the owner password on the consent page. Read tools always; write tools only with `settings.mcpWriteToolsEnabled` and the `write` scope. Setup in [mcp.md](mcp.md).
+- **Tests:** Vitest 4.1 with `@cloudflare/vitest-plugin` (the renamed `@cloudflare/vitest-pool-workers`), inside workerd with local D1, R2 and KV. Providers get saved responses from `backend/test/fixtures/` through injected `fetch` and AI fakes; nothing calls the network.
+
+## API for the app
+
+Every `/v1` request needs `Authorization: Bearer <APP_API_TOKEN>`; without the secret the API answers 503. Request and response types are in `packages/shared/src/api/`. Errors are `{ "error": code, "message": text }`.
+
+| Method and path                                                                                                                                                | Purpose                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /health`                                                                                                                                                  | No token. Liveness and current policies                                      |
+| `GET /v1/dataset`                                                                                                                                              | The whole `FinanceDataset`, the shape the app already renders                |
+| `GET /v1/accounts`, `POST /v1/accounts/cash`                                                                                                                   | Accounts; create a cash account                                              |
+| `GET /v1/transactions?from&to&accountId&categoryId&q&limit&offset`                                                                                             | List (split parents hidden)                                                  |
+| `GET/PATCH /v1/transactions/:id`                                                                                                                               | Read; edit (each sent field joins `userEditedFields`)                        |
+| `POST /v1/transactions/:id/review`, `/category`                                                                                                                | Review queue and quick category                                              |
+| `POST/DELETE /v1/transactions/:id/split`                                                                                                                       | Split with `idempotencyKey`; undo                                            |
+| `POST /v1/transactions/:id/link`, `/unlink`                                                                                                                    | Manual link and unlink                                                       |
+| `GET /v1/transfer-links?status=suggested`, `POST /v1/transfer-links/:id/confirm`, `/reject`, `POST /v1/transfer-links/run`                                     | Suggestions and the matcher                                                  |
+| `POST /v1/cash`                                                                                                                                                | Fast cash entry into the default cash account for the currency               |
+| `GET/POST /v1/categories`, `PATCH /v1/categories/:id`                                                                                                          | Categories (defaults seeded on first read)                                   |
+| `GET/POST /v1/rules`, `PUT/DELETE /v1/rules/:id`, `POST /v1/rules/run`                                                                                         | Rules; a new rule runs on existing rows unless `?apply=false`                |
+| `POST /v1/imports` (multipart `file`, `accountId?`, `format?`, `mapping?`, `skipRows?`, `preferDayFirst?`, `commit?`)                                          | Preview any file; `commit=true` saves at once (not for PDFs)                 |
+| `GET /v1/imports`, `GET /v1/imports/:id`, `POST /v1/imports/:id/commit`, `/discard`, `DELETE /v1/imports/:id/transactions`                                     | Preview, confirm, discard, undo                                              |
+| `GET /v1/import-mappings`                                                                                                                                      | Saved CSV mappings by header signature                                       |
+| `GET /v1/vault`, `GET /v1/vault/:id/file`                                                                                                                      | Statement vault and original files                                           |
+| `POST /v1/receipts` (multipart `file`, `transactionId?`), `GET /v1/receipts?q&from&to`, `GET /v1/receipts/:id/image`, `POST /v1/receipts/:id/attach`, `/split` | Receipts                                                                     |
+| `GET /v1/fx/latest?base&quote`, `GET /v1/fx/rates?from&to`, `POST /v1/fx/refresh`, `POST /v1/fx/backfill`                                                      | Rates with their timestamp                                                   |
+| `GET/PATCH /v1/settings`                                                                                                                                       | Settings (partial patch; policies merge)                                     |
+| `GET /v1/ai/status`, `POST /v1/ai/jobs/:job`, `POST /v1/ai/ask`                                                                                                | AI status, run a job, plain-English question                                 |
+| `GET /v1/alerts`, `POST /v1/alerts/:id/dismiss`                                                                                                                | Duplicate, unusual-charge and price-increase alerts                          |
+| `GET /v1/recaps?period=week                                                                                                                                    | month`, `GET /v1/recurring`                                                  | Recap text and numbers; recurring items |
+| `GET /v1/connections`, `POST /v1/connections/:id/sync`                                                                                                         | Connector sync through session D's adapters                                  |
+| `POST /v1/mcp/clients`                                                                                                                                         | Create a confidential OAuth client for an assistant that can't self-register |
+| `POST /v1/dev/seed`                                                                                                                                            | Local only (`ALLOW_SAMPLE_SEED=true`): load the invented sample data         |
+
+## Imports
+
+Parsers are pure and live in `packages/shared/src/import/` (the app can use them for previews too): CSV with delimiter, header and column guessing, debit/credit columns, bank preambles (`skipRows`), Indian lakh grouping and `DD/MM` detection; QIF with `S/E/$` splits and `[Account]` transfers; OFX 1.x and 2.x with FITIDs; Sure NDJSON (`{"type","data"}` lines, outflows flipped to our sign); Actual Budget CSV with split rows; AI JSON for PDF statements with an opening + rows = closing check.
+
+Every import is two steps. The preview stores the original in the vault, parses, finds the account (chosen, by mask, by name, or a new one the file names), and marks each row `new`, `already_imported` (same FITID or fingerprint) or `existing` (a synced or typed-in row with the same amount within 3 days). Commit writes the `new` rows; the unique indexes make a repeat or concurrent commit add nothing. CSV mappings are saved under the header signature and reused automatically.
+
+## Cloudflare setup
+
+Once there is a Cloudflare account (free plan):
+
+1. Create the resources (each command prints an id):
+
+```bash
+cd backend && npx wrangler login
+```
+
+```bash
+npx wrangler d1 create manaclaude
+```
+
+```bash
+npx wrangler r2 bucket create manaclaude-files
+```
+
+```bash
+npx wrangler kv namespace create OAUTH_KV
+```
+
+2. Workers AI needs no setup beyond the `[ai]` binding already in `wrangler.toml`.
+3. In GitHub, Settings > Secrets and variables > Actions: add secrets `CLOUDFLARE_API_TOKEN` (start from the "Edit Cloudflare Workers" template and check it can edit D1, R2 and Workers KV) and `CLOUDFLARE_ACCOUNT_ID`; add variables `D1_DATABASE_ID` and `OAUTH_KV_ID` with the ids from step 1. The deploy workflow fills them into `wrangler.toml`, applies migrations and deploys.
+4. Set the Worker secrets (each asks for the value):
+
+```bash
+npx wrangler secret put APP_API_TOKEN
+```
+
+```bash
+npx wrangler secret put MCP_OWNER_PASSWORD
+```
+
+```bash
+npx wrangler secret put OXR_APP_ID
+```
+
+Optional: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (paid key only). Connector secrets are named `<CONNECTOR_ID>_<NAME>`, for example `TELLER_APP_ID`.
+
+5. After the first deploy, set the `PUBLIC_URL` variable to `https://manaclaude-api.<your-subdomain>.workers.dev` and run the workflow again (Actions > Deploy Worker > Run workflow). Then connect Claude and Perplexity with [mcp.md](mcp.md).
+
+Local development needs none of this: copy `backend/.dev.vars.example` to `backend/.dev.vars`, fill in a token and password, and run `npm run dev -w @manaclaude/backend` (local D1, R2 and KV; Workers AI calls answer 503 `ai_unavailable` because Workers AI only runs on Cloudflare). `npm run dev:remote-ai -w @manaclaude/backend` uses real Workers AI after `wrangler login`.
+
+## For the other sessions
+
+- **A:** read with `GET /v1/dataset`; write with the endpoints above. Linked pairs are `TransferLink` rows with status `auto` or `confirmed`; suggestions are `suggested` and don't set `transferLinkId` on the transactions until confirmed. Review queue: `aiCategoryConfidence` is set by the categorizer (0.95 for learned corrections). Receipts: upload, then `match` or `candidates` in the response; "Split by items" is `POST /v1/receipts/:id/split`.
+- **C:** recaps are your `Recap` model (`packages/shared/src/model/recap.ts`, copied byte for byte from your branch so the two merge cleanly) with `source: 'ai'` when the AI wrote `headline` and `highlights`, `'local'` when AI is off. `GET /v1/recaps?kind=weekly|monthly`. Weekly recaps cover the last complete calendar week (starting on `weekStartsOn`); monthly ones the last complete month. Once your optional `FinanceDataset.recaps` lands, `/v1/dataset` can fill it. Conversion: `convertAmount`/`findRate` are unchanged; `convertWithPolicy` in `packages/shared/src/fx/providers.ts` adds the linked-transfer rate. `GET /v1/fx/latest` gives the rate and its timestamp for the currency chip.
+- **D:** `backend/src/sync/plan.ts` is a stand-in for your `planTransactionSync` with the same input (`connectionId`, `accounts` map, `existing`, `result`, `now`) and the same output (`inserts`, `updates` as `{ id, changes, reason }`, `removals` with `hadUserEdits`, `categoryHints` keyed by provider id). `applySyncResult` maps hints to categories only when the category is empty and not user-edited, keeps removed rows that had user edits (marked excluded), then runs rules, ATM cash and the matcher. When your code is on main, swap the `planSync(...)` call for yours. Adapters get secrets named `<CONNECTOR_ID>_<NAME>` from `connectorSecrets()` in `backend/src/sync/run.ts`.
+- **A:** `Receipt.localUri` from your branch is fine: `POST /v1/receipts` returns the receipt with its real `r2Key`.
+- **Shared policy change:** `reportTreatment` now honours `count` for linked pairs: with, say, `investmentContributions: 'count'`, the outgoing side of a linked contribution counts as spending and the receiving side stays out. Defaults are unchanged.
 
 ## Policies the tests assume
 
@@ -30,7 +120,7 @@ The defaults in `DEFAULT_MONEY_POLICIES` (`packages/shared/src/model/settings.ts
 
 ## The five build checks as test cases
 
-From `research/sure/rea.md`, "Suggested immediate build checks". The pure parts already pass in `packages/shared/test/policy.test.ts`; `backend/test/build-checks.test.ts` holds these cases as `it.todo` for B to implement against local D1. All amounts are invented.
+From `research/sure/rea.md`, "Suggested immediate build checks". The pure parts pass in `packages/shared/test/policy.test.ts`; every case below is a passing test against local D1 in `backend/test/build-checks.test.ts` (test names start with the case number). All amounts are invented.
 
 ### Check 1: no double counting of transfers and card payments
 

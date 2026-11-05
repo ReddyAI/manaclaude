@@ -1,29 +1,48 @@
 # Cloudflare Worker for Mana. Session B owns this file.
 # No secrets here: the repo is public. Put secrets in .dev.vars locally
 # (see .dev.vars.example) and `wrangler secret put NAME` for production.
+# The ids below are placeholders that work for local dev and tests; replace
+# them with the ids Cloudflare gives you (see docs/backend-plan.md, "Setup").
 name = "manaclaude-api"
 main = "src/index.ts"
 compatibility_date = "2026-10-15"
 compatibility_flags = ["nodejs_compat"]
 
-# Hourly: Open Exchange Rates latest.json. Daily: ECB rates via Frankfurter, connector syncs.
+# Hourly: Open Exchange Rates latest.json. Daily 06:30 UTC: ECB rates via
+# Frankfurter, history backfill, connector syncs and the AI jobs.
 [triggers]
 crons = ["0 * * * *", "30 6 * * *"]
 
-# Bindings are added by session B once Sankar has a Cloudflare account.
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "manaclaude"
-# database_id = "<created with: wrangler d1 create manaclaude>"
-# migrations_dir = "migrations"
-#
-# [[r2_buckets]]
-# binding = "FILES"          # receipts and the statement vault
-# bucket_name = "manaclaude-files"
-#
-# [ai]
-# binding = "AI"             # Workers AI
-#
+[vars]
+AI_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+AI_VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
+ANTHROPIC_MODEL = "claude-opus-5-5"
+AI_DAILY_CALL_LIMIT = "300"
+APP_ORIGIN = "*"
+# Change to https://manaclaude-api.<your-subdomain>.workers.dev after the first deploy.
+PUBLIC_URL = "http://localhost:8787"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "manaclaude"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Receipts and the statement vault.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "manaclaude-files"
+
+# OAuth grants and tokens for the MCP server.
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "00000000000000000000000000000000"
+
+# Workers AI (runs on Cloudflare even in `wrangler dev`, so it needs a login there).
+[ai]
+binding = "AI"
+
+# Teller client certificate (session D's Teller adapter), once uploaded:
 # [[mtls_certificates]]
-# binding = "TELLER_CERT"    # Teller client certificate
+# binding = "TELLER_CERT"
 # certificate_id = "<from: wrangler mtls-certificate upload>"

@@ -1,7 +1,7 @@
 import type { Category } from '../model/category';
 import type { Id, MinorUnits } from '../model/common';
 import type { MoneyPolicies } from '../model/settings';
-import type { Transaction, TransferLink } from '../model/transaction';
+import type { Transaction, TransferLink, TransferLinkKind } from '../model/transaction';
 import { ACTIVE_TRANSFER_LINK_STATUSES } from '../model/transaction';
 
 /**
@@ -48,6 +48,29 @@ export function buildTreatmentContext(
   };
 }
 
+/** Which money policy governs a linked pair of this kind. */
+export function linkPolicy(kind: TransferLinkKind, policies: MoneyPolicies): 'exclude' | 'count' {
+  switch (kind) {
+    case 'card_payment':
+      return policies.cardPayments;
+    case 'investment_contribution':
+      return policies.investmentContributions;
+    case 'loan_payment':
+      return policies.loanPrincipal;
+    case 'transfer':
+    case 'atm_withdrawal':
+      return policies.transfers;
+  }
+}
+
+const LINK_REASON: Record<TransferLinkKind, TreatmentReason> = {
+  transfer: 'transfer',
+  atm_withdrawal: 'transfer',
+  card_payment: 'card_payment',
+  investment_contribution: 'investment_contribution',
+  loan_payment: 'loan_principal',
+};
+
 function countedKind(txn: Transaction, reason: TreatmentReason): ReportTreatment {
   return txn.amount < 0 ? { kind: 'spending', reason } : { kind: 'income', reason };
 }
@@ -61,10 +84,16 @@ export function reportTreatment(txn: Transaction, ctx: TreatmentContext): Report
   }
   if (txn.amount === 0) return { kind: 'excluded', reason: 'zero' };
 
-  // Linked pairs are excluded from spending and income everywhere.
+  // Linked pairs are excluded from spending and income everywhere, unless the
+  // policy for that kind of link says "count": then the side where money left
+  // counts as spending and the receiving side stays out (it isn't income).
   if (txn.transferLinkId) {
     const link = ctx.transferLinksById.get(txn.transferLinkId);
     if (link && ACTIVE_TRANSFER_LINK_STATUSES.includes(link.status)) {
+      const policy = linkPolicy(link.kind, policies);
+      if (policy === 'count' && link.outTransactionId === txn.id) {
+        return { kind: 'spending', reason: LINK_REASON[link.kind] };
+      }
       return { kind: 'excluded', reason: 'linked_transfer' };
     }
   }

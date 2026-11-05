@@ -1,4 +1,5 @@
-import type { MoneyPolicies } from '@manaclaude/shared';
+import { DEFAULT_MONEY_POLICIES, type MoneyPolicies } from '@manaclaude/shared';
+import { Button } from '../../../design/components/Button';
 import { Switch } from '../../../design/components/Controls';
 import { updateSettings, useSettings } from '../../../data/settingsStore';
 import { SettingsGroup, SettingsRow } from '../SettingsRow';
@@ -34,6 +35,9 @@ export function MoneyPoliciesSection() {
   const policies = settings.moneyPolicies;
   const set = (patch: Partial<MoneyPolicies>) =>
     updateSettings({ moneyPolicies: { ...policies, ...patch } });
+  const isDefault = (Object.keys(DEFAULT_MONEY_POLICIES) as (keyof MoneyPolicies)[]).every(
+    (k) => policies[k] === DEFAULT_MONEY_POLICIES[k],
+  );
   return (
     <SettingsGroup title="How money counts">
       {TOGGLES.map((t) => (
@@ -82,6 +86,21 @@ export function MoneyPoliciesSection() {
           />
         }
       />
+      {isDefault ? null : (
+        <SettingsRow
+          label="Back to the defaults"
+          description="Transfers, card payments, investing and loan principal stay out; refunds reduce their category"
+          control={
+            <Button
+              label="Reset"
+              variant="secondary"
+              size="sm"
+              onPress={() => updateSettings({ moneyPolicies: DEFAULT_MONEY_POLICIES })}
+              testID="reset-money-policies"
+            />
+          }
+        />
+      )}
     </SettingsGroup>
   );
 }

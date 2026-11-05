@@ -19,6 +19,7 @@ apps/mobile/ios/
 .wrangler/
 .dev.vars
 .dev.vars.*
+!.dev.vars.example
 
 # secrets and local env (never commit)
 .env

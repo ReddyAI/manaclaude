@@ -5,6 +5,7 @@ export * from './category';
 export * from './rule';
 export * from './budget';
 export * from './recurring';
+export * from './recap';
 export * from './investment';
 export * from './receipt';
 export * from './fx';

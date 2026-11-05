@@ -1,0 +1,9 @@
+[
+  {
+    "name": "nre-october.pdf",
+    "mimeType": "application/pdf",
+    "format": "markdown",
+    "tokens": 380,
+    "data": "# Sample Bank NRE Savings\nAccount XXXX7731\nStatement 01/10/2026 to 31/10/2026\n| Date | Narration | Debit | Credit | Balance |\n|---|---|---|---|---|\n| 17/10/2026 | INWARD REMITTANCE WISE REF 88123 | | 1,76,240.00 | 5,26,240.00 |\n| 22/10/2026 | UPI-CHAI POINT-8812@okbank | 240.00 | | 5,26,000.00 |\n| 28/10/2026 | DEBIT CARD ANNUAL FEE | 240.00 | | 5,25,760.00 |\n"
+  }
+]

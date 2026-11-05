@@ -1,0 +1,76 @@
+# Deploys the Cloudflare Worker (backend/) after tests pass. Does nothing until
+# the CLOUDFLARE_API_TOKEN secret exists, so it is safe before the Cloudflare
+# account is set up. Setup steps: docs/backend-plan.md, "Cloudflare setup".
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'packages/shared/**'
+      - 'connectors/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check for the Cloudflare token
+        id: gate
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CLOUDFLARE_API_TOKEN is not set; skipping the Worker deploy."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.ready == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        if: steps.gate.outputs.ready == 'true'
+      - name: Backend tests
+        if: steps.gate.outputs.ready == 'true'
+        run: npm test -w @manaclaude/backend
+
+      # Resource ids live in repository variables so the public repo keeps placeholders.
+      - name: Fill in resource ids
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: backend
+        env:
+          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+          OAUTH_KV_ID: ${{ vars.OAUTH_KV_ID }}
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          [ -n "$D1_DATABASE_ID" ] && sed -i "s/00000000-0000-0000-0000-000000000000/$D1_DATABASE_ID/" wrangler.toml
+          [ -n "$OAUTH_KV_ID" ] && sed -i "s/00000000000000000000000000000000/$OAUTH_KV_ID/" wrangler.toml
+          [ -n "$PUBLIC_URL" ] && sed -i "s#^PUBLIC_URL = .*#PUBLIC_URL = \"$PUBLIC_URL\"#" wrangler.toml
+          grep -q "00000000-0000-0000-0000-000000000000" wrangler.toml && { echo "::error::Set the D1_DATABASE_ID repository variable."; exit 1; } || true
+
+      - name: Apply D1 migrations
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: backend
+        run: npx wrangler d1 migrations apply manaclaude --remote
+
+      - name: Deploy
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: backend
+        run: npx wrangler deploy

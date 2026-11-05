@@ -1,0 +1,18 @@
+{
+  "disclaimer": "Sample response for tests. Invented numbers.",
+  "license": "https://openexchangerates.org/license",
+  "timestamp": 1793887200,
+  "base": "USD",
+  "rates": {
+    "AED": 3.6725,
+    "AUD": 1.5112,
+    "CAD": 1.3874,
+    "CHF": 0.8811,
+    "EUR": 0.9187,
+    "GBP": 0.7795,
+    "INR": 88.42,
+    "JPY": 151.37,
+    "SGD": 1.3311,
+    "ZAR": 18.04
+  }
+}
