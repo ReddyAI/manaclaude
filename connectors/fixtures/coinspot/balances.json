@@ -1,0 +1,8 @@
+{
+  "status": "ok",
+  "balances": [
+    { "AUD": { "balance": 500.25, "audbalance": 500.25, "rate": 1 } },
+    { "BTC": { "balance": 0.05, "audbalance": 4500.0, "rate": 90000 } },
+    { "ETH": { "balance": 0, "audbalance": 0, "rate": 4000 } }
+  ]
+}

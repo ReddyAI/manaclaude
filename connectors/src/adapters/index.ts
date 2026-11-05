@@ -1,9 +1,14 @@
 import type { ConnectorAdapter } from '@manaclaude/shared';
 import { akahuAdapter } from './akahu';
+import { binanceAdapter } from './binance';
 import { coinbaseAdapter } from './coinbase';
+import { coinspotAdapter } from './coinspot';
+import { coinstatsAdapter } from './coinstats';
 import { fioAdapter } from './fio';
+import { krakenAdapter } from './kraken';
 import { lunchFlowAdapter } from './lunch_flow';
 import { monobankAdapter } from './monobank';
+import { onchainAdapter } from './onchain';
 import { plaidAdapter } from './plaid';
 import { simplefinAdapter } from './simplefin';
 import { snaptradeAdapter } from './snaptrade';
@@ -31,6 +36,11 @@ const list: ConnectorAdapter[] = [
   akahuAdapter,
   monobankAdapter,
   fioAdapter,
+  krakenAdapter,
+  binanceAdapter,
+  coinspotAdapter,
+  coinstatsAdapter,
+  onchainAdapter,
 ];
 
 export const ADAPTERS: Readonly<Record<string, ConnectorAdapter>> = Object.fromEntries(

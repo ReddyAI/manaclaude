@@ -1,0 +1,39 @@
+{
+  "error": [],
+  "result": {
+    "count": 3,
+    "ledger": {
+      "L1AAA-AAAAA-AAAAAA": {
+        "refid": "R1",
+        "time": 1786000000.0,
+        "type": "staking",
+        "subtype": "",
+        "aclass": "currency",
+        "asset": "XETH",
+        "amount": "0.0012000000",
+        "fee": "0.0000000000",
+        "balance": "1.2012"
+      },
+      "L2BBB-BBBBB-BBBBBB": {
+        "refid": "R2",
+        "time": 1786000100.0,
+        "type": "deposit",
+        "aclass": "currency",
+        "asset": "ZUSD",
+        "amount": "500.0000",
+        "fee": "0.0000",
+        "balance": "750.4"
+      },
+      "L3CCC-CCCCC-CCCCCC": {
+        "refid": "R3",
+        "time": 1786000200.0,
+        "type": "transfer",
+        "aclass": "currency",
+        "asset": "XBT.M",
+        "amount": "0.0100000000",
+        "fee": "0",
+        "balance": "0.01"
+      }
+    }
+  }
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "token": {
+      "address_hash": "0xa0b8",
+      "name": "Dollar Coin",
+      "symbol": "USDC",
+      "decimals": "6",
+      "exchange_rate": "1.0",
+      "type": "ERC-20"
+    },
+    "value": "250500000"
+  },
+  {
+    "token": {
+      "address_hash": "0xspam",
+      "name": "Free Airdrop Token",
+      "symbol": "SPAM",
+      "decimals": "18",
+      "exchange_rate": null,
+      "type": "ERC-20"
+    },
+    "value": "999000000000000000000"
+  }
+]

@@ -1,0 +1,32 @@
+{
+  "error": [],
+  "result": {
+    "count": 3,
+    "trades": {
+      "TQ1AAA-AAAAA-AAAAAA": {
+        "ordertxid": "OAAA",
+        "pair": "XXBTZUSD",
+        "time": 1773100000.123,
+        "type": "buy",
+        "ordertype": "limit",
+        "price": "61000.0",
+        "cost": "1220.00000",
+        "fee": "3.05000",
+        "vol": "0.02000000",
+        "margin": "0.0"
+      },
+      "TQ2BBB-BBBBB-BBBBBB": {
+        "ordertxid": "OBBB",
+        "pair": "XXBTZUSD",
+        "time": 1780000000.5,
+        "type": "buy",
+        "ordertype": "market",
+        "price": "66000.0",
+        "cost": "2640.00000",
+        "fee": "6.60000",
+        "vol": "0.04000000",
+        "margin": "0.0"
+      }
+    }
+  }
+}

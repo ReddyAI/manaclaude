@@ -1,0 +1,5 @@
+{
+  "delegation_responses": [
+    { "delegation": {}, "balance": { "denom": "uatom", "amount": "10000000" } }
+  ]
+}

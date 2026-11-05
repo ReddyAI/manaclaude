@@ -181,6 +181,12 @@ export interface SyncResult {
    * transactions/sync), so a pending row missing from it has not been dropped.
    */
   deltaOnly?: boolean;
+  /**
+   * Credentials the provider rotated during this sync (Questrade hands out a new
+   * refresh token on every use). The backend must store them, under the same
+   * secret names, before the next sync or the login is lost.
+   */
+  updatedSecrets?: Record<string, string>;
 }
 
 /** Minimal fetch shape so adapters run the same in the Worker and in tests. */

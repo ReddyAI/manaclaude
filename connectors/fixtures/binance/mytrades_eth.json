@@ -1,0 +1,15 @@
+[
+  {
+    "symbol": "ETHUSDT",
+    "id": 2001,
+    "orderId": 6001,
+    "price": "2400.00",
+    "qty": "1.20000000",
+    "quoteQty": "2880.00000000",
+    "commission": "2.88000000",
+    "commissionAsset": "USDT",
+    "time": 1775000000000,
+    "isBuyer": true,
+    "isMaker": false
+  }
+]
