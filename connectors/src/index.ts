@@ -9,3 +9,4 @@ export * from './errors';
 export * from './slots';
 export * from './health';
 export * from './sync';
+export * from './market';

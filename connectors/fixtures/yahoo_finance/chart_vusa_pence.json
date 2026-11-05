@@ -1,0 +1,18 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "GBp",
+          "symbol": "VUSA.L",
+          "exchangeName": "LSE",
+          "regularMarketPrice": 9850,
+          "regularMarketTime": 1793793600
+        },
+        "timestamp": [1793793600],
+        "indicators": { "quote": [{ "close": [9850] }] }
+      }
+    ],
+    "error": null
+  }
+}

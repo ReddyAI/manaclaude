@@ -5,6 +5,7 @@ import { coinbaseAdapter } from './coinbase';
 import { coinspotAdapter } from './coinspot';
 import { coinstatsAdapter } from './coinstats';
 import { enableBankingAdapter } from './enable_banking';
+import { eodhdAdapter, eodhdProvider } from './eodhd';
 import { fioAdapter } from './fio';
 import { ibkrFlexAdapter } from './ibkr_flex';
 import { indexaAdapter } from './indexa';
@@ -22,8 +23,12 @@ import { snaptradeAdapter } from './snaptrade';
 import { sophtronAdapter } from './sophtron';
 import { tellerAdapter } from './teller';
 import { trading212Adapter } from './trading212';
+import { tiingoAdapter, tiingoProvider } from './tiingo';
+import { twelveDataAdapter, twelveDataProvider } from './twelve_data';
 import { upAdapter } from './up';
 import { wiseAdapter } from './wise';
+import { yahooFinanceAdapter, yahooFinanceProvider } from './yahoo_finance';
+import type { MarketDataProvider } from '../market/types';
 import { wazirxAdapter } from './wazirx';
 import { zerodhaKiteAdapter } from './zerodha_kite';
 
@@ -59,6 +64,18 @@ const list: ConnectorAdapter[] = [
   redbarkAdapter,
   rentcastAdapter,
   realieAdapter,
+  yahooFinanceAdapter,
+  twelveDataAdapter,
+  tiingoAdapter,
+  eodhdAdapter,
+];
+
+/** Market-data providers in the order to try them: Yahoo Finance, Twelve Data, Tiingo, EODHD. */
+export const MARKET_DATA_PROVIDERS: readonly MarketDataProvider[] = [
+  yahooFinanceProvider,
+  twelveDataProvider,
+  tiingoProvider,
+  eodhdProvider,
 ];
 
 export const ADAPTERS: Readonly<Record<string, ConnectorAdapter>> = Object.fromEntries(
