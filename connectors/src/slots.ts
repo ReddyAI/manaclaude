@@ -125,7 +125,8 @@ export function chooseConnector(
       skipped.push({ connectorId: id, reason: def.reason ?? 'unavailable' });
       continue;
     }
-    if (slotStatus(def, ledger).exhausted) {
+    // Paid connectors have no free slots by definition; only free ones can run out.
+    if (def.availability === 'available' && slotStatus(def, ledger).exhausted) {
       skipped.push({ connectorId: id, reason: 'no free slots left' });
       continue;
     }
