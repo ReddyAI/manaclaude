@@ -30,4 +30,11 @@ export interface Receipt extends Timestamps {
   status: ReceiptStatus;
   /** 0 to 1, how sure the extraction was. */
   aiConfidence: number | null;
+  /**
+   * Where the image lives on this device until it is uploaded. Added by
+   * session A: the app saves receipt photos locally and gives `r2Key` a
+   * placeholder (`pending-upload/<id>.jpg`). The backend upload replaces the
+   * placeholder with the real R2 key and may then clear this field.
+   */
+  localUri?: string | null;
 }

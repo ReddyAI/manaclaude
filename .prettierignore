@@ -13,3 +13,6 @@ apps/mobile/android/
 apps/mobile/ios/
 package-lock.json
 LICENSE
+
+# skills from the research session, not app code
+.claude/

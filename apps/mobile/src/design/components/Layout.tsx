@@ -13,12 +13,21 @@ interface StackProps {
   wrap?: boolean;
   flex?: number;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 /** Vertical stack with theme spacing. */
-export function VStack({ children, gap = 'none', align, justify, flex, style }: StackProps) {
+export function VStack({
+  children,
+  gap = 'none',
+  align,
+  justify,
+  flex,
+  style,
+  testID,
+}: StackProps) {
   return (
-    <View style={[styles.stack('column', gap, align, justify, false, flex), style]}>
+    <View style={[styles.stack('column', gap, align, justify, false, flex), style]} testID={testID}>
       {children}
     </View>
   );
@@ -33,9 +42,12 @@ export function HStack({
   wrap = false,
   flex,
   style,
+  testID,
 }: StackProps) {
   return (
-    <View style={[styles.stack('row', gap, align, justify, wrap, flex), style]}>{children}</View>
+    <View style={[styles.stack('row', gap, align, justify, wrap, flex), style]} testID={testID}>
+      {children}
+    </View>
   );
 }
 

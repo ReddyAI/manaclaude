@@ -12,7 +12,10 @@ import { breakpoints } from '../../design/themes';
 import { useLookups, useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { CashQuickAddButton } from './CashQuickAdd';
 import { groupByDay } from './display';
+import { ReviewQueueList } from './ReviewQueue';
+import { reviewCount } from './reviewQueue';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { TransactionRow } from './TransactionRow';
 import { TransactionsTable } from './TransactionsTable';
@@ -20,8 +23,9 @@ import { TransactionsTable } from './TransactionsTable';
 type Filter = 'all' | 'review' | 'pending';
 
 /**
- * Transactions (session A owns this screen; it adds the review queue with
- * swipes, cash quick-add, link/unlink and receipts).
+ * Transactions (session A owns this screen): search, filters, the day-grouped
+ * list (a table on wide Compact screens), the review queue with swipes, and the
+ * cash quick-add button.
  */
 export function TransactionsScreen() {
   const data = useFinance();
@@ -37,7 +41,6 @@ export function TransactionsScreen() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return data.transactions.filter((t) => {
-      if (filter === 'review' && t.reviewed) return false;
       if (filter === 'pending' && !t.pending) return false;
       if (!q) return true;
       const category = t.categoryId ? lookups.categoriesById.get(t.categoryId)?.name : '';
@@ -46,23 +49,30 @@ export function TransactionsScreen() {
   }, [data.transactions, filter, query, lookups]);
 
   const items = useMemo(() => groupByDay(filtered, lookups, today), [filtered, lookups, today]);
-  const toReview = data.transactions.filter((t) => !t.reviewed && !t.splitParentId).length;
+  const toReview = useMemo(
+    () => reviewCount(data.transactions, lookups),
+    [data.transactions, lookups],
+  );
+  const reviewing = filter === 'review';
 
   return (
     <Screen
       title="Transactions"
       actions={<CurrencyChip />}
       scroll={false}
+      overlay={<CashQuickAddButton />}
       testID="screen-transactions"
     >
       <View style={styles.controls}>
-        <TextField
-          icon="search"
-          placeholder="Search name, category or bank text"
-          value={query}
-          onChangeText={setQuery}
-          accessibilityLabel="Search transactions"
-        />
+        {reviewing ? null : (
+          <TextField
+            icon="search"
+            placeholder="Search name, category or bank text"
+            value={query}
+            onChangeText={setQuery}
+            accessibilityLabel="Search transactions"
+          />
+        )}
         <HStack gap="sm" wrap>
           <Chip label="All" selected={filter === 'all'} onPress={() => setFilter('all')} />
           <Chip
@@ -77,7 +87,9 @@ export function TransactionsScreen() {
           />
         </HStack>
       </View>
-      {items.length === 0 ? (
+      {reviewing ? (
+        <ReviewQueueList />
+      ) : items.length === 0 ? (
         <EmptyState
           icon="search"
           title="Nothing matches"
