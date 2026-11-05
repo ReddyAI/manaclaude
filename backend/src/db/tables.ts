@@ -296,7 +296,8 @@ export const pricesTable = defineTable<PricePoint>({
   columns: { securityId: 'text', date: 'text', close: 'text', currency: 'text' },
 });
 
-export const receiptsTable = defineTable<Receipt>({
+// localUri is a path on the phone and is never stored in D1.
+export const receiptsTable = defineTable<Omit<Receipt, 'localUri'>>({
   name: 'receipts',
   key: ['id'],
   columns: {
