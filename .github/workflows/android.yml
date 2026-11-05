@@ -1,0 +1,77 @@
+# Builds a release APK (arm64, for the Oppo Find X9 Pro) with expo prebuild
+# and Gradle, and uploads it as a downloadable artifact.
+# The APK is signed with the Expo template's debug key, which is fine for
+# installing on your own phone. Each build installs over the previous one.
+name: Android APK
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'connectors/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      - name: Generate the native Android project
+        working-directory: apps/mobile
+        env:
+          CI: '1'
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Give Gradle enough memory
+        working-directory: apps/mobile/android
+        run: |
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g/' gradle.properties
+          grep jvmargs gradle.properties
+
+      - name: Build release APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon --stacktrace
+
+      - name: Name the APK
+        id: apk
+        run: |
+          short_sha="${GITHUB_SHA::7}"
+          mkdir -p out
+          cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk "out/mana-${short_sha}.apk"
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mana-android-apk
+          path: out/*.apk
+          if-no-files-found: error
+          retention-days: 30

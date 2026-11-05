@@ -1,0 +1,46 @@
+# Builds the web app (static single-page export) and uploads it as an artifact.
+# Deploying to Cloudflare Pages is added once there is a Cloudflare account.
+name: Web build
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'connectors/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/web.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Export web build
+        working-directory: apps/mobile
+        env:
+          CI: '1'
+        run: npx expo export --platform web --output-dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mana-web
+          path: apps/mobile/dist
+          if-no-files-found: error
+          retention-days: 30
