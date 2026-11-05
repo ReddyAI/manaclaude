@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { UnistylesRuntime, useUnistyles } from 'react-native-unistyles';
 import { loadSettings, useSettings } from '../data/settingsStore';
 import { themeNameFor } from '../design/themes';
+import { BackendStatusBanner } from '../features/backend/BackendStatusBanner';
 import { ReceiptShareHandler } from '../features/transactions/ReceiptShareHandler';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -81,6 +82,7 @@ export default function RootLayout() {
           }}
         />
         <ReceiptShareHandler />
+        <BackendStatusBanner />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

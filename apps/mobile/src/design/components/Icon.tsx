@@ -21,11 +21,14 @@ import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import Circle from 'lucide-react-native/icons/circle';
 import Clock from 'lucide-react-native/icons/clock';
+import CloudOff from 'lucide-react-native/icons/cloud-off';
 import Coffee from 'lucide-react-native/icons/coffee';
 import Coins from 'lucide-react-native/icons/coins';
 import CreditCard from 'lucide-react-native/icons/credit-card';
 import Dumbbell from 'lucide-react-native/icons/dumbbell';
 import Ellipsis from 'lucide-react-native/icons/ellipsis';
+import ExternalLink from 'lucide-react-native/icons/external-link';
+import FileUp from 'lucide-react-native/icons/file-up';
 import Film from 'lucide-react-native/icons/film';
 import Fuel from 'lucide-react-native/icons/fuel';
 import Funnel from 'lucide-react-native/icons/funnel';
@@ -36,6 +39,7 @@ import GraduationCap from 'lucide-react-native/icons/graduation-cap';
 import HeartPulse from 'lucide-react-native/icons/heart-pulse';
 import House from 'lucide-react-native/icons/house';
 import Info from 'lucide-react-native/icons/info';
+import KeyRound from 'lucide-react-native/icons/key-round';
 import Landmark from 'lucide-react-native/icons/landmark';
 import LayoutDashboard from 'lucide-react-native/icons/layout-dashboard';
 import Link2 from 'lucide-react-native/icons/link-2';
@@ -99,10 +103,14 @@ const UI_ICONS = {
   'chevron-left': ChevronLeft,
   'chevron-right': ChevronRight,
   clock: Clock,
+  'cloud-off': CloudOff,
   coins: Coins,
   ellipsis: Ellipsis,
+  'external-link': ExternalLink,
+  'file-up': FileUp,
   funnel: Funnel,
   info: Info,
+  'key-round': KeyRound,
   'layout-dashboard': LayoutDashboard,
   link: Link2,
   list: List,

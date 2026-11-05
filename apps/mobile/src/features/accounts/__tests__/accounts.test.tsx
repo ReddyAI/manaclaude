@@ -1,5 +1,7 @@
 import { CONNECTOR_REGISTRY, withSlotUsage } from '@manaclaude/connectors/registry';
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { router } from 'expo-router';
+import { setBackendConfigForTests } from '../../../data/backend/config';
 import { getFinance } from '../../../data/store';
 import { AccountsScreen } from '../AccountsScreen';
 import { groupConnectors, slotsText, summarizeConnector } from '../health';
@@ -8,6 +10,12 @@ jest.mock('expo-router', () => ({
   router: { push: jest.fn(), navigate: jest.fn(), back: jest.fn(), canGoBack: () => true },
   useLocalSearchParams: () => ({}),
 }));
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => null),
+  setItemAsync: jest.fn(async () => {}),
+  deleteItemAsync: jest.fn(async () => {}),
+}));
+jest.mock('expo-web-browser', () => ({ openAuthSessionAsync: jest.fn() }));
 jest.mock('../../../design/haptics', () => ({
   ...jest.requireActual('../../../design/haptics'),
   haptic: jest.fn(),
@@ -82,3 +90,24 @@ describe('connectors on the Accounts screen', () => {
 function rank(a: string): number {
   return a === 'available' ? 0 : a === 'paid' ? 1 : 2;
 }
+
+describe('adding and repairing accounts', () => {
+  afterEach(() => setBackendConfigForTests({ url: '', token: '' }));
+
+  it('Add account opens the link screen', async () => {
+    await render(<AccountsScreen />);
+    await fireEvent.press(screen.getByTestId('add-account'));
+    expect(router.push).toHaveBeenCalledWith('/link');
+  });
+
+  it('Repair opens the repair flow for the same connection (planRepair)', async () => {
+    setBackendConfigForTests({ url: 'https://api.demo.test', token: 'demo-token' });
+    await render(<AccountsScreen />);
+    const broken = getFinance().connections.find((c) => c.status === 'needs_repair')!;
+    await fireEvent.press(screen.getByTestId(`repair-banner-${broken.id}`));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/link/[connector]',
+      params: { connector: broken.connectorId, connectionId: broken.id },
+    });
+  });
+});

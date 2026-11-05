@@ -7,7 +7,7 @@ import {
   type AccountType,
   type ColorSlot,
 } from '@manaclaude/shared';
-import { Button } from '../../design/components/Button';
+import { Button, IconButton } from '../../design/components/Button';
 import { Card } from '../../design/components/Card';
 import { Badge, SegmentedControl } from '../../design/components/Controls';
 import { Avatar, SectionHeader } from '../../design/components/Decor';
@@ -18,6 +18,9 @@ import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
 import { useFinance } from '../../data/store';
+import { useRefreshControl } from '../../data/backend/useRefreshControl';
+import { ConnectionsCard } from '../link/ConnectionsCard';
+import { startRepair } from '../link/repair';
 import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
@@ -60,6 +63,8 @@ export function AccountsScreen() {
   const data = useFinance();
   const display = useMoneyDisplay();
   const [tab, setTab] = useState<'accounts' | 'connectors'>('accounts');
+  const [repairNote, setRepairNote] = useState<Record<string, string>>({});
+  const refreshControl = useRefreshControl();
   const connectionsById = new Map(data.connections.map((c) => [c.id, c]));
 
   const accountRow = (a: Account) => {
@@ -99,8 +104,19 @@ export function AccountsScreen() {
   return (
     <Screen
       title="Accounts"
-      actions={<CurrencyChip />}
+      actions={
+        <HStack gap="xs">
+          <IconButton
+            icon="plus"
+            accessibilityLabel="Add account"
+            onPress={() => router.push('/link')}
+            testID="add-account"
+          />
+          <CurrencyChip />
+        </HStack>
+      }
       overlay={<CashQuickAddButton />}
+      refreshControl={refreshControl}
       testID="screen-accounts"
     >
       <SegmentedControl
@@ -121,14 +137,22 @@ export function AccountsScreen() {
                 <VStack gap="sm">
                   <Text variant="bodyStrong">{`${c.institutionName} needs attention`}</Text>
                   <Text variant="caption" tone="muted">
-                    {c.lastError ?? 'The connection stopped syncing.'}
+                    {repairNote[c.id] ?? c.lastError ?? 'The connection stopped syncing.'}
                   </Text>
                   <HStack>
                     <Button
-                      label="Repair connection"
+                      label={
+                        c.connectorId === 'zerodha_kite' ? 'Log in to Zerodha' : 'Repair connection'
+                      }
                       size="sm"
                       icon="refresh-cw"
-                      onPress={() => haptic('confirm')}
+                      testID={`repair-banner-${c.id}`}
+                      onPress={() => {
+                        haptic('confirm');
+                        void startRepair(c).then(
+                          (note) => note && setRepairNote((n) => ({ ...n, [c.id]: note })),
+                        );
+                      }}
                     />
                   </HStack>
                 </VStack>
@@ -163,7 +187,25 @@ export function AccountsScreen() {
           })}
         </>
       ) : (
-        <ConnectorsList />
+        <>
+          <HStack gap="sm" wrap>
+            <Button
+              label="Add account"
+              icon="plus"
+              size="sm"
+              onPress={() => router.push('/link')}
+            />
+            <Button
+              label="Import a statement"
+              icon="file-up"
+              size="sm"
+              variant="secondary"
+              onPress={() => router.push('/import')}
+            />
+          </HStack>
+          <ConnectionsCard />
+          <ConnectorsList />
+        </>
       )}
     </Screen>
   );

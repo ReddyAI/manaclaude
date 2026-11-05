@@ -1,4 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
+import { useRefreshControl } from '../../data/backend/useRefreshControl';
 import { useMemo, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
 import type { Transaction } from '@manaclaude/shared';
@@ -28,6 +29,7 @@ type Filter = 'all' | 'review' | 'pending';
  * cash quick-add button.
  */
 export function TransactionsScreen() {
+  const refreshControl = useRefreshControl();
   const data = useFinance();
   const lookups = useLookups();
   const today = useToday();
@@ -100,6 +102,7 @@ export function TransactionsScreen() {
       ) : (
         <FlashList
           data={items}
+          refreshControl={refreshControl}
           keyExtractor={(i) => i.key}
           getItemType={(i) => i.type}
           contentContainerStyle={styles.listContent}

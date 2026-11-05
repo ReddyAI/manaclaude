@@ -64,6 +64,7 @@ import { getSettings, updateSettings } from '../services/settings';
 import { splitTransaction, undoSplit } from '../services/splits';
 import { getTransaction, listTransactions } from '../services/transactions';
 import { syncConnection } from '../sync/run';
+import { registerEditRoutes } from './edits';
 import { isPublicLinkCallback, registerLinkRoutes } from './link';
 import { ApiError, badRequest, notFound } from '../util/errors';
 import { newId, nowIso, safeEqual } from '../util/ids';
@@ -317,6 +318,7 @@ export function createApp(deps: AppDeps = {}) {
 
   // ---- Account-linking callbacks (public paths, built by session E2) ----
   registerLinkRoutes(app);
+  registerEditRoutes(app);
 
   // ---- Dataset, accounts, transactions -----------------------------------
   app.get('/v1/dataset', async (c) => {

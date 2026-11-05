@@ -51,7 +51,9 @@
           "disableIOS": true,
           "androidIntentFilters": ["image/*"]
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": false

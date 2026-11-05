@@ -30,6 +30,8 @@ import { describeTransaction, isListed } from '../transactions/display';
 import { reviewCount } from '../transactions/reviewQueue';
 import { TransactionDetailSheet } from '../transactions/TransactionDetailSheet';
 import { TransactionRow } from '../transactions/TransactionRow';
+import { useBackendStatus } from '../../data/backend/sync';
+import { useRefreshControl } from '../../data/backend/useRefreshControl';
 
 /**
  * Dashboard (session A owns this screen). Two layouts behind a setting:
@@ -42,6 +44,8 @@ export function DashboardScreen() {
   const display = useMoneyDisplay();
   const { dashboardLayout } = useSettings();
   const { theme } = useUnistyles();
+  const backend = useBackendStatus();
+  const refreshControl = useRefreshControl();
   const [open, setOpen] = useState<Transaction | null>(null);
   const currency = display.reportCurrency;
 
@@ -144,6 +148,7 @@ export function DashboardScreen() {
         subtitle={formatMonth(spending.month)}
         actions={<CurrencyChip />}
         overlay={<CashQuickAddButton />}
+        refreshControl={refreshControl}
         testID="screen-dashboard"
       >
         <Card>
@@ -218,13 +223,16 @@ export function DashboardScreen() {
       subtitle={formatMonth(spending.month)}
       actions={<CurrencyChip />}
       overlay={<CashQuickAddButton />}
+      refreshControl={refreshControl}
       testID="screen-dashboard"
     >
-      <Banner icon="info">
-        <Text variant="caption" tone="muted">
-          Sample data. Your accounts appear here once connectors are set up.
-        </Text>
-      </Banner>
+      {backend.mode === 'sample' ? (
+        <Banner icon="info">
+          <Text variant="caption" tone="muted">
+            Sample data. Set up the backend in Settings to see your own accounts.
+          </Text>
+        </Banner>
+      ) : null}
       <View style={styles.grid}>
         <View style={styles.col}>
           <Card onPress={() => router.navigate('/networth')} accessibilityLabel="Net worth">
