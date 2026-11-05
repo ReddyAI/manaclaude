@@ -25,6 +25,7 @@ import { tellerAdapter } from './teller';
 import { trading212Adapter } from './trading212';
 import { tiingoAdapter, tiingoProvider } from './tiingo';
 import { twelveDataAdapter, twelveDataProvider } from './twelve_data';
+import { tradeRepublicAdapter } from './trade_republic';
 import { upAdapter } from './up';
 import { wiseAdapter } from './wise';
 import { yahooFinanceAdapter, yahooFinanceProvider } from './yahoo_finance';
@@ -68,6 +69,7 @@ const list: ConnectorAdapter[] = [
   twelveDataAdapter,
   tiingoAdapter,
   eodhdAdapter,
+  tradeRepublicAdapter,
 ];
 
 /** Market-data providers in the order to try them: Yahoo Finance, Twelve Data, Tiingo, EODHD. */

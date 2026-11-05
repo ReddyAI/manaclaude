@@ -201,11 +201,27 @@ export type FetchLike = (
   text(): Promise<string>;
 }>;
 
+/** Minimal WebSocket shape for the few providers that stream their data (Trade Republic). */
+export interface SocketLike {
+  send(text: string): void;
+  onMessage(handler: (text: string) => void): void;
+  onClose(handler: () => void): void;
+  close(): void;
+}
+
+export type SocketConnector = (url: string, headers?: Record<string, string>) => Promise<SocketLike>;
+
 export interface ConnectorContext {
-  /** Secrets for this connector, read from Worker secrets. Never logged. */
+  /**
+   * Secrets for this connector, read from Worker secrets, plus the settings and
+   * credentials of the one connection being synced (access token, address).
+   * Never logged.
+   */
   secrets: Record<string, string>;
   fetch: FetchLike;
   now(): Date;
+  /** Open an outbound WebSocket. Only Trade Republic needs it; the Worker may leave it out. */
+  connectSocket?: SocketConnector;
 }
 
 /** Thrown by adapters when the login needs the user (expired token, MFA). The app shows "Repair". */

@@ -1,0 +1,36 @@
+{
+  "items": [
+    {
+      "id": "ev-1",
+      "timestamp": 1793620800000,
+      "title": "All-World ETF",
+      "body": "Savings plan executed",
+      "cashChangeAmount": -100.0,
+      "eventType": "SAVINGS_PLAN_EXECUTED",
+      "action": { "payload": "IE00BK5BQT80" }
+    },
+    {
+      "id": "ev-2",
+      "timestamp": 1793534400000,
+      "title": "Deposit",
+      "body": "Incoming transfer",
+      "cashChangeAmount": 500.0,
+      "eventType": "PAYMENT_INBOUND"
+    },
+    {
+      "id": "ev-3",
+      "timestamp": 1793448000000,
+      "title": "Interest",
+      "body": "Interest payout",
+      "cashChangeAmount": 1.8,
+      "eventType": "INTEREST_PAYOUT_CREATED"
+    },
+    {
+      "id": "ev-x",
+      "timestamp": 1793448000000,
+      "title": "Address changed",
+      "eventType": "ADDRESS_CHANGED"
+    }
+  ],
+  "cursors": { "after": "cursor-2" }
+}
