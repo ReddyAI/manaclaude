@@ -1,0 +1,12 @@
+{
+  "holdings": [
+    {
+      "security": { "tickerSymbol": "VTI", "name": "Total Market ETF", "currency": "USD" },
+      "quantity": 18,
+      "price": 280.5,
+      "value": 5049,
+      "costBasis": 4200,
+      "currency": "USD"
+    }
+  ]
+}

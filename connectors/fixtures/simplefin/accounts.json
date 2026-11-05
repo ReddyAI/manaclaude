@@ -1,0 +1,128 @@
+{
+  "errors": ["Connection to Ridgeway Credit Union may need attention"],
+  "accounts": [
+    {
+      "org": {
+        "name": "Lakeshore Bank",
+        "domain": "lakeshore.example.invalid",
+        "sfin-url": "https://bridge.example.invalid/simplefin",
+        "id": "lakeshore.example.invalid"
+      },
+      "id": "ACT-chk-01",
+      "name": "Everyday Checking",
+      "currency": "USD",
+      "balance": "3120.55",
+      "available-balance": "3120.55",
+      "balance-date": 1793793600,
+      "transactions": [
+        {
+          "id": "SF-1001",
+          "posted": 1793620800,
+          "amount": "-42.17",
+          "description": "RIVERSIDE PHARMACY #22",
+          "payee": "Riverside Pharmacy",
+          "memo": "",
+          "transacted_at": 1793620800
+        },
+        {
+          "id": "SF-1002",
+          "posted": 1793534400,
+          "amount": "1800.00",
+          "description": "ACME PAYROLL",
+          "payee": "Acme Payroll",
+          "memo": ""
+        },
+        {
+          "id": "SF-1003",
+          "posted": 0,
+          "amount": "-9.99",
+          "description": "STREAMBOX",
+          "payee": "StreamBox",
+          "transacted_at": 1793793600,
+          "pending": true
+        },
+        {
+          "id": "SF-1004",
+          "posted": 1793275200,
+          "amount": "-4.50",
+          "description": "CORNER COFFEE",
+          "payee": "Corner Coffee"
+        },
+        {
+          "id": "SF-1005",
+          "posted": 1793275200,
+          "amount": "-4.50",
+          "description": "CORNER COFFEE",
+          "payee": "Corner Coffee"
+        }
+      ]
+    },
+    {
+      "org": {
+        "name": "Summit Card Services",
+        "domain": "summit.example.invalid",
+        "id": "summit.example.invalid"
+      },
+      "id": "ACT-card-01",
+      "name": "Travel Rewards Visa",
+      "currency": "USD",
+      "balance": "-612.08",
+      "available-balance": "4387.92",
+      "balance-date": 1793793600,
+      "transactions": [
+        {
+          "id": "SF-2001",
+          "posted": 1793707200,
+          "amount": "-120.00",
+          "description": "SKYLINE AIR",
+          "payee": "Skyline Air",
+          "transacted_at": 1793361600
+        },
+        {
+          "id": "SF-2002",
+          "posted": 1793361600,
+          "amount": "300.00",
+          "description": "PAYMENT THANK YOU",
+          "payee": "",
+          "transacted_at": 1793361600
+        }
+      ]
+    },
+    {
+      "org": {
+        "name": "Northfield Investments",
+        "domain": "northfield.example.invalid",
+        "id": "northfield.example.invalid"
+      },
+      "id": "ACT-inv-01",
+      "name": "Brokerage 9012",
+      "currency": "USD",
+      "balance": "7050.00",
+      "available-balance": "50.00",
+      "balance-date": 1793793600,
+      "transactions": [],
+      "holdings": [
+        {
+          "id": "H-1",
+          "currency": "USD",
+          "cost_basis": "5000.00",
+          "description": "Total Market ETF",
+          "market_value": "7000.00",
+          "purchase_price": "250.00",
+          "shares": "25",
+          "symbol": "VTI"
+        },
+        {
+          "id": "H-2",
+          "currency": "USD",
+          "cost_basis": "100.00",
+          "description": "Private Note 2030",
+          "market_value": "100.00",
+          "purchase_price": "100.00",
+          "shares": "1",
+          "symbol": ""
+        }
+      ]
+    }
+  ]
+}

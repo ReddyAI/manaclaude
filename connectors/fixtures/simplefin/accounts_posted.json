@@ -1,0 +1,23 @@
+{
+  "errors": [],
+  "accounts": [
+    {
+      "org": { "name": "Lakeshore Bank", "id": "lakeshore.example.invalid" },
+      "id": "ACT-chk-01",
+      "name": "Everyday Checking",
+      "currency": "USD",
+      "balance": "3110.56",
+      "available-balance": "3110.56",
+      "transactions": [
+        {
+          "id": "SF-1099",
+          "posted": 1793793600,
+          "amount": "-9.99",
+          "description": "STREAMBOX SUBSCRIPTION",
+          "payee": "StreamBox",
+          "transacted_at": 1793793600
+        }
+      ]
+    }
+  ]
+}

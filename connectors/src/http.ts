@@ -154,7 +154,8 @@ export class HttpClient {
           await httpRuntime.sleep(Math.min((wait ?? 1) * 1000, 10_000));
         continue;
       }
-      if (res.status >= 500) {
+      // 501 and 505 are answers, not outages: do not retry them.
+      if (res.status >= 500 && res.status !== 501 && res.status !== 505) {
         lastError = new ProviderHttpError(provider, res.status, text);
         await httpRuntime.sleep(250 * 2 ** attempt);
         continue;

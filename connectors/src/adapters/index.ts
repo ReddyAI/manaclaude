@@ -6,6 +6,8 @@ import { snaptradeAdapter } from './snaptrade';
 import { zerodhaKiteAdapter } from './zerodha_kite';
 import { coinbaseAdapter } from './coinbase';
 import { wazirxAdapter } from './wazirx';
+import { simplefinAdapter } from './simplefin';
+import { lunchFlowAdapter } from './lunch_flow';
 
 /**
  * Adapter lookup by connector id. Session D adds one file per adapter under
