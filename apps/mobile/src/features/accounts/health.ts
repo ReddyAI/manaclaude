@@ -49,12 +49,12 @@ export function connectionHealth(connection: Pick<Connection, 'status'>): Status
   return CONNECTION_STATUS[connection.status];
 }
 
-/** "97 of 100 free lifetime logins left", "No slot limit", or the price for paid ones. */
+/** "97 of 100 logins left" (lifetime caps never come back), "No slot limit", or the price for paid ones. */
 export function slotsText(c: ConnectorDefinition): string {
   if (c.freeSlotsTotal === null) return 'No slot limit';
   if (c.freeSlotsTotal === 0) return c.cost;
   const left = freeSlotsLeft(c) ?? 0;
-  return `${left} of ${c.freeSlotsTotal} free ${c.slotsAreLifetime ? 'lifetime logins' : 'connections'} left`;
+  return `${left} of ${c.freeSlotsTotal} ${c.slotsAreLifetime ? 'logins' : 'connections'} left`;
 }
 
 export interface ConnectorSummary {

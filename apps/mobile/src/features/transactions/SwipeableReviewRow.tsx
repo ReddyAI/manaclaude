@@ -69,7 +69,7 @@ export function SwipeableReviewRow({
       <ReanimatedSwipeable
         ref={swipeable}
         testID={`swipe-${item.txn.id}`}
-        friction={2}
+        friction={1}
         overshootLeft={false}
         overshootRight={false}
         onSwipeableOpen={handleOpen}
@@ -83,10 +83,10 @@ export function SwipeableReviewRow({
         )}
         renderRightActions={() => (
           <View style={styles.panel('skip')}>
+            <Icon name="chevron-right" size="md" tone="muted" />
             <Text variant="label" tone="muted">
               Skip
             </Text>
-            <Icon name="chevron-right" size="md" tone="muted" />
           </View>
         )}
       >
@@ -105,14 +105,12 @@ export function SwipeableReviewRow({
 
 const styles = StyleSheet.create((theme) => ({
   content: { backgroundColor: theme.colors.surface },
+  // A fixed width: the row measures it to decide how far a swipe has to go before it counts.
   panel: (kind: 'reviewed' | 'skip') => ({
-    flex: 1,
-    minWidth: theme.size.sidebarWidth,
-    flexDirection: 'row',
+    width: theme.size.avatarLg * 2.5,
     alignItems: 'center',
-    justifyContent: kind === 'reviewed' ? 'flex-start' : 'flex-end',
-    gap: theme.space.sm,
-    paddingHorizontal: theme.space.xl,
+    justifyContent: 'center',
+    gap: theme.space.xs,
     backgroundColor: kind === 'reviewed' ? theme.colors.incomeMuted : theme.colors.surfaceSunken,
   }),
 }));

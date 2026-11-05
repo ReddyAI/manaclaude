@@ -135,6 +135,7 @@ export function TransactionsTable({
               onPress={() => onOpen(item.txn)}
               style={styles.row(isSel)}
               accessibilityLabel={item.title}
+              testID={`txn-${item.txn.id}`}
             >
               <Pressable
                 onPress={() => toggle(item.key)}
@@ -152,8 +153,13 @@ export function TransactionsTable({
                   {formatShortDate(item.txn.date)}
                 </Text>
               </View>
-              <View style={styles.cell(widths.name)}>
-                <Text variant="bodyStrong" numberOfLines={1}>
+              <View style={[styles.cell(widths.name), styles.nameCell]}>
+                {item.transfer ? (
+                  <Icon name="link" size="xs" tone="muted" />
+                ) : !item.txn.reviewed ? (
+                  <View style={styles.unreviewed} accessibilityLabel="Not reviewed" />
+                ) : null}
+                <Text variant="bodyStrong" numberOfLines={1} style={styles.nameText}>
                   {item.title}
                 </Text>
               </View>
@@ -196,6 +202,14 @@ export function TransactionsTable({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  nameCell: { flexDirection: 'row', alignItems: 'center', gap: theme.space.xs },
+  nameText: { flexShrink: 1 },
+  unreviewed: {
+    width: theme.size.dot,
+    height: theme.size.dot,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accent,
+  },
   wrap: { flex: 1, borderTopWidth: theme.size.hairline, borderColor: theme.colors.border },
   headerRow: {
     flexDirection: 'row',

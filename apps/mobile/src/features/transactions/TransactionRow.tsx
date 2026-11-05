@@ -12,14 +12,18 @@ export function TransactionRow({
   lookups,
   onPress,
   caption,
+  signedTransfers = false,
 }: {
   row: TransactionListRow;
   lookups: Lookups;
   onPress?: () => void;
   /** Small element under the amount, such as the AI confidence. */
   caption?: ReactNode;
+  /** An account's own list shows its side of a transfer with a sign; the combined list shows it once, unsigned. */
+  signedTransfers?: boolean;
 }) {
   const { txn, transfer } = row;
+  const unsigned = transfer && !signedTransfers;
   const category = txn.categoryId ? lookups.categoriesById.get(txn.categoryId) : undefined;
   const leading = transfer ? (
     <IconBadge icon="link" color="c9" />
@@ -40,11 +44,11 @@ export function TransactionRow({
       trailing={
         <View style={styles.trailing}>
           <Amount
-            amount={transfer ? Math.abs(txn.amount) : txn.amount}
+            amount={unsigned ? Math.abs(txn.amount) : txn.amount}
             currency={txn.currency}
             date={txn.date}
-            colorize={transfer ? 'none' : 'flow'}
-            tone={transfer ? 'muted' : undefined}
+            colorize={unsigned ? 'none' : 'flow'}
+            tone={unsigned ? 'muted' : undefined}
           />
           {caption}
         </View>

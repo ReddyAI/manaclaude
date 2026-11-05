@@ -10,6 +10,9 @@ import { resetFinance } from './helpers';
 
 import '@shopify/flash-list/jestSetup';
 
+jest.mock('expo-router', () => ({
+  router: { back: jest.fn(), replace: jest.fn(), canGoBack: () => true },
+}));
 jest.mock('../../../design/haptics', () => ({
   ...jest.requireActual('../../../design/haptics'),
   haptic: jest.fn(),

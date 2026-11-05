@@ -26,6 +26,10 @@ export interface BottomSheetProps {
 
 const OFFSCREEN = 800;
 
+// A plain style object: on web a Unistyles style handed to Gesture Handler's root view is not
+// applied, the root collapses to its content height, and the sheet sticks to the top of the screen.
+const ROOT_FILL = { flex: 1 } as const;
+
 /**
  * Sheet that slides up from the bottom; drag down or tap outside to close.
  * Centred dialog-style on wide screens.
@@ -84,7 +88,7 @@ export function BottomSheet({
       statusBarTranslucent
       navigationBarTranslucent
     >
-      <GestureHandlerRootView style={styles.fill}>
+      <GestureHandlerRootView style={ROOT_FILL}>
         <Animated.View style={[styles.backdropWrap, backdropStyle]}>
           <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
         </Animated.View>
@@ -111,7 +115,6 @@ export function BottomSheet({
 }
 
 const styles = StyleSheet.create((theme, rt) => ({
-  fill: { flex: 1 },
   backdropWrap: { ...StyleSheet.absoluteFillObject },
   backdrop: { flex: 1, backgroundColor: theme.colors.overlay },
   anchor: {

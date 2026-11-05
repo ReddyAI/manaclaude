@@ -1,8 +1,10 @@
 import { FlashList } from '@shopify/flash-list';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import type { Transaction } from '@manaclaude/shared';
 import { StyleSheet } from 'react-native-unistyles';
+import { IconButton } from '../../design/components/Button';
 import { Banner, EmptyState } from '../../design/components/Decor';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
@@ -78,7 +80,16 @@ export function ReviewQueueScreen() {
     <Screen
       title="Review"
       subtitle="Lowest confidence first"
-      actions={<CurrencyChip />}
+      actions={
+        <>
+          <IconButton
+            icon="chevron-left"
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/transactions'))}
+            accessibilityLabel="Back to transactions"
+          />
+          <CurrencyChip />
+        </>
+      }
       scroll={false}
       overlay={<CashQuickAddButton />}
       testID="screen-review"

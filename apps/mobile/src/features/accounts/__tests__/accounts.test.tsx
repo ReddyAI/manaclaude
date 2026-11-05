@@ -41,7 +41,7 @@ describe('connectors on the Accounts screen', () => {
   it('shows free slots left for capped connectors', () => {
     const teller = registry().find((c) => c.id === 'teller')!;
     const left = teller.freeSlotsTotal! - teller.freeSlotsUsed;
-    expect(slotsText(teller)).toBe(`${left} of ${teller.freeSlotsTotal} free lifetime logins left`);
+    expect(slotsText(teller)).toBe(`${left} of ${teller.freeSlotsTotal} logins left`);
     expect(slotsText(registry().find((c) => c.id === 'sophtron')!)).toBe('No slot limit');
   });
 
@@ -64,7 +64,7 @@ describe('connectors on the Accounts screen', () => {
     expect(screen.getByTestId('connector-teller')).toBeTruthy();
     expect(screen.getByTestId('connector-mercury')).toBeTruthy();
     expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/free lifetime logins left/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/ logins left/).length).toBeGreaterThan(0);
   });
 
   it('opens an account from the Accounts tab', async () => {

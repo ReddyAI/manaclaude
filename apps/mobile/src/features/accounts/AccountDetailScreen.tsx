@@ -7,7 +7,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Badge } from '../../design/components/Controls';
 import { Card } from '../../design/components/Card';
 import { EmptyState } from '../../design/components/Decor';
-import { VStack } from '../../design/components/Layout';
+import { HStack, VStack } from '../../design/components/Layout';
 import { IconButton } from '../../design/components/Button';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
@@ -95,7 +95,11 @@ export function AccountDetailScreen() {
                   align="center"
                   testID="account-balance"
                 />
-                {health ? <Badge label={health.label} tone={health.tone} /> : null}
+                {health ? (
+                  <HStack justify="center">
+                    <Badge label={health.label} tone={health.tone} />
+                  </HStack>
+                ) : null}
                 <Text variant="caption" tone="muted">
                   {connection
                     ? lastSyncText(connection.lastSyncAt)
@@ -120,7 +124,12 @@ export function AccountDetailScreen() {
               </Text>
             </View>
           ) : (
-            <TransactionRow row={item} lookups={lookups} onPress={() => setOpen(item.txn)} />
+            <TransactionRow
+              row={item}
+              lookups={lookups}
+              onPress={() => setOpen(item.txn)}
+              signedTransfers
+            />
           )
         }
       />

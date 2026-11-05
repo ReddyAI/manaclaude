@@ -1,6 +1,7 @@
 import { CONNECTOR_REGISTRY, withSlotUsage } from '@manaclaude/connectors/registry';
 import { useMemo } from 'react';
 import { View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Card } from '../../design/components/Card';
 import { Badge } from '../../design/components/Controls';
 import { IconBadge, SectionHeader } from '../../design/components/Decor';
@@ -45,22 +46,27 @@ export function ConnectorsList() {
           <SectionHeader title={KIND_LABEL[kind] ?? kind} />
           <Card padding="none">
             {list.map((s) => (
-              <ListRow
-                key={s.connector.id}
-                title={s.connector.name}
-                subtitle={s.unavailableReason ?? s.slots}
-                trailingCaption={
-                  s.unavailableReason || s.connections.length === 0
-                    ? undefined
-                    : `${s.connections.length} linked · ${lastSyncText(s.lastSyncAt)}`
-                }
-                leading={
-                  <IconBadge icon={connectorIcon(s)} color={s.unavailableReason ? 'c12' : 'c1'} />
-                }
-                trailing={<Badge label={s.badge.label} tone={s.badge.tone} />}
-                dimmed={s.unavailableReason !== null}
-                testID={`connector-${s.connector.id}`}
-              />
+              <View key={s.connector.id} testID={`connector-${s.connector.id}`}>
+                <ListRow
+                  title={s.connector.name}
+                  subtitle={s.unavailableReason ? 'Not available for personal use' : s.slots}
+                  trailingCaption={
+                    s.unavailableReason || s.connections.length === 0
+                      ? undefined
+                      : lastSyncText(s.lastSyncAt)
+                  }
+                  leading={
+                    <IconBadge icon={connectorIcon(s)} color={s.unavailableReason ? 'c12' : 'c1'} />
+                  }
+                  trailing={<Badge label={s.badge.label} tone={s.badge.tone} />}
+                  dimmed={s.unavailableReason !== null}
+                />
+                {s.unavailableReason ? (
+                  <Text variant="caption" tone="faint" style={styles.reason}>
+                    {s.unavailableReason}
+                  </Text>
+                ) : null}
+              </View>
             ))}
           </Card>
         </View>
@@ -68,3 +74,12 @@ export function ConnectorsList() {
     </>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  // Lines up under the connector name: row padding + icon + gap.
+  reason: {
+    paddingLeft: theme.space.lg + theme.size.avatarMd + theme.space.md,
+    paddingRight: theme.space.lg,
+    paddingBottom: theme.space.md,
+  },
+}));
