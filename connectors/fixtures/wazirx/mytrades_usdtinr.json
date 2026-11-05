@@ -1,0 +1,12 @@
+[
+  {
+    "id": 9100,
+    "symbol": "usdtinr",
+    "price": "86.00",
+    "qty": "100",
+    "quoteQty": "8600.00",
+    "time": 1750000000000,
+    "isBuyer": true,
+    "isMaker": false
+  }
+]

@@ -1,0 +1,38 @@
+{
+  "status": "success",
+  "data": [
+    {
+      "tradingsymbol": "RELIANCE",
+      "exchange": "NSE",
+      "isin": "INE000A01001",
+      "quantity": 10,
+      "t1_quantity": 2,
+      "average_price": 2400.5,
+      "last_price": 2510.75,
+      "close_price": 2500.0,
+      "product": "CNC"
+    },
+    {
+      "tradingsymbol": "GOLDBEES",
+      "exchange": "NSE",
+      "isin": "INF000A01002",
+      "quantity": 100,
+      "t1_quantity": 0,
+      "average_price": 61.2,
+      "last_price": 72.4,
+      "close_price": 72.0,
+      "product": "CNC"
+    },
+    {
+      "tradingsymbol": "SAMPLECO",
+      "exchange": "BSE",
+      "isin": "INE000A01003",
+      "quantity": 0,
+      "t1_quantity": 0,
+      "average_price": 10,
+      "last_price": 11,
+      "close_price": 11,
+      "product": "CNC"
+    }
+  ]
+}

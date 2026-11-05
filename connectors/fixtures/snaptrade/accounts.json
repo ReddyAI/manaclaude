@@ -1,0 +1,29 @@
+[
+  {
+    "id": "st-acc-1",
+    "brokerage_authorization": "auth-demo-1",
+    "name": "Individual Brokerage",
+    "number": "NF-0099-9012",
+    "institution_name": "Northfield Investments",
+    "meta": { "type": "INDIVIDUAL", "status": "ACTIVE" },
+    "balance": { "total": { "amount": 17840.65, "currency": "USD" } }
+  },
+  {
+    "id": "st-acc-2",
+    "brokerage_authorization": "auth-demo-1",
+    "name": "Roth IRA",
+    "number": "NF-0099-4455",
+    "institution_name": "Northfield Investments",
+    "meta": { "type": "ROTH IRA", "status": "ACTIVE" },
+    "balance": { "total": { "amount": 5200.0, "currency": "USD" } }
+  },
+  {
+    "id": "st-acc-9",
+    "brokerage_authorization": "auth-demo-2",
+    "name": "Not mine",
+    "number": "XX-1",
+    "institution_name": "Other Broker",
+    "meta": { "type": "INDIVIDUAL" },
+    "balance": { "total": { "amount": 1, "currency": "USD" } }
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "pagination": { "limit": 2, "order": "desc", "next_uri": null },
+  "data": [
+    {
+      "id": "wallet-eth",
+      "name": "ETH Wallet",
+      "primary": false,
+      "type": "wallet",
+      "currency": { "code": "ETH", "name": "Ethereum", "type": "crypto" },
+      "balance": { "amount": "1.20000000", "currency": "ETH" }
+    },
+    {
+      "id": "wallet-doge",
+      "name": "DOGE Wallet",
+      "primary": false,
+      "type": "wallet",
+      "currency": { "code": "DOGE", "name": "Dogecoin", "type": "crypto" },
+      "balance": { "amount": "0.00000000", "currency": "DOGE" }
+    }
+  ]
+}

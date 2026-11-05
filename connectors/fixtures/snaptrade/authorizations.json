@@ -1,0 +1,14 @@
+[
+  {
+    "id": "auth-demo-1",
+    "name": "Northfield Investments",
+    "disabled": false,
+    "brokerage": { "slug": "NORTHFIELD" }
+  },
+  {
+    "id": "auth-demo-2",
+    "name": "Other Broker",
+    "disabled": true,
+    "brokerage": { "slug": "OTHER" }
+  }
+]

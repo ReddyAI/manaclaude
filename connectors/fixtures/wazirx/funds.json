@@ -1,0 +1,6 @@
+[
+  { "asset": "inr", "free": "15230.50", "locked": "0.00" },
+  { "asset": "btc", "free": "0.01000000", "locked": "0.00200000" },
+  { "asset": "usdt", "free": "100.0", "locked": "0.0" },
+  { "asset": "shib", "free": "0.0", "locked": "0.0" }
+]

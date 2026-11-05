@@ -1,0 +1,27 @@
+{
+  "data": [
+    {
+      "id": "st-a-1",
+      "symbol": { "symbol": "AAPL", "raw_symbol": "AAPL" },
+      "price": 120.0,
+      "units": 5,
+      "amount": -600.0,
+      "currency": { "code": "USD" },
+      "type": "BUY",
+      "trade_date": "2024-02-12T00:00:00Z",
+      "fee": 0
+    },
+    {
+      "id": "st-a-2",
+      "symbol": { "symbol": "AAPL", "raw_symbol": "AAPL" },
+      "price": 180.0,
+      "units": 5.5,
+      "amount": -990.0,
+      "currency": { "code": "USD" },
+      "type": "BUY",
+      "trade_date": "2025-06-03T00:00:00Z",
+      "fee": 0
+    }
+  ],
+  "pagination": { "offset": 0, "limit": 2, "total": 4 }
+}

@@ -1,0 +1,37 @@
+{
+  "data": [
+    {
+      "id": "st-a-3",
+      "symbol": { "symbol": "AAPL", "raw_symbol": "AAPL" },
+      "price": 195.0,
+      "units": -1,
+      "amount": 195.0,
+      "currency": { "code": "USD" },
+      "type": "SELL",
+      "trade_date": "2026-01-20T00:00:00Z",
+      "fee": 0.5
+    },
+    {
+      "id": "st-a-4",
+      "symbol": { "symbol": "AAPL", "raw_symbol": "AAPL" },
+      "price": 0,
+      "units": 0,
+      "amount": 2.4,
+      "currency": { "code": "USD" },
+      "type": "DIVIDEND",
+      "trade_date": "2026-02-14T00:00:00Z",
+      "fee": 0
+    },
+    {
+      "id": "st-a-5",
+      "option_symbol": { "ticker": "AAPL 270115C00200000" },
+      "price": 3.0,
+      "units": 1,
+      "amount": -300,
+      "currency": { "code": "USD" },
+      "type": "OPTION_BUY",
+      "trade_date": "2026-03-01T00:00:00Z"
+    }
+  ],
+  "pagination": { "offset": 2, "limit": 2, "total": 4 }
+}

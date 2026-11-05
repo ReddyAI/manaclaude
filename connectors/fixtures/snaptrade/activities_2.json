@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "id": "st-b-1",
+      "symbol": null,
+      "price": 0,
+      "units": 0,
+      "amount": 5000.0,
+      "currency": { "code": "USD" },
+      "type": "CONTRIBUTION",
+      "trade_date": "2026-01-02T00:00:00Z"
+    }
+  ],
+  "pagination": { "offset": 0, "limit": 1000, "total": 1 }
+}

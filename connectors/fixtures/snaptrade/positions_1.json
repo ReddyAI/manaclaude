@@ -1,0 +1,38 @@
+[
+  {
+    "symbol": {
+      "symbol": {
+        "id": "s1",
+        "symbol": "AAPL",
+        "raw_symbol": "AAPL",
+        "description": "Example Devices Inc",
+        "currency": { "code": "USD" },
+        "exchange": { "code": "NASDAQ", "mic_code": "XNAS" },
+        "type": { "code": "cs", "description": "Common Stock" }
+      }
+    },
+    "units": 10,
+    "fractional_units": 10.5,
+    "price": 200.0,
+    "average_purchase_price": 150.0,
+    "currency": { "code": "USD" }
+  },
+  {
+    "symbol": {
+      "symbol": {
+        "id": "s2",
+        "symbol": "VTI",
+        "raw_symbol": "VTI",
+        "description": "Total Market ETF",
+        "currency": { "code": "USD" },
+        "exchange": { "code": "ARCA", "mic_code": "ARCX" },
+        "type": { "code": "et", "description": "ETF" }
+      }
+    },
+    "units": 50,
+    "fractional_units": 0,
+    "price": 280.5,
+    "average_purchase_price": 250.0,
+    "currency": { "code": "USD" }
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "status": "success",
+  "data": [
+    {
+      "trade_id": "10000001",
+      "order_id": "220000000001",
+      "exchange": "NSE",
+      "tradingsymbol": "RELIANCE",
+      "transaction_type": "BUY",
+      "quantity": 2,
+      "average_price": 2495.0,
+      "product": "CNC",
+      "fill_timestamp": "2026-11-05 10:12:11",
+      "exchange_timestamp": "2026-11-05 10:12:11"
+    },
+    {
+      "trade_id": "10000002",
+      "order_id": "220000000002",
+      "exchange": "NSE",
+      "tradingsymbol": "GOLDBEES",
+      "transaction_type": "SELL",
+      "quantity": 10,
+      "average_price": 72.1,
+      "product": "CNC",
+      "fill_timestamp": "2026-11-05 11:40:02",
+      "exchange_timestamp": "2026-11-05 11:40:02"
+    }
+  ]
+}
