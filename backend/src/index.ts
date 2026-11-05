@@ -10,9 +10,7 @@ import {
 import { handleAuthorize } from './mcp/authorize';
 import { handleMcp } from './mcp/handler';
 import type { McpAuthProps } from './mcp/tools';
-import { selectAll } from './db/table';
-import { connectionsTable } from './db/tables';
-import { runConnectionSync } from './sync/run';
+import { syncAllConnections } from './sync/run';
 
 export type { Env } from './env';
 
@@ -90,12 +88,9 @@ export function createWorker(deps: AppDeps = {}) {
       await backfillMissingHistory(env, f).catch((e) =>
         console.error('FX backfill failed', String(e)),
       );
-      const connections = await selectAll(env.DB, connectionsTable, "status != 'disconnected'");
-      for (const c of connections) {
-        await runConnectionSync(env, c.id, f).catch((e) =>
-          console.error('Sync failed', c.connectorId, String(e)),
-        );
-      }
+      await syncAllConnections(env, { fetch: deps.fetch }).catch((e) =>
+        console.error('Connector syncs failed', String(e)),
+      );
       ctx.waitUntil(runDailyJobs(env, today, deps).then(() => undefined));
     },
   };

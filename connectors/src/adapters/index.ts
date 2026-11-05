@@ -19,6 +19,8 @@ import { simplefinAdapter } from './simplefin';
 import { realieAdapter } from './realie';
 import { redbarkAdapter } from './redbark';
 import { rentcastAdapter } from './rentcast';
+
+export { shouldRefreshValuation } from './rentcast';
 import { snaptradeAdapter } from './snaptrade';
 import { sophtronAdapter } from './sophtron';
 import { tellerAdapter } from './teller';

@@ -17,6 +17,8 @@ export interface Env {
   DB: D1Database;
   /** Receipt images and the statement vault. */
   FILES: R2Bucket;
+  /** Teller's client certificate (mTLS binding). Only Teller calls go through it. */
+  TELLER_CERT?: { fetch: typeof fetch };
   /** Workers AI. */
   AI?: AiBinding;
   /** OAuth grants and tokens for the MCP server. */
@@ -31,6 +33,20 @@ export interface Env {
   MCP_OWNER_PASSWORD?: string;
   /** Open Exchange Rates app ID. */
   OXR_APP_ID?: string;
+  /** Key for the encrypted per-login connector credentials (sync/credentials.ts). */
+  CREDENTIALS_SECRET?: string;
+  /** Teller application id (account linking, session E2). */
+  TELLER_APPLICATION_ID?: string;
+  PLAID_CLIENT_ID?: string;
+  PLAID_SECRET?: string;
+  /** sandbox, development or production. */
+  PLAID_ENV?: string;
+  SNAPTRADE_CLIENT_ID?: string;
+  SNAPTRADE_CONSUMER_KEY?: string;
+  SOPHTRON_USER_ID?: string;
+  SOPHTRON_ACCESS_KEY?: string;
+  KITE_API_KEY?: string;
+  KITE_API_SECRET?: string;
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
   /** Paid Gemini API key (never the free tier). */

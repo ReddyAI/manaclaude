@@ -55,7 +55,8 @@ import { ensureDefaultCategories, loadDatasetIntoDb } from '../services/seed';
 import { getSettings, updateSettings } from '../services/settings';
 import { splitTransaction, undoSplit } from '../services/splits';
 import { getTransaction, listTransactions } from '../services/transactions';
-import { runConnectionSync } from '../sync/run';
+import { syncConnection } from '../sync/run';
+import { isPublicLinkCallback, registerLinkRoutes } from './link';
 import { ApiError, badRequest, notFound } from '../util/errors';
 import { newId, nowIso, safeEqual } from '../util/ids';
 
@@ -247,6 +248,8 @@ export function createApp(deps: AppDeps = {}) {
   });
   app.use('/v1/*', async (c, next) => {
     if (c.req.method === 'OPTIONS') return next();
+    // Provider redirects (Zerodha Kite...) arrive from the user's browser with no token; see api/link.ts.
+    if (isPublicLinkCallback(new URL(c.req.url).pathname)) return next();
     const expected = c.env.APP_API_TOKEN;
     if (!expected)
       return c.json(
@@ -279,6 +282,9 @@ export function createApp(deps: AppDeps = {}) {
       policies: settings?.moneyPolicies ?? null,
     });
   });
+
+  // ---- Account-linking callbacks (public paths, built by session E2) ----
+  registerLinkRoutes(app);
 
   // ---- Dataset, accounts, transactions -----------------------------------
   app.get('/v1/dataset', async (c) => {
@@ -692,9 +698,14 @@ export function createApp(deps: AppDeps = {}) {
   app.get('/v1/connections', async (c) =>
     c.json({ connections: await selectAll(c.env.DB, connectionsTable) }),
   );
-  app.post('/v1/connections/:id/sync', async (c) =>
-    c.json(await runConnectionSync(c.env, c.req.param('id'), c.get('deps').fetch)),
-  );
+  // ?force=true syncs a connection that needs repair (right after it was repaired) or refreshes a property value early.
+  app.post('/v1/connections/:id/sync', async (c) => {
+    const report = await syncConnection(c.env, c.req.param('id'), {
+      fetch: c.get('deps').fetch,
+      force: c.req.query('force') === 'true',
+    });
+    return c.json(report, report.outcome === 'error' ? 502 : 200);
+  });
 
   // ---- MCP OAuth clients (fallback when an assistant can't self-register) ----
   app.post('/v1/mcp/clients', async (c) => {
