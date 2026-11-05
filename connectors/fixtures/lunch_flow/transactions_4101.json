@@ -1,0 +1,65 @@
+{
+  "transactions": [
+    {
+      "id": "lf-t-1",
+      "accountId": 4101,
+      "amount": -42.17,
+      "currency": "USD",
+      "date": "2026-11-02",
+      "merchant": "Riverside Pharmacy",
+      "description": "RIVERSIDE PHARMACY #22",
+      "isPending": false
+    },
+    {
+      "id": "lf-t-2",
+      "accountId": 4101,
+      "amount": 1800,
+      "currency": "USD",
+      "date": "2026-11-01",
+      "merchant": "Acme Payroll",
+      "description": "ACME PAYROLL",
+      "isPending": false
+    },
+    {
+      "id": null,
+      "accountId": 4101,
+      "amount": -9.99,
+      "currency": "USD",
+      "date": "2026-11-04",
+      "merchant": "StreamBox",
+      "description": "STREAMBOX",
+      "isPending": true
+    },
+    {
+      "id": null,
+      "accountId": 4101,
+      "amount": 25.0,
+      "currency": "USD",
+      "date": "2026-11-04",
+      "merchant": "****1234",
+      "description": "****1234",
+      "isPending": true
+    },
+    {
+      "id": "lf-t-3",
+      "accountId": 4101,
+      "amount": -4.5,
+      "currency": "USD",
+      "date": "2026-10-30",
+      "merchant": "Corner Coffee",
+      "description": "CORNER COFFEE",
+      "isPending": false
+    },
+    {
+      "id": "lf-t-4",
+      "accountId": 4101,
+      "amount": -4.5,
+      "currency": "USD",
+      "date": "2026-10-30",
+      "merchant": "Corner Coffee",
+      "description": "CORNER COFFEE",
+      "isPending": false
+    }
+  ],
+  "total": 6
+}

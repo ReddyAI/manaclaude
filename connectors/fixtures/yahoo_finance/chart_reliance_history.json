@@ -1,0 +1,18 @@
+{
+  "chart": {
+    "result": [
+      {
+        "meta": {
+          "currency": "INR",
+          "symbol": "RELIANCE.NS",
+          "exchangeName": "NSI",
+          "regularMarketPrice": 2510.75,
+          "regularMarketTime": 1793793600
+        },
+        "timestamp": [1793534400, 1793620800, 1793707200, 1793793600],
+        "indicators": { "quote": [{ "close": [2480.5, null, 2500.0, 2510.75] }] }
+      }
+    ],
+    "error": null
+  }
+}

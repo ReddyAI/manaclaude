@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "ticker": "AAPL_US_EQ",
+      "reference": "div-2001",
+      "amount": 1.9,
+      "quantity": 10,
+      "paidOn": "2026-05-15T00:00:00Z",
+      "type": "ORDINARY"
+    }
+  ],
+  "nextPagePath": null
+}

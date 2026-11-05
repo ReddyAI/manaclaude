@@ -1,0 +1,21 @@
+{
+  "pagination": { "next_uri": null },
+  "data": [
+    {
+      "id": "tx-stake-1",
+      "type": "staking_reward",
+      "status": "completed",
+      "amount": { "amount": "0.0042", "currency": "ETH" },
+      "native_amount": { "amount": "10.29", "currency": "USD" },
+      "created_at": "2026-03-01T00:00:00Z"
+    },
+    {
+      "id": "tx-send-2",
+      "type": "send",
+      "status": "completed",
+      "amount": { "amount": "1.19580", "currency": "ETH" },
+      "native_amount": { "amount": "2929.10", "currency": "USD" },
+      "created_at": "2026-02-20T08:00:00Z"
+    }
+  ]
+}

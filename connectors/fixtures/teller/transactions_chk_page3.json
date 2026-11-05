@@ -1,0 +1,12 @@
+[
+  {
+    "id": "txn_demo_c5",
+    "account_id": "acc_demo_chk_01",
+    "date": "2026-10-28",
+    "description": "PAYMENT THANK YOU LAKESHORE VISA",
+    "status": "posted",
+    "amount": "-500.00",
+    "type": "transfer",
+    "details": { "category": "general", "processing_status": "complete", "counterparty": null }
+  }
+]

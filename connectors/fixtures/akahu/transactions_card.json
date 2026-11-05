@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_id": "trans_ak_c1",
+      "_account": "acc_ak_card",
+      "date": "2026-11-02T00:00:00.000Z",
+      "description": "KMART",
+      "amount": -89.9,
+      "merchant": { "name": "Kmart" }
+    },
+    {
+      "_id": "trans_ak_c2",
+      "_account": "acc_ak_card",
+      "date": "2026-10-28T00:00:00.000Z",
+      "description": "PAYMENT RECEIVED",
+      "amount": 300,
+      "merchant": null
+    }
+  ],
+  "cursor": { "next": null }
+}

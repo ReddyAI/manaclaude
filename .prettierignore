@@ -13,3 +13,6 @@ apps/mobile/android/
 apps/mobile/ios/
 package-lock.json
 LICENSE
+
+# Claude skill files are not ours to reformat
+.claude/

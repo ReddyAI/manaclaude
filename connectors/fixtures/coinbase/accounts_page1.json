@@ -1,0 +1,28 @@
+{
+  "pagination": {
+    "ending_before": null,
+    "starting_after": null,
+    "limit": 2,
+    "order": "desc",
+    "previous_uri": null,
+    "next_uri": "/v2/accounts?limit=100&starting_after=wallet-eth"
+  },
+  "data": [
+    {
+      "id": "wallet-btc",
+      "name": "BTC Wallet",
+      "primary": true,
+      "type": "wallet",
+      "currency": { "code": "BTC", "name": "Bitcoin", "type": "crypto" },
+      "balance": { "amount": "0.05000000", "currency": "BTC" }
+    },
+    {
+      "id": "wallet-usd",
+      "name": "Cash (USD)",
+      "primary": false,
+      "type": "fiat",
+      "currency": { "code": "USD", "name": "United States Dollar", "type": "fiat" },
+      "balance": { "amount": "125.40", "currency": "USD" }
+    }
+  ]
+}

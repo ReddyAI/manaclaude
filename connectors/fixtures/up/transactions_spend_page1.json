@@ -1,0 +1,44 @@
+{
+  "data": [
+    {
+      "type": "transactions",
+      "id": "up-t-1",
+      "attributes": {
+        "status": "HELD",
+        "rawText": "BLUE BEAN CAFE SYDNEY",
+        "description": "Blue Bean Cafe",
+        "message": null,
+        "amount": { "currencyCode": "AUD", "value": "-6.50", "valueInBaseUnits": -650 },
+        "foreignAmount": null,
+        "settledAt": null,
+        "createdAt": "2026-11-04T08:15:00+11:00"
+      },
+      "relationships": {
+        "account": { "data": { "id": "up-acc-spend" } },
+        "transferAccount": { "data": null }
+      }
+    },
+    {
+      "type": "transactions",
+      "id": "up-t-2",
+      "attributes": {
+        "status": "SETTLED",
+        "rawText": null,
+        "description": "Acme Pty Ltd",
+        "message": "Salary",
+        "amount": { "currencyCode": "AUD", "value": "3200.00", "valueInBaseUnits": 320000 },
+        "foreignAmount": null,
+        "settledAt": "2026-11-02T06:00:00+11:00",
+        "createdAt": "2026-11-02T06:00:00+11:00"
+      },
+      "relationships": {
+        "account": { "data": { "id": "up-acc-spend" } },
+        "transferAccount": { "data": null }
+      }
+    }
+  ],
+  "links": {
+    "prev": null,
+    "next": "https://api.up.com.au/api/v1/accounts/up-acc-spend/transactions?page%5Bafter%5D=cursor2&page%5Bsize%5D=100"
+  }
+}

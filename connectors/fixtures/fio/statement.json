@@ -1,0 +1,52 @@
+{
+  "accountStatement": {
+    "info": {
+      "accountId": "2100123456",
+      "bankId": "2010",
+      "currency": "CZK",
+      "iban": "CZ0000000000000000000000",
+      "closingBalance": 45210.75,
+      "dateStart": "2026-08-07+0200",
+      "dateEnd": "2026-11-05+0100"
+    },
+    "transactionList": {
+      "transaction": [
+        {
+          "column22": { "value": 26000000001, "name": "ID pohybu", "id": 22 },
+          "column0": { "value": "2026-11-03+0100", "name": "Datum", "id": 0 },
+          "column1": { "value": -349.5, "name": "Objem", "id": 1 },
+          "column14": { "value": "CZK", "name": "Měna", "id": 14 },
+          "column10": { "value": "Albert Praha", "name": "Název protiúčtu", "id": 10 },
+          "column8": { "value": "Platba kartou", "name": "Typ", "id": 8 },
+          "column16": { "value": null },
+          "column7": { "value": null }
+        },
+        {
+          "column22": { "value": 26000000002, "name": "ID pohybu", "id": 22 },
+          "column0": { "value": "2026-11-01+0100", "name": "Datum", "id": 0 },
+          "column1": { "value": 32000.0, "name": "Objem", "id": 1 },
+          "column14": { "value": "CZK", "name": "Měna", "id": 14 },
+          "column10": { "value": "Acme s.r.o.", "name": "Název protiúčtu", "id": 10 },
+          "column8": { "value": "Příjem převodem uvnitř banky", "name": "Typ", "id": 8 },
+          "column16": { "value": "Mzda 10/2026" }
+        },
+        {
+          "column22": { "value": 26000000003, "name": "ID pohybu", "id": 22 },
+          "column0": { "value": "2026-10-30+0100", "name": "Datum", "id": 0 },
+          "column1": { "value": -89.0, "name": "Objem", "id": 1 },
+          "column14": { "value": "CZK", "name": "Měna", "id": 14 },
+          "column10": { "value": "Kavarna Cafe", "name": "Název protiúčtu", "id": 10 },
+          "column8": { "value": "Platba kartou" }
+        },
+        {
+          "column22": { "value": 26000000004, "name": "ID pohybu", "id": 22 },
+          "column0": { "value": "2026-10-30+0100", "name": "Datum", "id": 0 },
+          "column1": { "value": -89.0, "name": "Objem", "id": 1 },
+          "column14": { "value": "CZK", "name": "Měna", "id": 14 },
+          "column10": { "value": "Kavarna Cafe", "name": "Název protiúčtu", "id": 10 },
+          "column8": { "value": "Platba kartou" }
+        }
+      ]
+    }
+  }
+}

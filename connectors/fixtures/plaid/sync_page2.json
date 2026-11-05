@@ -1,0 +1,52 @@
+{
+  "added": [
+    {
+      "transaction_id": "pl_t_coffee_a",
+      "account_id": "pl_acc_chk",
+      "amount": 4.5,
+      "iso_currency_code": "USD",
+      "date": "2026-10-30",
+      "name": "CORNER COFFEE 0412",
+      "merchant_name": "Corner Coffee",
+      "pending": false,
+      "pending_transaction_id": null
+    },
+    {
+      "transaction_id": "pl_t_coffee_b",
+      "account_id": "pl_acc_chk",
+      "amount": 4.5,
+      "iso_currency_code": "USD",
+      "date": "2026-10-30",
+      "name": "CORNER COFFEE 0412",
+      "merchant_name": "Corner Coffee",
+      "pending": false,
+      "pending_transaction_id": null
+    },
+    {
+      "transaction_id": "pl_t_cardpay",
+      "account_id": "pl_acc_card",
+      "amount": -500,
+      "iso_currency_code": "USD",
+      "date": "2026-10-28",
+      "name": "PAYMENT THANK YOU",
+      "merchant_name": null,
+      "pending": false,
+      "pending_transaction_id": null
+    },
+    {
+      "transaction_id": "pl_t_eur",
+      "account_id": "pl_acc_card",
+      "amount": 42.5,
+      "iso_currency_code": "EUR",
+      "date": "2026-10-26",
+      "name": "BISTRO LUNE PARIS",
+      "merchant_name": "Bistro Lune",
+      "pending": false,
+      "pending_transaction_id": null
+    }
+  ],
+  "modified": [],
+  "removed": [],
+  "next_cursor": "cursor-page-2",
+  "has_more": false
+}

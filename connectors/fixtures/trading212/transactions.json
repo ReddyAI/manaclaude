@@ -1,0 +1,26 @@
+{
+  "items": [
+    {
+      "type": "DEPOSIT",
+      "amount": 1000,
+      "currency": "GBP",
+      "dateTime": "2025-11-30T09:00:00Z",
+      "reference": "tx-3001"
+    },
+    {
+      "type": "WITHDRAW",
+      "amount": -50,
+      "currency": "GBP",
+      "dateTime": "2026-04-01T09:00:00Z",
+      "reference": "tx-3002"
+    },
+    {
+      "type": "FEE",
+      "amount": -0.5,
+      "currency": "GBP",
+      "dateTime": "2026-04-02T09:00:00Z",
+      "reference": "tx-3003"
+    }
+  ],
+  "nextPagePath": null
+}

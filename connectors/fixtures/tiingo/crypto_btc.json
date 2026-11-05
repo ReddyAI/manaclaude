@@ -1,0 +1,11 @@
+[
+  {
+    "ticker": "btcusd",
+    "baseCurrency": "btc",
+    "quoteCurrency": "usd",
+    "priceData": [
+      { "date": "2026-11-03T00:00:00+00:00", "close": 67900.5 },
+      { "date": "2026-11-04T00:00:00+00:00", "close": 68000.1 }
+    ]
+  }
+]

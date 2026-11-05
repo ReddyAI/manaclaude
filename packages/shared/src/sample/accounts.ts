@@ -241,9 +241,11 @@ export function sampleConnections(now: Date): Connection[] {
       id: 'conn_kite',
       connectorId: 'zerodha_kite',
       institutionName: 'Zerodha',
-      status: 'healthy',
-      lastSyncAt: ago(60 * 9),
+      // Zerodha's access token ends every morning, so a sample repair that is a normal day.
+      status: 'needs_repair',
+      lastSyncAt: ago(60 * 3),
       lastSuccessfulSyncAt: ago(60 * 9),
+      lastError: 'Zerodha: login expired. Repair the connection to continue.',
       accountIds: ['acc_demat'],
     },
     {

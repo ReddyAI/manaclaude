@@ -1,0 +1,14 @@
+{
+  "transactions": [
+    {
+      "transaction_id": "EB-PEND-1",
+      "transaction_amount": { "currency": "EUR", "amount": "9.99" },
+      "credit_debit_indicator": "DBIT",
+      "status": "PDNG",
+      "transaction_date": "2026-11-04",
+      "remittance_information": ["STREAMBOX"],
+      "creditor": { "name": "StreamBox" }
+    }
+  ],
+  "continuation_key": null
+}

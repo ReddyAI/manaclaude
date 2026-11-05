@@ -1,0 +1,10 @@
+{
+  "result": [
+    {
+      "id": "cstx-3",
+      "type": "Deposit",
+      "date": "2026-02-20T00:00:00.000Z",
+      "coinData": { "count": 1.2, "symbol": "ETH", "currentValue": 2900 }
+    }
+  ]
+}

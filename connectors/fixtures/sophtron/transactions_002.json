@@ -1,0 +1,22 @@
+[
+  {
+    "TransactionID": "t-2001",
+    "Type": "Debit",
+    "Status": "Completed",
+    "Amount": -120.0,
+    "Currency": "USD",
+    "TransactionDate": "2026-10-29T00:00:00",
+    "Merchant": "Skyline Air",
+    "Description": "SKYLINE AIR 0142"
+  },
+  {
+    "TransactionID": "t-2002",
+    "Type": "Credit",
+    "Status": "Completed",
+    "Amount": 300.0,
+    "Currency": "USD",
+    "TransactionDate": "2026-10-30T00:00:00",
+    "Merchant": "",
+    "Description": "PAYMENT THANK YOU"
+  }
+]

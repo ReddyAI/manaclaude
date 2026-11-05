@@ -1,0 +1,10 @@
+{
+  "perCurrencyBalances": [
+    { "currency": "CAD", "cash": 250.0, "marketValue": 4000.0, "totalEquity": 4250.0 },
+    { "currency": "USD", "cash": 0, "marketValue": 1000.0, "totalEquity": 1000.0 }
+  ],
+  "combinedBalances": [
+    { "currency": "CAD", "cash": 250.0, "marketValue": 5360.0, "totalEquity": 5610.0 },
+    { "currency": "USD", "cash": 180.0, "marketValue": 3900.0, "totalEquity": 4080.0 }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_id": "trans_ak_9",
+      "_account": "acc_ak_chk",
+      "date": "2026-11-05T00:00:00.000Z",
+      "description": "STREAMBOX AUCKLAND",
+      "amount": -9.99,
+      "merchant": { "name": "StreamBox" }
+    }
+  ],
+  "cursor": { "next": null }
+}

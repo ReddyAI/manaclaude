@@ -1,0 +1,9 @@
+{
+  "status": "success",
+  "data": {
+    "user_id": "AB1234",
+    "user_name": "Demo Investor",
+    "email": "demo@example.invalid",
+    "broker": "ZERODHA"
+  }
+}

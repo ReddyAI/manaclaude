@@ -1,0 +1,12 @@
+{
+  "status": "success",
+  "data": {
+    "equity": {
+      "enabled": true,
+      "net": 25000.0,
+      "available": { "cash": 25000.0, "opening_balance": 25000.0, "live_balance": 25000.0 },
+      "utilised": { "debits": 0 }
+    },
+    "commodity": { "enabled": false, "net": 0 }
+  }
+}

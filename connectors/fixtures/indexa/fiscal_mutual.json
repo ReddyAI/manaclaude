@@ -1,0 +1,49 @@
+{
+  "fiscal_results": [
+    {
+      "instrument": { "identifier": "IE0000000011", "name": "Global Stocks Index Fund" },
+      "titles": 10,
+      "price": 20.5,
+      "amount": 205,
+      "cost_price": 18.0,
+      "cost_amount": 180,
+      "subscription_date": "2025-02-03"
+    },
+    {
+      "instrument": { "identifier": "IE0000000011", "name": "Global Stocks Index Fund" },
+      "titles": 15,
+      "price": 20.5,
+      "amount": 307.5,
+      "cost_price": 19.2,
+      "cost_amount": 288,
+      "subscription_date": "2025-08-04"
+    },
+    {
+      "instrument": { "identifier": "IE0000000022", "name": "Bond Index Fund" },
+      "titles": 100,
+      "price": 9.97,
+      "amount": 997,
+      "cost_price": 10.0,
+      "cost_amount": 1000,
+      "subscription_date": "2025-02-03"
+    }
+  ],
+  "total_fiscal_results": [
+    {
+      "instrument": { "identifier": "IE0000000011", "name": "Global Stocks Index Fund" },
+      "titles": 25,
+      "price": 20.5,
+      "amount": 512.5,
+      "cost_price": 18.72,
+      "cost_amount": 468
+    },
+    {
+      "instrument": { "identifier": "IE0000000022", "name": "Bond Index Fund" },
+      "titles": 100,
+      "price": 9.97,
+      "amount": 997,
+      "cost_price": 10.0,
+      "cost_amount": 1000
+    }
+  ]
+}

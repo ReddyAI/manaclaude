@@ -1,0 +1,16 @@
+{
+  "portfolio": { "total_amount": 5120.4 },
+  "instrument_accounts": [
+    {
+      "positions": [
+        {
+          "instrument": { "identifier": "ES0000000033", "name": "Pension Plan Fund" },
+          "titles": 400,
+          "price": 12.801,
+          "amount": 5120.4,
+          "cost_amount": 4800
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "errors": [
+    { "status": "401", "title": "Not Authorized", "detail": "The request was not authenticated." }
+  ]
+}

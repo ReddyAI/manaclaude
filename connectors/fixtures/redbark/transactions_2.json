@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "id": "rb-c-1",
+      "accountId": "rb-2",
+      "status": "posted",
+      "date": "2026-11-02",
+      "description": "KMART",
+      "amount": "-89.90",
+      "direction": "debit"
+    },
+    {
+      "id": "rb-c-2",
+      "accountId": "rb-2",
+      "status": "posted",
+      "date": "2026-10-28",
+      "description": "PAYMENT RECEIVED",
+      "amount": "300.00",
+      "direction": "credit"
+    }
+  ],
+  "hasMore": false
+}

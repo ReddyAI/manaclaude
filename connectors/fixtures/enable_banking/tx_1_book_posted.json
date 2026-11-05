@@ -1,0 +1,14 @@
+{
+  "transactions": [
+    {
+      "entry_reference": "EB-9",
+      "transaction_amount": { "currency": "EUR", "amount": "9.99" },
+      "credit_debit_indicator": "DBIT",
+      "status": "BOOK",
+      "booking_date": "2026-11-05",
+      "remittance_information": ["STREAMBOX AB"],
+      "creditor": { "name": "StreamBox" }
+    }
+  ],
+  "continuation_key": null
+}

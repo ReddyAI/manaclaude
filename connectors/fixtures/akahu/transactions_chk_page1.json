@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_id": "trans_ak_1",
+      "_account": "acc_ak_chk",
+      "date": "2026-11-03T11:00:00.000Z",
+      "description": "COUNTDOWN METRO",
+      "amount": -45.6,
+      "merchant": { "name": "Countdown" },
+      "category": { "name": "Groceries" }
+    },
+    {
+      "_id": "trans_ak_2",
+      "_account": "acc_ak_chk",
+      "date": "2026-11-01T00:00:00.000Z",
+      "description": "SALARY ACME LTD",
+      "amount": 2400,
+      "merchant": null
+    }
+  ],
+  "cursor": { "next": "cur_2" }
+}

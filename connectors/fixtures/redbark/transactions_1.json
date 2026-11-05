@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "id": "rb-t-1",
+      "accountId": "rb-1",
+      "status": "posted",
+      "date": "2026-11-03",
+      "description": "COLES 0412",
+      "amount": "-54.20",
+      "direction": "debit",
+      "merchantName": "Coles",
+      "category": "groceries"
+    },
+    {
+      "id": "rb-t-2",
+      "accountId": "rb-1",
+      "status": "posted",
+      "date": "2026-11-01",
+      "description": "SALARY ACME",
+      "amount": "3200.00",
+      "direction": "credit"
+    },
+    {
+      "id": "rb-t-pend",
+      "accountId": "rb-1",
+      "status": "pending",
+      "date": "2026-11-04",
+      "description": "STREAMBOX",
+      "amount": "-9.99",
+      "direction": "debit",
+      "merchantName": "StreamBox"
+    },
+    {
+      "accountId": "rb-1",
+      "status": "posted",
+      "date": "2026-10-30",
+      "description": "COFFEE",
+      "amount": "-4.50",
+      "direction": "debit"
+    },
+    {
+      "accountId": "rb-1",
+      "status": "posted",
+      "date": "2026-10-30",
+      "description": "COFFEE",
+      "amount": "-4.50",
+      "direction": "debit"
+    }
+  ],
+  "hasMore": false
+}

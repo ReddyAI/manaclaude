@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "items": [
+    {
+      "_id": "trans_ak_3",
+      "_account": "acc_ak_chk",
+      "date": "2026-10-30T09:00:00.000Z",
+      "description": "FLAT WHITE CO",
+      "amount": -5.5,
+      "merchant": { "name": "Flat White Co" }
+    },
+    {
+      "_id": "trans_ak_4",
+      "_account": "acc_ak_chk",
+      "date": "2026-10-30T09:05:00.000Z",
+      "description": "FLAT WHITE CO",
+      "amount": -5.5,
+      "merchant": { "name": "Flat White Co" }
+    }
+  ],
+  "cursor": { "next": null }
+}

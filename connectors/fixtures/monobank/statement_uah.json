@@ -1,0 +1,59 @@
+[
+  {
+    "id": "m-1",
+    "time": 1793620800,
+    "description": "Silpo",
+    "mcc": 5411,
+    "hold": false,
+    "amount": -15600,
+    "operationAmount": -15600,
+    "currencyCode": 980,
+    "commissionRate": 0,
+    "cashbackAmount": 156,
+    "balance": 1250075
+  },
+  {
+    "id": "m-2",
+    "time": 1793534400,
+    "description": "Salary",
+    "mcc": 4829,
+    "hold": false,
+    "amount": 4500000,
+    "operationAmount": 4500000,
+    "currencyCode": 980,
+    "balance": 1265675
+  },
+  {
+    "id": "m-3",
+    "time": 1793793600,
+    "description": "Taxi",
+    "mcc": 4121,
+    "hold": true,
+    "amount": -8800,
+    "operationAmount": -8800,
+    "currencyCode": 980,
+    "balance": 1250075
+  },
+  {
+    "id": "m-4",
+    "time": 1793361600,
+    "description": "Coffee",
+    "mcc": 5814,
+    "hold": false,
+    "amount": -4500,
+    "operationAmount": -4500,
+    "currencyCode": 980,
+    "balance": 1
+  },
+  {
+    "id": "m-5",
+    "time": 1793361700,
+    "description": "Coffee",
+    "mcc": 5814,
+    "hold": false,
+    "amount": -4500,
+    "operationAmount": -4500,
+    "currencyCode": 980,
+    "balance": 1
+  }
+]
