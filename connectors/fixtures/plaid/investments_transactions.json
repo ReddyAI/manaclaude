@@ -1,0 +1,77 @@
+{
+  "investment_transactions": [
+    {
+      "investment_transaction_id": "pl_inv_1",
+      "account_id": "pl_acc_brk",
+      "security_id": "sec_msft",
+      "date": "2025-03-10",
+      "name": "BUY MSFT",
+      "quantity": 10,
+      "amount": 3600,
+      "price": 360,
+      "fees": 0,
+      "type": "buy",
+      "subtype": "buy",
+      "iso_currency_code": "USD"
+    },
+    {
+      "investment_transaction_id": "pl_inv_2",
+      "account_id": "pl_acc_brk",
+      "security_id": "sec_msft",
+      "date": "2025-07-21",
+      "name": "BUY MSFT",
+      "quantity": 5,
+      "amount": 1900,
+      "price": 380,
+      "fees": 0,
+      "type": "buy",
+      "subtype": "buy",
+      "iso_currency_code": "USD"
+    },
+    {
+      "investment_transaction_id": "pl_inv_3",
+      "account_id": "pl_acc_brk",
+      "security_id": "sec_msft",
+      "date": "2026-02-02",
+      "name": "SELL MSFT",
+      "quantity": -3,
+      "amount": -1230,
+      "price": 410,
+      "fees": 1,
+      "type": "sell",
+      "subtype": "sell",
+      "iso_currency_code": "USD"
+    },
+    {
+      "investment_transaction_id": "pl_inv_4",
+      "account_id": "pl_acc_brk",
+      "security_id": "sec_msft",
+      "date": "2026-03-15",
+      "name": "DIVIDEND MSFT",
+      "quantity": 0,
+      "amount": -9.6,
+      "price": 0,
+      "fees": 0,
+      "type": "cash",
+      "subtype": "dividend",
+      "iso_currency_code": "USD"
+    },
+    {
+      "investment_transaction_id": "pl_inv_5",
+      "account_id": "pl_acc_brk",
+      "security_id": null,
+      "date": "2026-04-01",
+      "name": "DEPOSIT",
+      "quantity": 0,
+      "amount": -500,
+      "price": 0,
+      "fees": 0,
+      "type": "cash",
+      "subtype": "contribution",
+      "iso_currency_code": "USD"
+    }
+  ],
+  "securities": [],
+  "total_investment_transactions": 5,
+  "request_id": "req_demo_invtx"
+}

@@ -171,6 +171,11 @@ export function planInvestmentSync(input: InvestmentSyncInput): InvestmentSyncOu
     return created;
   }
 
+  // Holdings know the exchange and type; make their securities first so activities reuse them.
+  for (const ph of input.result.holdings) {
+    if (input.accounts.has(ph.accountExternalId)) ensureSecurity(ph);
+  }
+
   // -- activities ----------------------------------------------------------
   // Work on copies so the caller's rows stay untouched.
   const allActivities: InvestmentActivity[] = input.activities.map((a) => ({ ...a }));

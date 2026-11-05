@@ -102,6 +102,8 @@ export interface ProviderAccount {
   availableBalance: MinorUnits | null;
   creditLimit: MinorUnits | null;
   mask: string | null;
+  /** Loans and cards: annual interest rate in percent ("24.99"), when the provider says. */
+  interestRate?: DecimalString | null;
 }
 
 export interface ProviderTransaction {
@@ -167,6 +169,11 @@ export interface SyncResult {
   activities: ProviderActivity[];
   /** Store and pass back on the next sync. */
   nextCursor: string | null;
+  /**
+   * True when `transactions` holds only what changed since the cursor (Plaid's
+   * transactions/sync), so a pending row missing from it has not been dropped.
+   */
+  deltaOnly?: boolean;
 }
 
 /** Minimal fetch shape so adapters run the same in the Worker and in tests. */

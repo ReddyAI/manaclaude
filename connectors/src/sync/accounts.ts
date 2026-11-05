@@ -69,7 +69,7 @@ function toAccount(
     includeInNetWorth: true,
     hidden: false,
     isDefaultCash: false,
-    interestRate: null,
+    interestRate: p.interestRate ?? null,
     openedOn: null,
     createdAt: now,
     updatedAt: now,
@@ -139,6 +139,8 @@ export function planAccountSync(input: AccountSyncInput): AccountSyncOutput {
       changes.institutionName = p.institutionName ?? input.institutionName ?? null;
     }
     if (mine.subtype === null && p.subtype !== null) changes.subtype = p.subtype;
+    if (p.interestRate && mine.interestRate !== p.interestRate)
+      changes.interestRate = p.interestRate;
     if (mine.currency !== p.currency) {
       // Moving an account to another currency would orphan its transactions.
       out.warnings.push(

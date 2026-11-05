@@ -1,0 +1,62 @@
+{
+  "accounts": [
+    {
+      "account_id": "pl_acc_chk",
+      "balances": {
+        "available": 8320.17,
+        "current": 8420.17,
+        "limit": null,
+        "iso_currency_code": "USD"
+      },
+      "mask": "4821",
+      "name": "Everyday Checking",
+      "official_name": "Everyday Checking Account",
+      "type": "depository",
+      "subtype": "checking"
+    },
+    {
+      "account_id": "pl_acc_card",
+      "balances": {
+        "available": 10715.67,
+        "current": 1284.33,
+        "limit": 12000,
+        "iso_currency_code": "USD"
+      },
+      "mask": "1180",
+      "name": "Cashback Visa",
+      "official_name": "Cashback Visa Signature",
+      "type": "credit",
+      "subtype": "credit card"
+    },
+    {
+      "account_id": "pl_acc_brk",
+      "balances": {
+        "available": null,
+        "current": 15310.4,
+        "limit": null,
+        "iso_currency_code": "USD"
+      },
+      "mask": "9012",
+      "name": "Individual Brokerage",
+      "official_name": null,
+      "type": "investment",
+      "subtype": "brokerage"
+    },
+    {
+      "account_id": "pl_acc_401k",
+      "balances": {
+        "available": null,
+        "current": 40250.0,
+        "limit": null,
+        "iso_currency_code": "USD"
+      },
+      "mask": "3377",
+      "name": "401(k)",
+      "official_name": null,
+      "type": "investment",
+      "subtype": "401k"
+    }
+  ],
+  "item": { "item_id": "item_demo_01" },
+  "request_id": "req_demo_accounts"
+}

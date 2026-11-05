@@ -1,0 +1,50 @@
+{
+  "added": [
+    {
+      "transaction_id": "pl_t_pending1",
+      "account_id": "pl_acc_chk",
+      "amount": 4.5,
+      "iso_currency_code": "USD",
+      "date": "2026-11-03",
+      "name": "CORNER COFFEE 0412",
+      "merchant_name": "Corner Coffee",
+      "pending": true,
+      "pending_transaction_id": null,
+      "personal_finance_category": {
+        "primary": "FOOD_AND_DRINK",
+        "detailed": "FOOD_AND_DRINK_COFFEE"
+      }
+    },
+    {
+      "transaction_id": "pl_t_pay",
+      "account_id": "pl_acc_chk",
+      "amount": -2850,
+      "iso_currency_code": "USD",
+      "date": "2026-11-01",
+      "name": "ACME PAYROLL",
+      "merchant_name": null,
+      "pending": false,
+      "pending_transaction_id": null,
+      "personal_finance_category": { "primary": "INCOME", "detailed": "INCOME_WAGES" }
+    },
+    {
+      "transaction_id": "pl_t_card1",
+      "account_id": "pl_acc_card",
+      "amount": 86.42,
+      "iso_currency_code": "USD",
+      "date": "2026-11-02",
+      "name": "NORTHSIDE GROCERY",
+      "merchant_name": "Northside Grocery",
+      "pending": false,
+      "pending_transaction_id": null,
+      "personal_finance_category": {
+        "primary": "FOOD_AND_DRINK",
+        "detailed": "FOOD_AND_DRINK_GROCERIES"
+      }
+    }
+  ],
+  "modified": [],
+  "removed": [],
+  "next_cursor": "cursor-page-1",
+  "has_more": true
+}

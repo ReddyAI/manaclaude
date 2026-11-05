@@ -49,7 +49,7 @@ export interface TransactionSyncInput {
   accounts: ReadonlyMap<string, Id>;
   /** Existing rows of those accounts (every source; the function ignores what it should). */
   existing: readonly Transaction[];
-  result: Pick<SyncResult, 'transactions' | 'removedTransactionExternalIds'>;
+  result: Pick<SyncResult, 'transactions' | 'removedTransactionExternalIds' | 'deltaOnly'>;
   now: IsoDateTime;
   newId?: IdFactory;
   options?: TransactionSyncOptions;
@@ -183,8 +183,13 @@ export function planTransactionSync(input: TransactionSyncInput): TransactionSyn
     claimDateWindowDays: input.options?.claimDateWindowDays ?? 0,
     heuristicPendingMatch: input.options?.heuristicPendingMatch ?? true,
     pendingWindowDays: input.options?.pendingWindowDays ?? 8,
+    // A delta-only result (Plaid) says nothing about rows it did not mention, so nothing expires.
     pendingExpiryDays:
-      input.options?.pendingExpiryDays === undefined ? 21 : input.options.pendingExpiryDays,
+      input.options?.pendingExpiryDays !== undefined
+        ? input.options.pendingExpiryDays
+        : input.result.deltaOnly
+          ? null
+          : 21,
   };
   const accountIds = new Set(input.accounts.values());
   const rows = input.existing.filter((t) => accountIds.has(t.accountId));

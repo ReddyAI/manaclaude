@@ -160,8 +160,8 @@ export function toExchangeCode(raw: string | null | undefined): ExchangeCode | n
   if (x === 'BSE' || x === 'BOM' || x === 'XBOM' || x === 'BO') return 'BSE';
   if (x === 'NASDAQ' || x === 'XNAS' || x === 'NMS' || x === 'NGM' || x === 'NCM') return 'NASDAQ';
   if (x === 'NYSE' || x === 'XNYS') return 'NYSE';
-  if (x === 'ARCA' || x === 'PCX' || x === 'NYSEARCA') return 'ARCA';
-  if (x === 'BATS' || x === 'BTS') return 'BATS';
+  if (x === 'ARCA' || x === 'ARCX' || x === 'PCX' || x === 'NYSEARCA') return 'ARCA';
+  if (x === 'BATS' || x === 'BATX' || x === 'XBATS' || x === 'BTS') return 'BATS';
   return x;
 }
 

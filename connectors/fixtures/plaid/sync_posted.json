@@ -1,0 +1,31 @@
+{
+  "added": [
+    {
+      "transaction_id": "pl_t_posted1",
+      "account_id": "pl_acc_chk",
+      "amount": 4.5,
+      "iso_currency_code": "USD",
+      "date": "2026-11-04",
+      "name": "CORNER COFFEE 0412",
+      "merchant_name": "Corner Coffee",
+      "pending": false,
+      "pending_transaction_id": "pl_t_pending1"
+    }
+  ],
+  "modified": [
+    {
+      "transaction_id": "pl_t_card1",
+      "account_id": "pl_acc_card",
+      "amount": 88.1,
+      "iso_currency_code": "USD",
+      "date": "2026-11-02",
+      "name": "NORTHSIDE GROCERY",
+      "merchant_name": "Northside Grocery",
+      "pending": false,
+      "pending_transaction_id": null
+    }
+  ],
+  "removed": [{ "transaction_id": "pl_t_pending1" }],
+  "next_cursor": "cursor-page-3",
+  "has_more": false
+}
