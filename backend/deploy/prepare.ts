@@ -4,7 +4,6 @@ import {
   CloudflareApi,
   ensureD1,
   ensureKv,
-  ensureMtlsCertificate,
   ensurePagesProject,
   ensureR2,
   ensureWorkersSubdomain,
@@ -16,7 +15,6 @@ import { D1_NAME, KV_TITLES, PAGES_PROJECT, R2_BUCKET, WORKER_NAME } from './nam
 export interface PrepareResult {
   databaseId: string;
   kvId: string;
-  certificateId: string | null;
   subdomain: string;
   workerUrl: string;
   mcpUrl: string;
@@ -29,8 +27,7 @@ type Env = Record<string, string | undefined>;
 /**
  * Creates or reuses everything the Worker and the web app need in the
  * Cloudflare account, looked up by name so a re-run changes nothing:
- * the D1 database, the R2 bucket, the OAuth KV namespace, the Teller mTLS
- * certificate (only when TELLER_CERT_PEM and TELLER_KEY_PEM are set), the
+ * the D1 database, the R2 bucket, the OAuth KV namespace, the
  * workers.dev subdomain (which gives the Worker's public URL before it is
  * deployed) and the Pages project (which gives the web app's URL).
  */
@@ -50,20 +47,6 @@ export async function prepare(
   const kv = await ensureKv(api, KV_TITLES);
   log(`KV namespace "${kv.title}": ${kv.created ? 'created' : 'found'}`);
 
-  let certificateId: string | null = null;
-  const certPem = env.TELLER_CERT_PEM?.trim();
-  const keyPem = env.TELLER_KEY_PEM?.trim();
-  if (certPem && keyPem) {
-    const cert = await ensureMtlsCertificate(api, certPem, keyPem);
-    certificateId = cert.id;
-    log(`Teller certificate: ${cert.created ? 'uploaded' : 'already uploaded'}`);
-  } else {
-    log('Teller certificate: skipped (TELLER_CERT_PEM and TELLER_KEY_PEM are not both set)');
-    notes.push(
-      'Teller is deployed without its certificate. Add TELLER_CERT_PEM and TELLER_KEY_PEM and re-run to use Teller outside its sandbox.',
-    );
-  }
-
   const sub = await ensureWorkersSubdomain(api, suggestSubdomain(api.accountId));
   if (sub.created) {
     notes.push(
@@ -79,7 +62,6 @@ export async function prepare(
   return {
     databaseId: d1.id,
     kvId: kv.id,
-    certificateId,
     subdomain: sub.subdomain,
     workerUrl: url,
     mcpUrl: `${url}/mcp`,
@@ -113,7 +95,6 @@ async function main(): Promise<void> {
     renderWranglerConfig(readFileSync(source, 'utf8'), {
       databaseId: result.databaseId,
       kvId: result.kvId,
-      certificateId: result.certificateId,
       publicUrl: result.workerUrl,
     }),
   );
@@ -124,7 +105,6 @@ async function main(): Promise<void> {
     mcp_url: result.mcpUrl,
     web_url: result.webUrl,
     subdomain: result.subdomain,
-    teller_cert: result.certificateId ? 'true' : 'false',
   });
   if (env.GITHUB_STEP_SUMMARY && result.notes.length > 0) {
     appendFileSync(env.GITHUB_STEP_SUMMARY, `${result.notes.map((n) => `- ${n}`).join('\n')}\n`);

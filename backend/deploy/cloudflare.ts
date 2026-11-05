@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { CERT_NAME_PREFIX } from './names.ts';
 
 interface Envelope<T> {
   success: boolean;
@@ -135,31 +134,6 @@ export async function ensureKv(
   const made = await api.call<{ id: string }>('POST', '/storage/kv/namespaces', { title });
   if (!made.result?.id) throw new Error('Cloudflare did not return the new KV namespace id.');
   return { id: made.result.id, title, created: true };
-}
-
-/** The certificate name follows its content, so a rotated certificate gets a new upload and an unchanged one is reused. */
-export function certificateName(certPem: string): string {
-  const digest = createHash('sha256').update(certPem.trim()).digest('hex');
-  return `${CERT_NAME_PREFIX}${digest.slice(0, 12)}`;
-}
-
-export async function ensureMtlsCertificate(
-  api: CloudflareApi,
-  certPem: string,
-  keyPem: string,
-): Promise<{ id: string; created: boolean }> {
-  const name = certificateName(certPem);
-  const list = await api.call<{ id: string; name: string }[]>('GET', '/mtls_certificates');
-  const found = (list.result ?? []).find((c) => c.name === name);
-  if (found) return { id: found.id, created: false };
-  const made = await api.call<{ id: string }>('POST', '/mtls_certificates', {
-    name,
-    certificates: certPem.trim(),
-    private_key: keyPem.trim(),
-    ca: false,
-  });
-  if (!made.result?.id) throw new Error('Cloudflare did not return the new certificate id.');
-  return { id: made.result.id, created: true };
 }
 
 /** The account's workers.dev subdomain, registering one when the account has none yet. */

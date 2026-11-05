@@ -8,7 +8,8 @@ import {
   type LocalDate,
 } from '@manaclaude/shared';
 import type { Env } from '../env';
-import { batchInChunks, insertStatement, selectAll } from '../db/table';
+import { bulkInsertSpecs, runSpecs } from '../db/bulk';
+import { selectAll } from '../db/table';
 import { fxRatesTable } from '../db/tables';
 
 export const OXR_LATEST_URL = 'https://openexchangerates.org/api/latest.json';
@@ -26,11 +27,9 @@ export async function quoteCurrencies(db: D1Database): Promise<CurrencyCode[]> {
   );
 }
 
+/** Upserts rates with multi-row statements: two years of daily rates is a handful of D1 queries. */
 export async function storeRates(db: D1Database, rates: readonly FxRate[]): Promise<number> {
-  await batchInChunks(
-    db,
-    rates.map((r) => insertStatement(db, fxRatesTable, r, 'upsert')),
-  );
+  await runSpecs(db, bulkInsertSpecs(fxRatesTable, rates, 'upsert'));
   return rates.length;
 }
 

@@ -51,6 +51,16 @@
           "disableIOS": true,
           "androidIntentFilters": ["image/*"]
         }
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 25
+          }
+        }
       ]
     ],
     "experiments": {

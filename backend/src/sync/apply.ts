@@ -5,8 +5,22 @@ import {
   planTransactionSync,
   type IdFactory,
 } from '@manaclaude/connectors';
-import type { Connection, Id, SyncResult, Transaction } from '@manaclaude/shared';
-import { insertStatement, selectAll, updateStatement } from '../db/table';
+import {
+  applyRules,
+  type Connection,
+  type Id,
+  type SyncResult,
+  type Transaction,
+} from '@manaclaude/shared';
+import { selectAll, updateStatement } from '../db/table';
+import {
+  bulkByIdsSpecs,
+  bulkInsertSpecs,
+  bulkUpdateSpecs,
+  runSpecs,
+  type StatementSpec,
+} from '../db/bulk';
+import type { QueryBudget } from '../db/meter';
 import {
   accountsTable,
   activitiesTable,
@@ -14,6 +28,7 @@ import {
   categoriesTable,
   connectionsTable,
   holdingsTable,
+  rulesTable,
   securitiesTable,
   taxLotsTable,
   transactionsTable,
@@ -21,7 +36,6 @@ import {
 import { newId, nowIso } from '../util/ids';
 import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
-import { runRules } from '../services/rules';
 
 export interface SyncSummary {
   accountsCreated: number;
@@ -36,25 +50,32 @@ export interface SyncSummary {
   activities: number;
   /** Things the planners noticed (account in another connection, odd currency...). */
   warnings: string[];
+  /**
+   * Transactions and activities still to write. A long first sync stops after
+   * maxRows rows; the connection stays "syncing" with its old cursor, and the
+   * next sync (the app's next call or the five-minute cron) reads the same
+   * window again and continues where this one stopped.
+   */
+  remaining: number;
+  /** True when remaining > 0 and another sync call should follow. */
+  more: boolean;
 }
 
-/** D1 runs one batch as one transaction. Past this size a plan is split to stay under platform limits. */
-export const MAX_BATCH_STATEMENTS = 500;
+export interface ApplyOptions {
+  /** Queries this call may still spend. Without one, nothing is held back. */
+  budget?: QueryBudget;
+  /** Most new transactions and activities written in one call (CPU and queries on the Free plan). */
+  maxRows?: number;
+}
+
+/** New rows written per sync call. Three steps for the 3,000-row test fixture. */
+export const MAX_ROWS_PER_SYNC = 1200;
 
 /**
- * Runs the statements of one plan as one D1 batch (all or nothing). A plan
- * longer than MAX_BATCH_STATEMENTS (a first sync with years of history) is
- * split into consecutive batches; every statement is safe to repeat, so a
- * failed sync is simply run again.
+ * Queries kept back for the steps after the data is saved: ATM cash deposits
+ * (about 9) and the transfer matcher (5 reads, up to 3 writes).
  */
-export async function runPlanBatch(
-  db: D1Database,
-  statements: D1PreparedStatement[],
-): Promise<void> {
-  for (let i = 0; i < statements.length; i += MAX_BATCH_STATEMENTS) {
-    await db.batch(statements.slice(i, i + MAX_BATCH_STATEMENTS));
-  }
-}
+export const AFTER_SYNC_RESERVE = 18;
 
 const idFactory: IdFactory = (kind) => newId(kind);
 
@@ -73,25 +94,36 @@ export function categoryFromHint(
   return id ? { categoryId: id, categorySource: 'provider' } : null;
 }
 
+const newestFirst = (a: { date: string }, b: { date: string }) =>
+  a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+
 /**
  * Applies a connector's SyncResult to D1 using session D's planners:
  * planAccountSync (accounts, balances, snapshots), planTransactionSync
  * (inserts, updates, removals) and planInvestmentSync (securities, holdings,
- * lots, activities). Each plan is written as one D1 batch, in that order, and
- * the connection row (cursor, last sync, health) is written in the last batch,
- * so a failure before the end leaves the cursor where it was and the next sync
- * reads the same window again. Then rules run on the new rows, ATM withdrawals
- * get their cash deposit, and the transfer matcher runs.
+ * lots, activities).
+ *
+ * Writes are multi-row statements (db/bulk.ts), so the cost in D1 queries
+ * depends on the number of tables touched, not the number of rows. Rules run
+ * in memory on the new rows before they are written. New transactions and
+ * activities go in newest first, at most `maxRows` per call: when more are
+ * left, the connection is saved as "syncing" without moving its cursor, so the
+ * next call fetches the same window, sees the rows already written as existing
+ * (no duplicates) and writes the next part. Only the last part moves the
+ * cursor and marks the connection healthy, and only then do ATM deposits and
+ * the transfer matcher run.
  */
 export async function applySyncResult(
   db: D1Database,
   connection: Connection,
   result: SyncResult,
   now = nowIso(),
+  opts: ApplyOptions = {},
 ): Promise<SyncSummary> {
   const warnings: string[] = [];
+  const maxRows = opts.maxRows ?? MAX_ROWS_PER_SYNC;
 
-  // -- accounts --------------------------------------------------------------
+  // -- reads ---------------------------------------------------------------------
   const allAccounts = await selectAll(db, accountsTable);
   const accountPlan = planAccountSync({
     connectionId: connection.id,
@@ -107,15 +139,6 @@ export async function applySyncResult(
     );
   }
   warnings.push(...accountPlan.warnings);
-  const accountStatements: D1PreparedStatement[] = [
-    ...accountPlan.inserts.map((a) => insertStatement(db, accountsTable, a)),
-    ...accountPlan.updates
-      .filter((u) => Object.keys(u.changes).length > 0)
-      .map((u) => updateStatement(db, accountsTable, { id: u.id }, u.changes)),
-    ...accountPlan.balanceSnapshots.map((s) =>
-      insertStatement(db, balanceSnapshotsTable, s, 'upsert'),
-    ),
-  ];
   const syncedAccountIds = [...accountPlan.accountIds.values()];
   const connectionAccountIds = [
     ...new Set([
@@ -123,8 +146,15 @@ export async function applySyncResult(
       ...accountPlan.inserts.map((a) => a.id),
     ]),
   ];
+  const accountSpecs: StatementSpec[] = [
+    ...bulkInsertSpecs(accountsTable, accountPlan.inserts),
+    ...bulkUpdateSpecs(
+      accountsTable,
+      accountPlan.updates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
+    ),
+    ...bulkInsertSpecs(balanceSnapshotsTable, accountPlan.balanceSnapshots, 'upsert'),
+  ];
 
-  // -- transactions ----------------------------------------------------------
   const existing =
     syncedAccountIds.length === 0
       ? []
@@ -134,8 +164,6 @@ export async function applySyncResult(
           `account_id IN (${placeholders(syncedAccountIds.length)})`,
           syncedAccountIds,
         );
-  const categories = await selectAll(db, categoriesTable);
-  const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
   const txnPlan = planTransactionSync({
     connectionId: connection.id,
     accounts: accountPlan.accountIds,
@@ -144,51 +172,25 @@ export async function applySyncResult(
     now,
     newId: idFactory,
   });
-  const byId = new Map(existing.map((t) => [t.id, t]));
-  const inserts = txnPlan.inserts.map((t) => {
-    const hint = t.externalId ? txnPlan.categoryHints[t.externalId] : undefined;
-    const fromHint = categoryFromHint(t, hint, categoryByName);
-    return fromHint ? { ...t, ...fromHint } : t;
-  });
-  const txnStatements: D1PreparedStatement[] = inserts.map((t) =>
-    insertStatement(db, transactionsTable, t, 'ignore'),
-  );
-  for (const u of txnPlan.updates) {
-    if (Object.keys(u.changes).length === 0) continue;
-    txnStatements.push(updateStatement(db, transactionsTable, { id: u.id }, u.changes));
-  }
-  let removed = 0;
-  for (const r of txnPlan.removals) {
-    const row = byId.get(r.id);
-    // A split the user made stays whole; a row they touched or attached a receipt to is kept, out of reports.
-    if (row?.isSplitParent) continue;
-    removed += 1;
-    const keep = r.hadUserEdits || (row?.receiptId ?? null) !== null;
-    txnStatements.push(
-      db
-        .prepare(
-          "UPDATE transfer_links SET status = 'rejected', updated_at = ? WHERE (out_transaction_id = ? OR in_transaction_id = ?) AND status != 'rejected'",
-        )
-        .bind(now, r.id, r.id),
-      db
-        .prepare(
-          'UPDATE transactions SET transfer_link_id = NULL WHERE transfer_link_id IN (SELECT id FROM transfer_links WHERE out_transaction_id = ? OR in_transaction_id = ?)',
-        )
-        .bind(r.id, r.id),
-      keep
-        ? db
-            .prepare('UPDATE transactions SET excluded = 1, updated_at = ? WHERE id = ?')
-            .bind(now, r.id)
-        : db
-            .prepare('DELETE FROM transactions WHERE id = ? OR split_parent_id = ?')
-            .bind(r.id, r.id),
-    );
-  }
+  const [categories, rules] =
+    txnPlan.inserts.length > 0
+      ? await Promise.all([
+          selectAll(db, categoriesTable),
+          selectAll(db, rulesTable, 'enabled = 1'),
+        ])
+      : [[], []];
+  const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
+  const allInserts = txnPlan.inserts
+    .map((t) => {
+      const hint = t.externalId ? txnPlan.categoryHints[t.externalId] : undefined;
+      const fromHint = categoryFromHint(t, hint, categoryByName);
+      const withHint = fromHint ? { ...t, ...fromHint } : t;
+      return rules.length > 0 ? applyRules(withHint, rules).transaction : withHint;
+    })
+    .sort(newestFirst);
 
-  // -- investments -----------------------------------------------------------
-  const invStatements: D1PreparedStatement[] = [];
-  let holdingsTouched = 0;
-  let activitiesTouched = 0;
+  // -- investments (reads) ----------------------------------------------------------
+  let inv: ReturnType<typeof planInvestmentSync> | null = null;
   if (result.holdings.length > 0 || result.activities.length > 0) {
     const ph = placeholders(syncedAccountIds.length);
     const [securities, holdings, taxLots, activities] = await Promise.all([
@@ -208,7 +210,7 @@ export async function applySyncResult(
         ? selectAll(db, activitiesTable, `account_id IN (${ph})`, syncedAccountIds)
         : [],
     ]);
-    const inv = planInvestmentSync({
+    inv = planInvestmentSync({
       connectionId: connection.id,
       accounts: accountPlan.accountIds,
       securities,
@@ -220,63 +222,146 @@ export async function applySyncResult(
       newId: idFactory,
     });
     warnings.push(...inv.warnings);
-    holdingsTouched = inv.holdingInserts.length + inv.holdingUpdates.length;
-    activitiesTouched = inv.activityInserts.length + inv.activityUpdates.length;
-    for (const s of inv.securityInserts)
-      invStatements.push(insertStatement(db, securitiesTable, s, 'ignore'));
-    for (const h of inv.holdingInserts) invStatements.push(insertStatement(db, holdingsTable, h));
-    for (const u of inv.holdingUpdates)
-      invStatements.push(updateStatement(db, holdingsTable, { id: u.id }, u.changes));
-    for (const id of inv.holdingRemovals)
-      invStatements.push(db.prepare('DELETE FROM holdings WHERE id = ?').bind(id));
-    for (const l of inv.lotInserts) invStatements.push(insertStatement(db, taxLotsTable, l));
-    for (const u of inv.lotUpdates)
-      invStatements.push(updateStatement(db, taxLotsTable, { id: u.id }, u.changes));
-    for (const id of inv.lotRemovals)
-      invStatements.push(db.prepare('DELETE FROM tax_lots WHERE id = ?').bind(id));
-    for (const a of inv.activityInserts)
-      invStatements.push(insertStatement(db, activitiesTable, a, 'ignore'));
-    for (const u of inv.activityUpdates)
-      invStatements.push(updateStatement(db, activitiesTable, { id: u.id }, u.changes));
   }
+  const allActivityInserts = [...(inv?.activityInserts ?? [])].sort(newestFirst);
 
-  // -- write: accounts, transactions, then investments and the connection row ----
+  // -- what fits in this call ------------------------------------------------------------
+  const byId = new Map(existing.map((t) => [t.id, t]));
+  const removals = txnPlan.removals.filter((r) => !byId.get(r.id)?.isSplitParent);
+  const keepIds = removals
+    .filter((r) => r.hadUserEdits || (byId.get(r.id)?.receiptId ?? null) !== null)
+    .map((r) => r.id);
+  const deleteIds = removals.map((r) => r.id).filter((id) => !keepIds.includes(id));
+  const removedIds = removals.map((r) => r.id);
+
+  const build = (txnCount: number, actCount: number) => {
+    const inserts = allInserts.slice(0, txnCount);
+    const activityInserts = allActivityInserts.slice(0, actCount);
+    const txnSpecs: StatementSpec[] = [
+      ...bulkInsertSpecs(transactionsTable, inserts, 'ignore'),
+      ...bulkUpdateSpecs(
+        transactionsTable,
+        txnPlan.updates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
+      ),
+      // A split the user made stays whole; a row they touched or attached a receipt to is kept, out of reports.
+      ...bulkByIdsSpecs(
+        "UPDATE transfer_links SET status = 'rejected', updated_at = ? WHERE status != 'rejected' AND (out_transaction_id IN (SELECT value FROM json_each(?2)) OR in_transaction_id IN (SELECT value FROM json_each(?2)))",
+        removedIds,
+        [now],
+      ),
+      ...bulkByIdsSpecs(
+        'UPDATE transactions SET transfer_link_id = NULL WHERE transfer_link_id IN (SELECT id FROM transfer_links WHERE out_transaction_id IN (SELECT value FROM json_each(?1)) OR in_transaction_id IN (SELECT value FROM json_each(?1)))',
+        removedIds,
+      ),
+      ...bulkByIdsSpecs(
+        'UPDATE transactions SET excluded = 1, updated_at = ? WHERE id IN (SELECT value FROM json_each(?2))',
+        keepIds,
+        [now],
+      ),
+      ...bulkByIdsSpecs(
+        'DELETE FROM transactions WHERE id IN (SELECT value FROM json_each(?1)) OR split_parent_id IN (SELECT value FROM json_each(?1))',
+        deleteIds,
+      ),
+    ];
+    const invSpecs: StatementSpec[] = inv
+      ? [
+          ...bulkInsertSpecs(securitiesTable, inv.securityInserts, 'ignore'),
+          ...bulkInsertSpecs(holdingsTable, inv.holdingInserts),
+          ...bulkUpdateSpecs(
+            holdingsTable,
+            inv.holdingUpdates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
+          ),
+          ...bulkByIdsSpecs(
+            'DELETE FROM holdings WHERE id IN (SELECT value FROM json_each(?1))',
+            inv.holdingRemovals,
+          ),
+          ...bulkInsertSpecs(taxLotsTable, inv.lotInserts),
+          ...bulkUpdateSpecs(
+            taxLotsTable,
+            inv.lotUpdates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
+          ),
+          ...bulkByIdsSpecs(
+            'DELETE FROM tax_lots WHERE id IN (SELECT value FROM json_each(?1))',
+            inv.lotRemovals,
+          ),
+          ...bulkInsertSpecs(activitiesTable, activityInserts, 'ignore'),
+          ...bulkUpdateSpecs(
+            activitiesTable,
+            inv.activityUpdates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
+          ),
+        ]
+      : [];
+    return { inserts, activityInserts, specs: [...txnSpecs, ...invSpecs] };
+  };
+
+  let txnCount = Math.min(allInserts.length, maxRows);
+  let actCount = Math.min(allActivityInserts.length, Math.max(0, maxRows - txnCount));
+  let plan = build(txnCount, actCount);
+  if (opts.budget) {
+    // Account writes, the connection row, and (on the last part) the after-sync steps must fit too.
+    const fits = () => {
+      const last = txnCount === allInserts.length && actCount === allActivityInserts.length;
+      const need = accountSpecs.length + plan.specs.length + 1 + (last ? AFTER_SYNC_RESERVE : 0);
+      return opts.budget!.allows(need);
+    };
+    while (!fits() && txnCount + actCount > 0) {
+      if (actCount > 0) actCount = Math.floor(actCount / 2);
+      else txnCount = Math.floor(txnCount / 2);
+      plan = build(txnCount, actCount);
+    }
+  }
+  const remaining = allInserts.length - txnCount + (allActivityInserts.length - actCount);
+  const more = remaining > 0;
+
+  // -- write: accounts, then the data and the connection row ---------------------------
   const after = afterSyncSuccess(connection, now, result.nextCursor, connectionAccountIds);
-  const connectionStatement = updateStatement(
-    db,
-    connectionsTable,
-    { id: connection.id },
+  const connectionSpec = bulkUpdateSpecs(connectionsTable, [
     {
-      accountIds: after.accountIds,
-      syncCursor: after.syncCursor,
-      lastSyncAt: after.lastSyncAt,
-      lastSuccessfulSyncAt: after.lastSuccessfulSyncAt,
-      status: after.status,
-      lastError: after.lastError,
-      updatedAt: after.updatedAt,
+      key: { id: connection.id },
+      changes: more
+        ? {
+            // Part of a long first sync: keep the old cursor so the next call reads the same window.
+            accountIds: after.accountIds,
+            lastSyncAt: now,
+            status: 'syncing' as const,
+            lastError: null,
+            updatedAt: now,
+          }
+        : {
+            accountIds: after.accountIds,
+            syncCursor: after.syncCursor,
+            lastSyncAt: after.lastSyncAt,
+            lastSuccessfulSyncAt: after.lastSuccessfulSyncAt,
+            status: after.status,
+            lastError: after.lastError,
+            updatedAt: after.updatedAt,
+          },
     },
-  );
-  await runPlanBatch(db, accountStatements);
-  await runPlanBatch(db, txnStatements);
-  await runPlanBatch(db, [...invStatements, connectionStatement]);
+  ]);
+  await runSpecs(db, accountSpecs);
+  await runSpecs(db, [...plan.specs, ...connectionSpec]);
 
-  // -- after the data is saved ---------------------------------------------------
-  await runRules(
-    db,
-    inserts.map((t) => t.id),
-  );
-  const atm = await recordAtmWithdrawals(db, inserts);
-  const match = await runTransferMatcher(db);
+  // -- after the last part is saved -----------------------------------------------------
+  let linked = 0;
+  let suggested = 0;
+  if (!more && (!opts.budget || opts.budget.allows(AFTER_SYNC_RESERVE))) {
+    const atm = await recordAtmWithdrawals(db, undefined, { accountIds: connectionAccountIds });
+    const match = await runTransferMatcher(db);
+    linked = match.linked + atm;
+    suggested = match.suggested;
+  }
   return {
     accountsCreated: accountPlan.inserts.length,
-    inserted: inserts.length,
+    inserted: plan.inserts.length,
     updated: txnPlan.updates.length,
-    removed,
-    linked: match.linked + atm,
-    suggested: match.suggested,
-    holdings: holdingsTouched,
-    activities: activitiesTouched,
+    removed: removals.length,
+    linked,
+    suggested,
+    holdings: inv ? inv.holdingInserts.length + inv.holdingUpdates.length : 0,
+    activities: plan.activityInserts.length + (inv?.activityUpdates.length ?? 0),
     warnings,
+    remaining,
+    more,
   };
 }
 

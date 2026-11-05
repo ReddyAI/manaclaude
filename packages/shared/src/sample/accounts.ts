@@ -19,7 +19,7 @@ const seeds: AccountSeed[] = [
     currency: 'USD',
     balance: 842_017,
     mask: '4821',
-    connectionId: 'conn_teller_lakeshore',
+    connectionId: 'conn_simplefin_lakeshore',
     externalId: 'ext_chk_1',
   },
   {
@@ -44,7 +44,7 @@ const seeds: AccountSeed[] = [
     balance: 128_433,
     creditLimit: 1_200_000,
     mask: '1180',
-    connectionId: 'conn_teller_lakeshore',
+    connectionId: 'conn_simplefin_lakeshore',
     externalId: 'ext_cc_1',
   },
   {
@@ -187,8 +187,8 @@ export function sampleConnections(now: Date): Connection[] {
   return [
     {
       ...base,
-      id: 'conn_teller_lakeshore',
-      connectorId: 'teller',
+      id: 'conn_simplefin_lakeshore',
+      connectorId: 'simplefin',
       institutionName: 'Lakeshore Bank',
       status: 'healthy',
       lastSyncAt: ago(12),
@@ -261,10 +261,10 @@ export function sampleConnections(now: Date): Connection[] {
   ];
 }
 
-/** Free slots used so far. Teller counts a login that was later deleted (lifetime cap). */
+/** Free slots used so far. Plaid counts a login that was later deleted (lifetime cap). */
 export const SAMPLE_CONNECTOR_SLOTS_USED: Record<string, number> = {
-  teller: 2,
-  plaid: 2,
+  simplefin: 1,
+  plaid: 3,
   sophtron: 1,
   snaptrade: 1,
   zerodha_kite: 1,

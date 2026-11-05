@@ -12,7 +12,8 @@ import {
   type TransferLink,
   type TransferLinkKind,
 } from '@manaclaude/shared';
-import { insertStatement, selectAll } from '../db/table';
+import { bulkInsertSpecs, runSpecs, type StatementSpec } from '../db/bulk';
+import { selectAll } from '../db/table';
 import {
   accountsTable,
   categoriesTable,
@@ -184,40 +185,26 @@ export async function runTransferMatcher(
   ]);
   const plan = planTransferMatches({ transactions, accounts, categories, rates, existingLinks });
   const now = nowIso();
+  // Multi-row writes: three queries at most, however many links (Free plan query limit).
+  // The unique indexes (one active link per side, one row per pair) skip anything a
+  // concurrent run stored first, and linkIdsSpec only points rows at links that exist.
+  const autoLinks = plan.auto.map((c) => linkFromCandidate(c, 'auto', 'matcher', now));
+  const suggestedLinks = plan.suggested.map((c) =>
+    linkFromCandidate(c, 'suggested', 'matcher', now),
+  );
   let linked = 0;
-  for (const c of plan.auto) {
-    const link = linkFromCandidate(c, 'auto', 'matcher', now);
-    try {
-      const results = await db.batch([
-        insertStatement(db, transferLinksTable, link),
-        db
-          .prepare(
-            'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id = ? AND transfer_link_id IS NULL',
-          )
-          .bind(link.id, now, c.out.id),
-        db
-          .prepare(
-            'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id = ? AND transfer_link_id IS NULL',
-          )
-          .bind(link.id, now, c.in.id),
-      ]);
-      if ((results[1]?.meta.changes ?? 0) === 1 && (results[2]?.meta.changes ?? 0) === 1)
-        linked += 1;
-    } catch {
-      // A concurrent run linked one side first; the unique index rolled this batch back.
-    }
+  if (autoLinks.length > 0) {
+    const results = await runSpecs(db, [
+      ...bulkInsertSpecs(transferLinksTable, autoLinks, 'ignore'),
+      linkIdsSpec(autoLinks, now),
+    ]);
+    linked = results.slice(0, -1).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
   }
   let suggested = 0;
-  if (plan.suggested.length > 0) {
-    const results = await db.batch(
-      plan.suggested.map((c) =>
-        insertStatement(
-          db,
-          transferLinksTable,
-          linkFromCandidate(c, 'suggested', 'matcher', now),
-          'ignore',
-        ),
-      ),
+  if (suggestedLinks.length > 0) {
+    const results = await runSpecs(
+      db,
+      bulkInsertSpecs(transferLinksTable, suggestedLinks, 'ignore'),
     );
     suggested = results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
   }
@@ -250,4 +237,27 @@ export function linkFromCandidate(
 
 export function isActiveLink(link: TransferLink): boolean {
   return ACTIVE_TRANSFER_LINK_STATUSES.includes(link.status);
+}
+
+/**
+ * Sets transfer_link_id on both sides of each link that is stored (a link the
+ * unique indexes skipped sets nothing), in one statement.
+ */
+export function linkIdsSpec(
+  links: readonly Pick<TransferLink, 'id' | 'outTransactionId' | 'inTransactionId'>[],
+  now: string,
+): StatementSpec {
+  const sides = links.flatMap((l) => [
+    [l.outTransactionId, l.id],
+    [l.inTransactionId, l.id],
+  ]);
+  return {
+    sql: `UPDATE transactions SET transfer_link_id = json_extract(j.value, '$[1]'), updated_at = ?1
+      FROM json_each(?2) AS j
+      WHERE transactions.id = json_extract(j.value, '$[0]')
+        AND transactions.transfer_link_id IS NULL
+        AND EXISTS (SELECT 1 FROM transfer_links l WHERE l.id = json_extract(j.value, '$[1]'))`,
+    params: [now, JSON.stringify(sides)],
+    rows: sides.length,
+  };
 }

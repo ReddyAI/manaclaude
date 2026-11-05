@@ -17,8 +17,6 @@ export interface Env {
   DB: D1Database;
   /** Receipt images and the statement vault. */
   FILES: R2Bucket;
-  /** Teller's client certificate (mTLS binding). Only Teller calls go through it. */
-  TELLER_CERT?: { fetch: typeof fetch };
   /** Workers AI. */
   AI?: AiBinding;
   /** OAuth grants and tokens for the MCP server. */
@@ -35,8 +33,6 @@ export interface Env {
   OXR_APP_ID?: string;
   /** Key for the encrypted per-login connector credentials (sync/credentials.ts). */
   CREDENTIALS_SECRET?: string;
-  /** Teller application id (account linking, session E2). */
-  TELLER_APPLICATION_ID?: string;
   PLAID_CLIENT_ID?: string;
   PLAID_SECRET?: string;
   /** sandbox, development or production. */
@@ -67,4 +63,11 @@ export interface Env {
   PUBLIC_URL?: string;
   /** Allowed browser origin for the web app (CORS). "*" in local dev. */
   APP_ORIGIN?: string;
+  /**
+   * "true" lets the app link banks through Plaid. Off by default: the owner
+   * asked that nothing calls Plaid, not even its Sandbox, until they say so.
+   */
+  PLAID_LINK_ENABLED?: string;
+  /** OAuth redirect URI registered in Plaid's dashboard, for Plaid Link on the web (optional). */
+  PLAID_REDIRECT_URI?: string;
 }

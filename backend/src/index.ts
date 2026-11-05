@@ -10,16 +10,24 @@ import {
 import { handleAuthorize } from './mcp/authorize';
 import { handleMcp } from './mcp/handler';
 import type { McpAuthProps } from './mcp/tools';
-import { syncAllConnections } from './sync/run';
+import { syncDueConnections } from './sync/run';
 
 export type { Env } from './env';
+
+/**
+ * Connector syncs run on their own cron, a few connections per invocation, so
+ * no invocation goes over the Free plan's D1 query limit (wrangler.toml lists it).
+ */
+export const SYNC_CRON = '*/5 * * * *';
 
 /**
  * Worker entry point.
  * - /v1/*   the app's API (bearer APP_API_TOKEN), see api/app.ts
  * - /mcp    remote MCP server, Streamable HTTP, OAuth 2.1 (workers-oauth-provider)
  * - /authorize, /token, /register, /.well-known/*  OAuth endpoints
- * - cron    hourly FX; daily ECB rates, backfill, connector syncs and AI jobs
+ * - cron    every 5 minutes: connector syncs (unfinished first syncs, then connections due
+ *           today), within one invocation's D1 allowance; hourly FX; daily ECB rates,
+ *           backfill and AI jobs
  */
 export function createWorker(deps: AppDeps = {}) {
   const app = createApp(deps);
@@ -75,6 +83,13 @@ export function createWorker(deps: AppDeps = {}) {
       ctx: ExecutionContext,
     ): Promise<void> {
       const f = deps.fetch ?? fetch;
+      if (controller.cron === SYNC_CRON) {
+        await syncDueConnections(env, {
+          fetch: deps.fetch,
+          now: () => new Date(controller.scheduledTime),
+        }).catch((e) => console.error('Connector syncs failed', String(e)));
+        return;
+      }
       if (controller.cron === '0 * * * *') {
         await fetchOpenExchangeRates(env, f).catch((e) =>
           console.error('OXR fetch failed', String(e)),
@@ -87,9 +102,6 @@ export function createWorker(deps: AppDeps = {}) {
       );
       await backfillMissingHistory(env, f).catch((e) =>
         console.error('FX backfill failed', String(e)),
-      );
-      await syncAllConnections(env, { fetch: deps.fetch }).catch((e) =>
-        console.error('Connector syncs failed', String(e)),
       );
       ctx.waitUntil(runDailyJobs(env, today, deps).then(() => undefined));
     },

@@ -197,8 +197,8 @@ const ACCOUNT_CURRENCY: Record<Id, string> = {
 };
 
 const CONNECTION_OF: Record<Id, Id | null> = {
-  acc_checking: 'conn_teller_lakeshore',
-  acc_card_cashback: 'conn_teller_lakeshore',
+  acc_checking: 'conn_simplefin_lakeshore',
+  acc_card_cashback: 'conn_simplefin_lakeshore',
   acc_savings: 'conn_plaid_harbor',
   acc_card_travel: 'conn_sophtron_summit',
   acc_brokerage: 'conn_snaptrade_northfield',
@@ -775,7 +775,7 @@ export function sampleTransactionData(
     merchantId: 'mer_amazon',
     categoryId: 'cat_shopping',
     categorySource: 'ai',
-    connectionId: 'conn_teller_lakeshore',
+    connectionId: 'conn_simplefin_lakeshore',
   });
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   card(addDays(thisMonthStart, -6), 'mer_target', 6_450, { name: 'Target' });

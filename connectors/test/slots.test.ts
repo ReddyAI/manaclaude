@@ -13,10 +13,10 @@ const def = (id: string) => getConnector(id)!;
 
 describe('slot tracking', () => {
   it('counts free slots left, flags low and exhausted', () => {
-    expect(slotStatus(def('teller'), { teller: 3 })).toMatchObject({
-      total: 100,
+    expect(slotStatus(def('plaid'), { plaid: 3 })).toMatchObject({
+      total: 10,
       used: 3,
-      left: 97,
+      left: 7,
       lifetime: true,
       exhausted: false,
       low: false,
@@ -31,8 +31,8 @@ describe('slot tracking', () => {
   });
 
   it('lifetime caps never give a slot back; other caps do', () => {
-    const afterTeller = recordConnectionCreated({}, 'teller');
-    expect(recordConnectionDeleted(afterTeller, 'teller')).toEqual({ teller: 1 });
+    const afterPlaid = recordConnectionCreated({}, 'plaid');
+    expect(recordConnectionDeleted(afterPlaid, 'plaid')).toEqual({ plaid: 1 });
     const afterSnap = recordConnectionCreated({ snaptrade: 4 }, 'snaptrade');
     expect(afterSnap).toEqual({ snaptrade: 5 });
     expect(recordConnectionDeleted(afterSnap, 'snaptrade')).toEqual({ snaptrade: 4 });
@@ -46,54 +46,75 @@ describe('slot tracking', () => {
   });
 
   it('only free connectors with slots can be added; paid and unavailable never', () => {
-    expect(canAddFreeConnection(def('teller'), {})).toBe(true);
-    expect(canAddFreeConnection(def('teller'), { teller: 100 })).toBe(false);
+    expect(canAddFreeConnection(def('plaid'), {})).toBe(true);
+    expect(canAddFreeConnection(def('plaid'), { plaid: 10 })).toBe(false);
+    expect(canAddFreeConnection(def('teller'), {})).toBe(false);
     expect(canAddFreeConnection(def('simplefin'), {})).toBe(false);
     expect(canAddFreeConnection(def('mercury'), {})).toBe(false);
   });
 
   it('warns that deleting a lifetime login wastes the slot', () => {
-    expect(deletionImpact('teller')).toMatchObject({ freesSlot: false });
-    expect(deletionImpact('teller').message).toMatch(/Repair it instead/);
+    expect(deletionImpact('plaid')).toMatchObject({ freesSlot: false });
+    expect(deletionImpact('plaid').message).toMatch(/Repair it instead/);
     expect(deletionImpact('snaptrade').freesSlot).toBe(true);
   });
 });
 
 describe('choosing a connector for a new login', () => {
-  it('banks: Teller, then Sophtron, then Plaid', () => {
-    expect(chooseConnector('bank', {}).connectorId).toBe('teller');
-    expect(chooseConnector('bank', { teller: 100 })).toMatchObject({
-      connectorId: 'sophtron',
-      skipped: [{ connectorId: 'teller', reason: 'no free slots left' }],
+  it('banks: Sophtron, then SimpleFIN, then Plaid (Teller shut down in July 2026)', () => {
+    expect(chooseConnector('bank', {}).connectorId).toBe('sophtron');
+    expect(chooseConnector('bank', {}, { exclude: new Set(['sophtron']) })).toMatchObject({
+      connectorId: 'simplefin',
+      skipped: [{ connectorId: 'sophtron', reason: 'excluded' }],
     });
-    expect(chooseConnector('bank', {}, { exclude: new Set(['teller']) }).connectorId).toBe(
-      'sophtron',
+    // SimpleFIN is paid but planned: it is not skipped as paid.
+    expect(chooseConnector('bank', {}, { exclude: new Set(['sophtron']) }).connectorId).toBe(
+      'simplefin',
     );
+  });
+
+  it('never offers Teller', () => {
+    for (const kind of ['bank', 'brokerage', 'crypto', 'paidFallback'] as const) {
+      const choice = chooseConnector(kind, {}, { allowPaid: true });
+      expect(choice.connectorId).not.toBe('teller');
+      expect(choice.skipped.map((s) => s.connectorId)).not.toContain('teller');
+    }
   });
 
   it('keeps Plaid for banks the first two cannot reach', () => {
     expect(chooseConnector('bank', {}).connectorId).not.toBe('plaid');
     expect(
-      chooseConnector('bank', {}, { exclude: new Set(['teller', 'sophtron']) }).connectorId,
+      chooseConnector('bank', {}, { exclude: new Set(['sophtron', 'simplefin']) }).connectorId,
     ).toBe('plaid');
     expect(
-      chooseConnector('bank', { plaid: 10 }, { exclude: new Set(['teller', 'sophtron']) })
+      chooseConnector('bank', { plaid: 10 }, { exclude: new Set(['sophtron', 'simplefin']) })
         .connectorId,
     ).toBeNull();
   });
 
-  it('brokerages: SnapTrade first, then the broker API, Sophtron, Plaid', () => {
+  it('brokerages: SnapTrade, then Zerodha Kite, then Sophtron', () => {
     expect(chooseConnector('brokerage', {}).connectorId).toBe('snaptrade');
-    expect(chooseConnector('brokerage', { snaptrade: 20 }).connectorId).toBe('ibkr_flex');
+    expect(chooseConnector('brokerage', { snaptrade: 20 }).connectorId).toBe('zerodha_kite');
+    expect(
+      chooseConnector('brokerage', { snaptrade: 20 }, { exclude: new Set(['zerodha_kite']) })
+        .connectorId,
+    ).toBe('sophtron');
   });
 
-  it('paid fallbacks only when allowed, SimpleFIN before Lunch Flow', () => {
-    const none = new Set(['teller', 'sophtron', 'plaid']);
+  it("crypto: the exchange's own API, Coinbase then WazirX", () => {
+    expect(chooseConnector('crypto', {}).connectorId).toBe('coinbase');
+    expect(chooseConnector('crypto', {}, { exclude: new Set(['coinbase']) }).connectorId).toBe(
+      'wazirx',
+    );
+  });
+
+  it('other paid fallbacks only when allowed', () => {
+    const none = new Set(['sophtron', 'simplefin', 'plaid']);
     expect(chooseConnector('bank', {}, { exclude: none }).connectorId).toBeNull();
     expect(chooseConnector('bank', {}, { exclude: none, allowPaid: true }).connectorId).toBe(
-      'simplefin',
+      'lunch_flow',
     );
-    expect(chooseConnector('paidFallback', {}, { allowPaid: true }).connectorId).toBe('simplefin');
+    expect(chooseConnector('paidFallback', {}, { allowPaid: true }).connectorId).toBe('lunch_flow');
   });
 
   it('can limit by region', () => {

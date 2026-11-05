@@ -16,7 +16,6 @@ GEMINI_API_KEY=
 # Local dev only: lets POST /v1/dev/seed load the invented sample data.
 ALLOW_SAMPLE_SEED=
 # Connector keys (all optional; see docs/setup.md for where each comes from).
-TELLER_APPLICATION_ID=
 PLAID_CLIENT_ID=
 PLAID_SECRET=
 PLAID_ENV=
@@ -26,3 +25,5 @@ SOPHTRON_USER_ID=
 SOPHTRON_ACCESS_KEY=
 KITE_API_KEY=
 KITE_API_SECRET=
+# "true" lets the app link banks through Plaid (off by default; see docs/setup.md, step 7).
+PLAID_LINK_ENABLED=

@@ -58,6 +58,7 @@ const TABLES = [
   'connections',
   'connector_slots',
   'connection_credentials',
+  'link_sessions',
 ];
 
 /** Migrated, empty database with the default categories. */

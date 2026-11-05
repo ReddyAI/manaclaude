@@ -51,3 +51,15 @@ export class ProviderDataError extends Error {
 export function repairNeeded(provider: string, why = 'login expired'): ConnectorRepairNeededError {
   return new ConnectorRepairNeededError(`${provider}: ${why}. Repair the connection to continue.`);
 }
+
+/**
+ * Something the person typed while linking is wrong or used up (a setup token
+ * already claimed, a key the provider rejects). The message is written for
+ * them and never contains what they typed.
+ */
+export class LinkInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LinkInputError';
+  }
+}

@@ -2,6 +2,7 @@ import type { ConnectorDefinition, ConnectorKind } from '@manaclaude/shared';
 import {
   CONNECTOR_REGISTRY,
   LINK_ORDER,
+  PLANNED_PAID_CONNECTORS,
   freeSlotsLeft,
   getConnector,
   withSlotUsage,
@@ -11,7 +12,7 @@ import {
  * Free-slot tracking. The ledger is FinanceDataset.connectorSlotsUsed:
  * connector id to the number of free connections used.
  *
- * - Lifetime caps (Teller 100 logins, Plaid Trial 10) count every login ever
+ * - Lifetime caps (Plaid Trial 10 logins; Teller's 100 before it shut down) count every login ever
  *   made. Deleting a connection does NOT give a slot back, which is why the app
  *   repairs a broken login instead of deleting and re-adding it.
  * - Other caps (SnapTrade's 20 connections) count live connections, so a delete
@@ -91,9 +92,10 @@ export interface ConnectorChoice {
 }
 
 /**
- * Pick the connector for a new login, in the brief's order: banks and cards
- * Teller, Sophtron, Plaid; brokerages SnapTrade, the broker's own API,
- * Sophtron, Plaid; paid fallbacks (SimpleFIN, Lunch Flow) only when allowed.
+ * Pick the connector for a new login, in LINK_ORDER: banks and cards
+ * Sophtron, SimpleFIN, Plaid; brokerages SnapTrade, Zerodha Kite, Sophtron;
+ * crypto the exchange's own API; other paid fallbacks (Lunch Flow) only when
+ * allowed. SimpleFIN is paid but planned, so it is not skipped as paid.
  * Plaid comes last on purpose: its 10 lifetime logins are kept for banks the
  * first two cannot reach, so pass those connectors in `exclude` once they fail.
  */
@@ -117,7 +119,7 @@ export function chooseConnector(
       skipped.push({ connectorId: id, reason: `not offered in ${opts.region}` });
       continue;
     }
-    if (def.availability === 'paid' && !opts.allowPaid) {
+    if (def.availability === 'paid' && !opts.allowPaid && !PLANNED_PAID_CONNECTORS.includes(id)) {
       skipped.push({ connectorId: id, reason: 'paid' });
       continue;
     }

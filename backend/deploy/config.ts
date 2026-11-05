@@ -1,10 +1,8 @@
-import { PLACEHOLDER_CERT_ID, PLACEHOLDER_D1_ID, PLACEHOLDER_KV_ID } from './names.ts';
+import { PLACEHOLDER_D1_ID, PLACEHOLDER_KV_ID } from './names.ts';
 
 export interface DeployValues {
   databaseId: string;
   kvId: string;
-  /** null = no Teller certificate; the mTLS binding is removed. */
-  certificateId: string | null;
   publicUrl: string;
 }
 
@@ -27,17 +25,6 @@ function replaceOnce(text: string, find: string, replacement: string, what: stri
 export function renderWranglerConfig(toml: string, v: DeployValues): string {
   let out = replaceOnce(toml, PLACEHOLDER_D1_ID, v.databaseId, 'D1 database id');
   out = replaceOnce(out, PLACEHOLDER_KV_ID, v.kvId, 'KV namespace id');
-  if (v.certificateId) {
-    out = replaceOnce(out, PLACEHOLDER_CERT_ID, v.certificateId, 'Teller certificate id');
-  } else {
-    // Drop the whole [[mtls_certificates]] table (up to the next table or the end).
-    const start = out.indexOf('[[mtls_certificates]]');
-    if (start === -1) throw new Error('wrangler.toml has no [[mtls_certificates]] block.');
-    const afterHeader = out.indexOf('\n', start) + 1;
-    const rest = afterHeader === 0 ? '' : out.slice(afterHeader);
-    const next = rest.search(/^\[/m);
-    out = out.slice(0, start) + (next === -1 ? '' : rest.slice(next));
-  }
   const url = /^PUBLIC_URL = .*$/m;
   if (!url.test(out)) throw new Error('wrangler.toml has no PUBLIC_URL line.');
   return out.replace(url, `PUBLIC_URL = ${JSON.stringify(v.publicUrl)}`);

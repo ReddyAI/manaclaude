@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   CloudflareApi,
   CloudflareError,
-  certificateName,
   ensureD1,
   ensureKv,
-  ensureMtlsCertificate,
   ensurePagesProject,
   ensureR2,
   ensureWorkersSubdomain,
@@ -59,24 +57,6 @@ describe('Cloudflare REST helpers', () => {
     const made = await ensureKv(api, ['manaclaude-oauth', 'manaclaude-api-OAUTH_KV']);
     expect(made).toMatchObject({ title: 'manaclaude-oauth', created: true });
     expect(state.kv).toHaveLength(4);
-  });
-
-  it('uploads the Teller certificate once per content and sends it as a non-CA certificate', async () => {
-    const { api, state } = apiFor();
-    const cert = '-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n';
-    const key = '-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----\n';
-    const first = await ensureMtlsCertificate(api, cert, key);
-    expect(first.created).toBe(true);
-    expect(await ensureMtlsCertificate(api, cert + '\n', key)).toEqual({
-      id: first.id,
-      created: false,
-    });
-    const post = state.calls.find((c) => c.method === 'POST');
-    expect(post?.body).toMatchObject({ name: certificateName(cert), ca: false });
-    // a different certificate gets its own upload
-    const other = await ensureMtlsCertificate(api, cert.replace('AAA', 'CCC'), key);
-    expect(other.created).toBe(true);
-    expect(state.certs).toHaveLength(2);
   });
 
   it('reads the workers.dev subdomain and registers one only when the account has none', async () => {

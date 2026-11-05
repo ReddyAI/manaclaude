@@ -1,0 +1,31 @@
+{
+  "Transactions": [
+    {
+      "TransactionID": "t-10101",
+      "Status": "Completed",
+      "Amount": 64.2,
+      "Currency": "USD",
+      "TransactionDate": "2026-10-20T00:00:00",
+      "Merchant": "Hillside Grocer",
+      "Description": "HILLSIDE GROCER 118"
+    },
+    {
+      "TransactionID": "t-10102",
+      "Status": "Completed",
+      "Amount": 12.5,
+      "Currency": "USD",
+      "TransactionDate": "2026-10-22T00:00:00",
+      "Merchant": "Corner Coffee",
+      "Description": "CORNER COFFEE"
+    },
+    {
+      "TransactionID": "t-10103",
+      "Status": "Completed",
+      "Amount": -500.0,
+      "Currency": "USD",
+      "TransactionDate": "2026-10-25T00:00:00",
+      "Merchant": "",
+      "Description": "ONLINE PAYMENT THANK YOU"
+    }
+  ]
+}

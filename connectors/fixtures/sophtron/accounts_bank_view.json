@@ -1,0 +1,35 @@
+{
+  "Accounts": [
+    {
+      "AccountID": "soph-acc-101",
+      "AccountName": "Cashback Card",
+      "AccountType": "CreditCard",
+      "AccountBalance": 1947.18,
+      "BalanceCurrency": "USD",
+      "AccountNumber": "4417",
+      "AccountStatus": "Active",
+      "InstitutionName": "Ridgeline Card Co"
+    },
+    {
+      "AccountID": "soph-acc-102",
+      "AccountName": "Auto Loan",
+      "AccountType": "Loan",
+      "AccountSubType": "Auto",
+      "AccountBalance": 15000.0,
+      "BalanceCurrency": "USD",
+      "AccountNumber": "7781",
+      "AccountStatus": "Active",
+      "InstitutionName": "Ridgeline Card Co"
+    },
+    {
+      "AccountID": "soph-acc-103",
+      "AccountName": "Quiet Card",
+      "AccountType": "CreditCard",
+      "AccountBalance": 250.0,
+      "BalanceCurrency": "USD",
+      "AccountNumber": "0090",
+      "AccountStatus": "Active",
+      "InstitutionName": "Ridgeline Card Co"
+    }
+  ]
+}

@@ -366,3 +366,5 @@ export interface MatchRunResponse {
   linked: number;
   suggested: number;
 }
+
+export * from './link';

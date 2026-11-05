@@ -12,3 +12,4 @@ export * from './sync';
 export * from './market';
 export * from './overview';
 export * from './kit';
+export * from './link';
