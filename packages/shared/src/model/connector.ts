@@ -209,7 +209,10 @@ export interface SocketLike {
   close(): void;
 }
 
-export type SocketConnector = (url: string, headers?: Record<string, string>) => Promise<SocketLike>;
+export type SocketConnector = (
+  url: string,
+  headers?: Record<string, string>,
+) => Promise<SocketLike>;
 
 export interface ConnectorContext {
   /**
