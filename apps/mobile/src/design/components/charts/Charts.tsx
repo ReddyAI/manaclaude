@@ -97,7 +97,6 @@ export function LineChart({
   };
   const pan = usePanGesture({
     runOnJS: true,
-    minDistance: 0,
     activeOffsetX: [-4, 4],
     failOffsetY: [-12, 12],
     onBegin: (e) => update(e.x),

@@ -20,3 +20,8 @@ export * from './policy/rules';
 export * from './investments/lots';
 export * from './import';
 export * from './api';
+export * from './investments/gains';
+export * from './planning/budgets';
+export * from './planning/fire';
+export * from './planning/recap';
+export * from './planning/recurring';
