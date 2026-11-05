@@ -1,0 +1,7 @@
+Account,Date,Payee,Notes,Category,Amount,Split_Amount,Cleared
+Pine Checking,2026-10-05,Maple Grocers,,Food,-54.10,,true
+Pine Checking,2026-10-07,Big Box Store,Shared order,,-90.00,,true
+Pine Checking,2026-10-07,Big Box Store,Towels,Home,,-55.00,true
+Pine Checking,2026-10-07,Big Box Store,Snacks,Food,,-35.00,true
+Pine Checking,2026-10-09,Transfer : Pine Savings,,,-300.00,,true
+Pine Savings,2026-10-09,Transfer : Pine Checking,,,300.00,,true
