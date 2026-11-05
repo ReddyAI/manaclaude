@@ -63,4 +63,11 @@ export interface Env {
   PUBLIC_URL?: string;
   /** Allowed browser origin for the web app (CORS). "*" in local dev. */
   APP_ORIGIN?: string;
+  /**
+   * "true" lets the app link banks through Plaid. Off by default: the owner
+   * asked that nothing calls Plaid, not even its Sandbox, until they say so.
+   */
+  PLAID_LINK_ENABLED?: string;
+  /** OAuth redirect URI registered in Plaid's dashboard, for Plaid Link on the web (optional). */
+  PLAID_REDIRECT_URI?: string;
 }

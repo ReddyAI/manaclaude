@@ -15,6 +15,14 @@ import {
   type TransferLinkStatus,
 } from '@manaclaude/shared';
 import { createSampleData } from '@manaclaude/shared/sample';
+import {
+  ConnectorConfigError,
+  ConnectorRateLimitedError,
+  ConnectorRepairNeededError,
+  LinkInputError,
+  ProviderDataError,
+  ProviderHttpError,
+} from '@manaclaude/connectors';
 import type { Env } from '../env';
 import { AiDisabledError, AiUnavailableError, providerStatus, type AiDeps } from '../ai/provider';
 import { answerQuestion } from '../ai/jobs/ask';
@@ -265,11 +273,35 @@ export function createApp(deps: AppDeps = {}) {
   app.onError((err, c) => {
     if (err instanceof ApiError)
       return c.json({ error: err.code, message: err.message }, err.status as 400);
+    // Provider trouble while linking or syncing: short messages that never carry a provider body or a credential.
+    if (err instanceof LinkInputError)
+      return c.json({ error: 'link_input', message: err.message }, 400);
+    if (err instanceof ConnectorConfigError)
+      return c.json({ error: 'not_configured', message: err.message }, 503);
+    if (err instanceof ConnectorRateLimitedError)
+      return c.json({ error: 'rate_limited', message: err.message }, 429);
+    if (err instanceof ProviderHttpError) {
+      const keys = err.status === 401 || err.status === 403;
+      return c.json(
+        {
+          error: 'provider_error',
+          message: keys
+            ? `${err.provider} refused the request. Check the app's keys for ${err.provider} in GitHub secrets.`
+            : `${err.provider} did not answer properly (HTTP ${err.status}). Try again in a minute.`,
+        },
+        502,
+      );
+    }
+    if (err instanceof ProviderDataError)
+      return c.json({ error: 'provider_error', message: err.message }, 502);
+    if (err instanceof ConnectorRepairNeededError)
+      return c.json({ error: 'needs_repair', message: err.message }, 409);
     if (err instanceof AiDisabledError)
       return c.json({ error: 'ai_disabled', message: err.message }, 409);
     if (err instanceof AiUnavailableError)
       return c.json({ error: 'ai_unavailable', message: err.message }, 503);
-    console.error('Unhandled error', err instanceof Error ? err.message : err);
+    // The name only: a message could quote input, and input may be a credential.
+    console.error('Unhandled error', err instanceof Error ? err.name : 'unknown');
     return c.json({ error: 'internal', message: 'Something went wrong on the server.' }, 500);
   });
   app.notFound((c) => c.json({ error: 'not_found', message: 'Not found.' }, 404));

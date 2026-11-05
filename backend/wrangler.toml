@@ -21,6 +21,9 @@ AI_VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct"
 ANTHROPIC_MODEL = "claude-opus-5-5"
 AI_DAILY_CALL_LIMIT = "300"
 APP_ORIGIN = "*"
+# Plaid linking stays off until the owner says so (no call to Plaid at all, not
+# even its Sandbox). Change to "true" then, and add PLAID_CLIENT_ID and PLAID_SECRET.
+PLAID_LINK_ENABLED = "false"
 # Change to https://manaclaude-api.<your-subdomain>.workers.dev after the first deploy.
 PUBLIC_URL = "http://localhost:8787"
 

@@ -407,22 +407,20 @@ describe('the sync route', () => {
 });
 
 describe('reserved account-linking callbacks', () => {
-  it('answers the Zerodha Kite redirect path without a token, with 501 until session E2 builds it', async () => {
+  it('answers the Zerodha Kite redirect path without a token, and refuses it without a valid state', async () => {
     const { client } = await import('./worker');
-    const res = await client().api(
-      'GET',
+    const res = await client().raw(
       '/v1/link/zerodha_kite/callback?request_token=abc&status=success&action=login',
-      undefined,
-      null,
     );
-    expect(res.status).toBe(501);
-    expect((res.body as { error: string }).error).toBe('not_implemented');
+    expect(res.status).toBe(400);
+    expect(await res.text()).toMatch(/expired/);
   });
 
   it('keeps every other /v1 path behind the token, including look-alike link paths', async () => {
     const { client } = await import('./worker');
     for (const path of [
       '/v1/link/zerodha_kite/callback/extra',
+      '/v1/link/sophtron/callback',
       '/v1/link/zerodha_kite',
       '/v1/link/zerodha_kite/start',
       '/v1/accounts',
