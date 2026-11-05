@@ -7,7 +7,7 @@ import type {
 } from '@manaclaude/shared';
 import { addDays } from '@manaclaude/shared';
 import { HttpClient } from '../../http';
-import { readSince, sinceCursor } from '../../util/cursor';
+import { encodeCursor, parseCursor, readSince, sinceCursor } from '../../util/cursor';
 import { todayUtc, toLocalDate, windowStart } from '../../util/dates';
 import { toMinor } from '../../util/decimal';
 import { fromBase64, hmac, toBase64 } from '../../util/crypto';
@@ -36,16 +36,26 @@ import { ProviderDataError, repairNeeded } from '../../errors';
  * - Secrets: SOPHTRON_USER_ID and SOPHTRON_ACCESS_KEY (Worker secrets);
  *   SOPHTRON_USER_INSTITUTION_ID (the login this connection reads, saved when the
  *   user links the bank); SOPHTRON_CARD_BALANCE_SIGN ("debt" or "credit") only if
- *   a bank reports card balances the other way round.
- * - Signs: transactions arrive positive for money in, which is the model's rule.
- *   Card and loan balances arrive negative when owed, so they are negated to the
- *   model's "owed is positive" (Sure does the same unless told otherwise).
+ *   a bank reports card balances the other way round; SOPHTRON_LIABILITY_SIGNS
+ *   ("customer" or "bank") to stop the guess below for cards and loans.
+ * - Signs: checking and savings rows arrive positive for money in, the model's
+ *   rule. Cards and loans are not consistent across banks (Sure issues 3252 and
+ *   4350): some report them as the customer sees them (a purchase is negative,
+ *   the owed balance negative), others as the bank's ledger (a purchase is
+ *   positive, the owed balance positive). Sure always negates card and loan
+ *   balances and always negates transaction amounts, which turns purchases into
+ *   income for the second kind. This adapter decides per account with
+ *   liabilitySignView(): the override, then Debit/Credit types, then a payment
+ *   row's sign, then which sign most rows have. The answer is kept in the cursor
+ *   so a quiet month with no rows keeps the last answer. With no evidence at all
+ *   the balance is taken as owed (absolute value).
  * - Repair: a 401/403, or a refresh job that asks for a security answer, a text
  *   code or a captcha, means the user must go through Sophtron's sign-in again.
  */
 
 export const SOPHTRON_API = 'https://api.sophtron.com/api';
-const BACKFILL_DAYS = 365;
+/** Ask for two years on the first sync; banks return what they have (often less). */
+const BACKFILL_DAYS = 730;
 const OVERLAP_DAYS = 60;
 
 type Raw = Record<string, unknown>;
@@ -112,6 +122,54 @@ export function mapSophtronType(
   return { type: 'checking', subtype: null };
 }
 
+/** How a bank reports a card or loan: as the customer sees it, or as its own ledger. */
+export type LiabilitySignView = 'customer' | 'bank';
+
+const PAYMENT_TEXT = /\b(payment|pymt|autopay|auto pay|thank you)\b/i;
+
+/**
+ * Decide how one card or loan account reports its signs (see the header).
+ * `rows` are the raw provider amounts (major units) with their type and text.
+ * Returns null when the rows give no answer.
+ */
+export function liabilitySignView(
+  accountType: 'credit_card' | 'loan' | 'mortgage',
+  rows: readonly { amount: number; type?: string | undefined; text: string }[],
+): LiabilitySignView | null {
+  const nonZero = rows.filter((r) => r.amount !== 0 && Number.isFinite(r.amount));
+  if (nonZero.length === 0) return null;
+  // 1. Debit/Credit types: a debit is a purchase (cards) or interest (loans); it takes money from the customer.
+  let debitPositive = 0;
+  let debitNegative = 0;
+  for (const r of nonZero) {
+    const t = (r.type ?? '').toLowerCase();
+    if (t !== 'debit' && t !== 'credit') continue;
+    const positive = r.amount > 0;
+    if ((t === 'debit') === positive) debitPositive += 1;
+    else debitNegative += 1;
+  }
+  if (debitPositive !== debitNegative) return debitPositive > debitNegative ? 'bank' : 'customer';
+  // 2. A payment row: money arriving on the card or loan, positive as the customer sees it.
+  const payments = nonZero.filter((r) => PAYMENT_TEXT.test(r.text));
+  if (payments.length > 0) {
+    const positive = payments.filter((r) => r.amount > 0).length;
+    if (positive * 2 !== payments.length)
+      return positive * 2 > payments.length ? 'customer' : 'bank';
+  }
+  // 3. Most rows: purchases outnumber payments on a card; payments outnumber charges on a loan.
+  const positive = nonZero.filter((r) => r.amount > 0).length;
+  const negative = nonZero.length - positive;
+  if (positive === negative) return null;
+  if (accountType === 'credit_card') return positive > negative ? 'bank' : 'customer';
+  return negative > positive ? 'bank' : 'customer';
+}
+
+interface SophtronCursor {
+  since?: string;
+  /** Last decided sign view per card or loan account id. */
+  liabilitySigns?: Record<string, LiabilitySignView>;
+}
+
 /** Job answer that needs the person: security question, text code, captcha. */
 export function sophtronJobNeedsInput(job: unknown): boolean {
   if (!job || typeof job !== 'object') return false;
@@ -149,8 +207,11 @@ export async function syncSophtron(
   const http = client(ctx);
   const userInstitutionId = connectionSecret(ctx, 'SOPHTRON_USER_INSTITUTION_ID', 'Sophtron');
   const cardSign = optionalSecret(ctx, 'SOPHTRON_CARD_BALANCE_SIGN');
+  const forcedView = optionalSecret(ctx, 'SOPHTRON_LIABILITY_SIGNS');
   const today = todayUtc(ctx.now());
   const since = readSince(connection);
+  const saved = parseCursor<SophtronCursor>(connection.syncCursor);
+  const knownViews: Record<string, LiabilitySignView> = { ...(saved?.liabilitySigns ?? {}) };
   const start = windowStart(today, since, {
     backfillDays: BACKFILL_DAYS,
     overlapDays: OVERLAP_DAYS,
@@ -184,30 +245,6 @@ export async function syncSophtron(
       str(pick(a, 'AccountBalance', 'account_balance', 'Balance', 'balance')) ?? 0,
       currency,
     );
-    let balance = observed;
-    if (type === 'credit_card') {
-      balance =
-        cardSign === 'credit'
-          ? -Math.abs(observed)
-          : cardSign === 'debt'
-            ? Math.abs(observed)
-            : -observed;
-    } else if (type === 'loan' || type === 'mortgage') {
-      balance = -observed;
-    }
-    const number = str(pick(a, 'AccountNumber', 'account_number'));
-    result.accounts.push(
-      providerAccount({
-        externalId: id,
-        name,
-        institutionName: str(pick(a, 'InstitutionName', 'institution_name')) ?? null,
-        type,
-        subtype,
-        currency,
-        balance: balance || 0,
-        mask: number ? number.slice(-4) : null,
-      }),
-    );
 
     // Ask Sophtron to pull fresh data first, except on the very first sync.
     if (since) {
@@ -228,6 +265,49 @@ export async function syncSophtron(
       'transactions',
       'Transactions',
     );
+
+    const liability = type === 'credit_card' || type === 'loan' || type === 'mortgage';
+    let view: LiabilitySignView | null = null;
+    if (liability) {
+      view =
+        forcedView === 'customer' || forcedView === 'bank'
+          ? forcedView
+          : (liabilitySignView(
+              type,
+              rows.map((t) => ({
+                amount: Number(str(pick(t, 'Amount', 'amount')) ?? 0),
+                type: str(pick(t, 'Type', 'type', 'TransactionType', 'transaction_type')),
+                text: `${str(pick(t, 'Description', 'description')) ?? ''} ${str(pick(t, 'Merchant', 'merchant')) ?? ''}`,
+              })),
+            ) ??
+            knownViews[id] ??
+            null);
+      if (view) knownViews[id] = view;
+    }
+
+    let balance = observed;
+    if (type === 'credit_card' && (cardSign === 'credit' || cardSign === 'debt')) {
+      balance = cardSign === 'credit' ? -Math.abs(observed) : Math.abs(observed);
+    } else if (liability) {
+      // Owed is positive in the model.
+      balance = view === 'bank' ? observed : view === 'customer' ? -observed : Math.abs(observed);
+    }
+    const number = str(pick(a, 'AccountNumber', 'account_number'));
+    result.accounts.push(
+      providerAccount({
+        externalId: id,
+        name,
+        institutionName: str(pick(a, 'InstitutionName', 'institution_name')) ?? null,
+        type,
+        subtype,
+        currency,
+        balance: balance || 0,
+        mask: number ? number.slice(-4) : null,
+      }),
+    );
+
+    // The bank's ledger counts a purchase as positive; the model counts money leaving as negative.
+    const flip = liability && view === 'bank';
     for (const t of rows) {
       const txId = str(
         pick(t, 'TransactionID', 'TransactionId', 'transaction_id', 'transactionId', 'ID', 'id'),
@@ -238,13 +318,14 @@ export async function syncSophtron(
       const description = str(pick(t, 'Description', 'description')) ?? '';
       const merchant = str(pick(t, 'Merchant', 'merchant'))?.trim() || null;
       const status = (str(pick(t, 'Status', 'status')) ?? 'completed').toLowerCase();
+      const raw = toMinor(str(pick(t, 'Amount', 'amount')) ?? 0, txCurrency);
       result.transactions.push(
         providerTransaction({
           externalId: txId,
           accountExternalId: id,
           date,
-          // Sophtron: positive = money in, negative = money out.
-          amount: toMinor(str(pick(t, 'Amount', 'amount')) ?? 0, txCurrency),
+          // Checking and savings: positive = money in. Cards and loans: see liabilitySignView().
+          amount: flip ? -raw || 0 : raw,
           currency: txCurrency,
           rawName: description || merchant || 'Unknown',
           merchantName: merchant,
@@ -253,7 +334,10 @@ export async function syncSophtron(
       );
     }
   }
-  result.nextCursor = sinceCursor(today);
+  result.nextCursor =
+    Object.keys(knownViews).length > 0
+      ? encodeCursor({ since: today, liabilitySigns: knownViews } satisfies SophtronCursor)
+      : sinceCursor(today);
   return result;
 }
 

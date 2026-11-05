@@ -39,29 +39,30 @@ describe('connectors on the Accounts screen', () => {
   });
 
   it('shows free slots left for capped connectors', () => {
-    const teller = registry().find((c) => c.id === 'teller')!;
-    const left = teller.freeSlotsTotal! - teller.freeSlotsUsed;
-    expect(slotsText(teller)).toBe(`${left} of ${teller.freeSlotsTotal} logins left`);
+    const plaid = registry().find((c) => c.id === 'plaid')!;
+    const left = plaid.freeSlotsTotal! - plaid.freeSlotsUsed;
+    expect(slotsText(plaid)).toBe(`${left} of ${plaid.freeSlotsTotal} logins left`);
     expect(slotsText(registry().find((c) => c.id === 'sophtron')!)).toBe('No slot limit');
   });
 
   it('reports the worst status among a connector’s logins and the latest sync', () => {
     const connections = data().connections;
-    const teller = registry().find((c) => c.id === 'teller')!;
-    const summary = summarizeConnector(teller, connections);
+    const plaid = registry().find((c) => c.id === 'plaid')!;
+    const summary = summarizeConnector(plaid, connections);
     expect(summary.connections.length).toBe(
-      connections.filter((c) => c.connectorId === 'teller').length,
+      connections.filter((c) => c.connectorId === 'plaid').length,
     );
     const broken = connections.map((c) =>
-      c.connectorId === 'teller' ? { ...c, status: 'needs_repair' as const } : c,
+      c.connectorId === 'plaid' ? { ...c, status: 'needs_repair' as const } : c,
     );
-    expect(summarizeConnector(teller, broken).badge.label).toBe('Repair');
+    expect(summarizeConnector(plaid, broken).badge.label).toBe('Repair');
   });
 
   it('renders the Connectors tab with status badges and a greyed unavailable row', async () => {
     await render(<AccountsScreen />);
     await fireEvent.press(screen.getByLabelText('Connectors'));
     expect(screen.getByTestId('connector-teller')).toBeTruthy();
+    expect(screen.getByText('Teller shut down its API in July 2026')).toBeTruthy();
     expect(screen.getByTestId('connector-mercury')).toBeTruthy();
     expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/ logins left/).length).toBeGreaterThan(0);

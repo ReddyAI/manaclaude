@@ -21,7 +21,6 @@ import { redbarkAdapter } from './redbark';
 import { rentcastAdapter } from './rentcast';
 import { snaptradeAdapter } from './snaptrade';
 import { sophtronAdapter } from './sophtron';
-import { tellerAdapter } from './teller';
 import { trading212Adapter } from './trading212';
 import { tiingoAdapter, tiingoProvider } from './tiingo';
 import { twelveDataAdapter, twelveDataProvider } from './twelve_data';
@@ -39,8 +38,9 @@ export { shouldRefreshValuation } from './rentcast';
  * Adapter lookup by connector id. Session D adds one file per adapter under
  * src/adapters/<id>/ and registers it here.
  */
+// Teller shut down its API in July 2026. Its adapter stays in src/adapters/teller/ (with its
+// tests) but is not registered, so no connection can use it.
 const list: ConnectorAdapter[] = [
-  tellerAdapter,
   sophtronAdapter,
   plaidAdapter,
   snaptradeAdapter,

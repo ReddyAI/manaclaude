@@ -15,6 +15,7 @@ import { selectAll, selectOne } from '../db/table';
 import { connectionsTable } from '../db/tables';
 import { badRequest, notFound } from '../util/errors';
 import { nowIso } from '../util/ids';
+import { meterDb, QueryBudget, type MeteredDb } from '../db/meter';
 import { applySyncResult, markConnectionError, type SyncSummary } from './apply';
 import { loadCredentials, saveCredentials } from './credentials';
 import { VALUATION_CONNECTORS, workerSecretsFor } from './secrets';
@@ -25,6 +26,8 @@ export interface ConnectionSyncReport {
   connectionId: string;
   connectorId: string;
   outcome: SyncOutcomeKind;
+  /** A long first sync wrote part of its rows; call sync again (the app does, and so does the cron). */
+  more: boolean;
   /** Why nothing was fetched: the login needs repair, or a property value was refreshed under a month ago. */
   skippedBecause?: 'needs_repair' | 'valuation_recent';
   status: ConnectionStatus;
@@ -39,20 +42,28 @@ export interface SyncOptions {
   now?: () => Date;
   /** Sync a connection that needs repair, or refresh a property value early. */
   force?: boolean;
+  /**
+   * D1 queries this sync may spend (Workers Free plan: about 50 per invocation).
+   * Default SYNC_QUERY_BUDGET. Pass a shared meter to split one invocation's
+   * allowance between several syncs.
+   */
+  maxQueries?: number;
+  meter?: MeteredDb;
+  /** Most new rows written per call (default MAX_ROWS_PER_SYNC in apply.ts). */
+  maxRows?: number;
 }
 
+/** What one sync may spend of the ~50 D1 queries a Free-plan invocation allows, leaving room for the request around it. */
+export const SYNC_QUERY_BUDGET = 44;
+/** A sync is not started unless at least this many queries are left (reads, writes and the after-sync steps). */
+export const MIN_QUERIES_TO_START = 20;
+
 /**
- * Teller wants the application's client certificate on every call, which the
- * Worker holds in the TELLER_CERT mTLS binding. Every other connector uses the
- * plain fetch. An injected fetch (tests) wins over both.
+ * The fetch every provider call goes through. An injected fetch (tests) wins.
+ * (Teller's mTLS binding used to be chosen here; Teller shut down its API in July 2026.)
  */
-export function fetchForConnector(env: Env, connectorId: string, injected?: typeof fetch) {
+export function fetchForConnector(_env: Env, _connectorId: string, injected?: typeof fetch) {
   if (injected) return injected;
-  if (connectorId === 'teller' && env.TELLER_CERT) {
-    const cert = env.TELLER_CERT;
-    return ((input: RequestInfo | URL, init?: RequestInit) =>
-      cert.fetch(input as never, init as never)) as typeof fetch;
-  }
   // Not `return fetch`: workerd throws "Illegal invocation" when the global fetch is called as a method.
   return ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)) as typeof fetch;
 }
@@ -86,6 +97,9 @@ export async function syncConnection(
   connectionId: string,
   opts: SyncOptions = {},
 ): Promise<ConnectionSyncReport> {
+  const meter = opts.meter ?? meterDb(env.DB);
+  const budget = new QueryBudget(meter, opts.maxQueries ?? SYNC_QUERY_BUDGET);
+  env = { ...env, DB: meter.db };
   const connection = await selectOne(env.DB, connectionsTable, 'id = ?', [connectionId]);
   if (!connection) throw notFound('Connection not found.');
   const adapter = getAdapter(connection.connectorId);
@@ -98,6 +112,7 @@ export async function syncConnection(
     return {
       ...base,
       outcome: 'skipped',
+      more: false,
       skippedBecause: skipped,
       status: connection.status,
       error: connection.lastError,
@@ -132,13 +147,24 @@ export async function syncConnection(
       return {
         ...base,
         outcome: outcome.kind,
+        more: false,
         status: failed.status,
         error: failed.lastError,
         summary: null,
       };
     }
-    const summary = await applySyncResult(env.DB, connection, outcome.result, now);
-    return { ...base, outcome: 'ok', status: 'healthy', error: null, summary };
+    const summary = await applySyncResult(env.DB, connection, outcome.result, now, {
+      budget,
+      maxRows: opts.maxRows,
+    });
+    return {
+      ...base,
+      outcome: 'ok',
+      more: summary.more,
+      status: summary.more ? 'syncing' : 'healthy',
+      error: null,
+      summary,
+    };
   } catch (e) {
     const repair = e instanceof ConnectorRepairNeededError;
     const status: ConnectionStatus = repair ? 'needs_repair' : 'error';
@@ -147,6 +173,7 @@ export async function syncConnection(
     return {
       ...base,
       outcome: repair ? 'needs_repair' : 'error',
+      more: false,
       status,
       error: message.slice(0, 200),
       summary: null,
@@ -155,30 +182,62 @@ export async function syncConnection(
 }
 
 /**
- * The daily cron: every healthy connection is synced, one after another. A
- * connection that needs repair is skipped (a dead token is not called again),
- * and so is a disconnected one. A connection in error is tried again, since
- * most errors (rate limits, a provider outage) pass. One failure never stops
- * the rest.
+ * Syncs every healthy, errored or unfinished ("syncing") connection, one after
+ * another, sharing one invocation's D1 allowance: it stops starting new syncs
+ * when fewer than MIN_QUERIES_TO_START queries are left, and the five-minute
+ * cron picks up the rest. A connection that needs repair is skipped (a dead
+ * token is not called again), and so is a disconnected one. A connection in
+ * error is tried again, since most errors (rate limits, an outage) pass. One
+ * failure never stops the rest.
  */
 export async function syncAllConnections(
   env: Env,
-  opts: SyncOptions = {},
+  opts: SyncOptions & { only?: (c: Connection) => boolean; totalQueries?: number } = {},
 ): Promise<ConnectionSyncReport[]> {
+  const meter = opts.meter ?? meterDb(env.DB);
+  const total = opts.totalQueries ?? SYNC_QUERY_BUDGET;
   const connections = await selectAll(
-    env.DB,
+    meter.db,
     connectionsTable,
-    "status IN ('healthy', 'error')",
+    "status IN ('syncing', 'healthy', 'error')",
     [],
-    'created_at',
+    "CASE status WHEN 'syncing' THEN 0 ELSE 1 END, created_at",
   );
   const reports: ConnectionSyncReport[] = [];
   for (const c of connections) {
+    if (opts.only && !opts.only(c)) continue;
+    if (total - meter.used() < MIN_QUERIES_TO_START) break;
     try {
-      reports.push(await syncConnection(env, c.id, opts));
+      reports.push(await syncConnection(env, c.id, { ...opts, meter, maxQueries: total }));
     } catch (e) {
       console.error('Sync failed', c.connectorId, e instanceof Error ? e.message : String(e));
     }
   }
   return reports;
+}
+
+/** The daily sync boundary: 06:30 UTC, the old daily cron time. */
+export function lastDailyBoundary(now: Date): Date {
+  const b = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 6, 30));
+  if (b.getTime() > now.getTime()) b.setUTCDate(b.getUTCDate() - 1);
+  return b;
+}
+
+/**
+ * The five-minute cron. First it continues long first syncs (status
+ * "syncing"), then it syncs connections not synced since the last 06:30 UTC
+ * boundary, as many as one invocation's D1 allowance takes. So every
+ * connection still syncs once a day, but never all in one invocation, and a
+ * first sync with years of history finishes even if the app is closed.
+ */
+export async function syncDueConnections(
+  env: Env,
+  opts: SyncOptions = {},
+): Promise<ConnectionSyncReport[]> {
+  const now = (opts.now ?? (() => new Date()))();
+  const boundary = lastDailyBoundary(now).toISOString();
+  return syncAllConnections(env, {
+    ...opts,
+    only: (c) => c.status === 'syncing' || c.lastSyncAt === null || c.lastSyncAt < boundary,
+  });
 }

@@ -1,0 +1,31 @@
+{
+  "Transactions": [
+    {
+      "TransactionID": "t-10201",
+      "Status": "Completed",
+      "Amount": -350.0,
+      "Currency": "USD",
+      "TransactionDate": "2026-09-15T00:00:00",
+      "Merchant": "",
+      "Description": "LOAN PAYMENT RECEIVED"
+    },
+    {
+      "TransactionID": "t-10202",
+      "Status": "Completed",
+      "Amount": -350.0,
+      "Currency": "USD",
+      "TransactionDate": "2026-10-15T00:00:00",
+      "Merchant": "",
+      "Description": "LOAN PAYMENT RECEIVED"
+    },
+    {
+      "TransactionID": "t-10203",
+      "Status": "Completed",
+      "Amount": 61.4,
+      "Currency": "USD",
+      "TransactionDate": "2026-10-01T00:00:00",
+      "Merchant": "",
+      "Description": "INTEREST CHARGE"
+    }
+  ]
+}

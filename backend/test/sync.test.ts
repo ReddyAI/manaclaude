@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Connection } from '@manaclaude/shared';
 import { ConnectorConfigError } from '@manaclaude/connectors';
-import tellerAccounts from '../../connectors/fixtures/teller/accounts.json';
-import tellerBalancesChk from '../../connectors/fixtures/teller/balances_chk.json';
-import tellerBalancesCc from '../../connectors/fixtures/teller/balances_cc.json';
-import tellerTxnsChk from '../../connectors/fixtures/teller/transactions_chk_posted.json';
-import tellerTxnsCc from '../../connectors/fixtures/teller/transactions_cc.json';
+import sfAccounts from '../../connectors/fixtures/simplefin/accounts.json';
 import qtToken from '../../connectors/fixtures/questrade/token.json';
 import qtAccounts from '../../connectors/fixtures/questrade/accounts.json';
 import qtBalancesTfsa from '../../connectors/fixtures/questrade/balances_tfsa.json';
@@ -85,15 +81,8 @@ function fakeFetch(routes: Record<string, Handler | unknown>) {
   return Object.assign(fn, { calls });
 }
 
-const tellerRoutes = () => ({
-  'GET api.teller.io/accounts': tellerAccounts,
-  'GET api.teller.io/accounts/acc_demo_chk_01/balances': tellerBalancesChk,
-  'GET api.teller.io/accounts/acc_demo_cc_01/balances': tellerBalancesCc,
-  'GET api.teller.io/accounts/acc_demo_chk_01/transactions': (url: URL) =>
-    url.searchParams.get('from_id') ? [] : tellerTxnsChk,
-  'GET api.teller.io/accounts/acc_demo_cc_01/transactions': (url: URL) =>
-    url.searchParams.get('from_id') ? [] : tellerTxnsCc,
-});
+const SF_URL = 'https://demouser:demopass@bridge.example.invalid/simplefin';
+const sfRoutes = () => ({ 'GET bridge.example.invalid/simplefin/accounts': sfAccounts });
 
 const questradeRoutes = () => ({
   'POST login.questrade.com/oauth2/token': qtToken,
@@ -110,16 +99,16 @@ beforeEach(freshDb);
 
 describe('encrypted connection credentials', () => {
   it('round-trips values and stores nothing readable', async () => {
-    await saveCredentials(env, 'conn_a', { TELLER_ACCESS_TOKEN: 'token_super_secret_value' });
+    await saveCredentials(env, 'conn_a', { PLAID_ACCESS_TOKEN: 'token_super_secret_value' });
     expect(await loadCredentials(env, 'conn_a')).toEqual({
-      TELLER_ACCESS_TOKEN: 'token_super_secret_value',
+      PLAID_ACCESS_TOKEN: 'token_super_secret_value',
     });
     const raw = await db
       .prepare('SELECT * FROM connection_credentials WHERE connection_id = ?')
       .bind('conn_a')
       .first<Record<string, string>>();
     expect(JSON.stringify(raw)).not.toContain('token_super_secret_value');
-    expect(JSON.stringify(raw)).not.toContain('TELLER_ACCESS_TOKEN');
+    expect(JSON.stringify(raw)).not.toContain('PLAID_ACCESS_TOKEN');
   });
 
   it('merges new values into the saved ones, and replace overwrites', async () => {
@@ -165,24 +154,24 @@ describe('Worker secrets per connector', () => {
     } as Env;
     expect(workerSecretsFor(e, 'plaid')).toEqual({ PLAID_CLIENT_ID: 'cid', PLAID_SECRET: 'sec' });
     expect(workerSecretsFor(e, 'zerodha_kite')).toEqual({ KITE_API_KEY: 'k' });
-    expect(workerSecretsFor(e, 'teller')).toEqual({});
+    expect(workerSecretsFor(e, 'simplefin')).toEqual({});
   });
 });
 
 describe('syncConnection with the connectors package', () => {
-  it('syncs Teller through the planners: accounts, balances, transactions, connection health', async () => {
-    await addConnection(connection('conn_teller', 'teller'));
-    await saveCredentials(env, 'conn_teller', { TELLER_ACCESS_TOKEN: 'test_token_demo' });
-    const fetch = fakeFetch(tellerRoutes());
-    const report = await syncConnection(env, 'conn_teller', { fetch, now: () => NOW });
+  it('syncs SimpleFIN through the planners: accounts, balances, transactions, connection health', async () => {
+    await addConnection(connection('conn_sf', 'simplefin'));
+    await saveCredentials(env, 'conn_sf', { SIMPLEFIN_ACCESS_URL: SF_URL });
+    const fetch = fakeFetch(sfRoutes());
+    const report = await syncConnection(env, 'conn_sf', { fetch, now: () => NOW });
     expect(report).toMatchObject({ outcome: 'ok', status: 'healthy', error: null });
-    expect(report.summary?.accountsCreated).toBe(2);
+    expect(report.summary?.accountsCreated).toBe(3);
     expect(report.summary?.inserted).toBeGreaterThan(0);
     const accounts = await selectAll(db, accountsTable);
-    expect(accounts.map((a) => a.connectionId)).toEqual(['conn_teller', 'conn_teller']);
+    expect(accounts.map((a) => a.connectionId)).toEqual(['conn_sf', 'conn_sf', 'conn_sf']);
     const txns = await selectAll(db, transactionsTable);
     expect(txns).toHaveLength(report.summary?.inserted ?? -1);
-    const conn = await selectOne(db, connectionsTable, 'id = ?', ['conn_teller']);
+    const conn = await selectOne(db, connectionsTable, 'id = ?', ['conn_sf']);
     expect(conn?.status).toBe('healthy');
     expect(conn?.lastSuccessfulSyncAt).toBe(NOW.toISOString());
     expect(conn?.syncCursor).toBeTruthy();
@@ -190,22 +179,23 @@ describe('syncConnection with the connectors package', () => {
     const snapshots = await db.prepare('SELECT COUNT(*) AS n FROM balance_snapshots').first<{
       n: number;
     }>();
-    expect(snapshots?.n).toBe(2);
-    // The saved access token reached Teller as the Basic auth user name.
+    expect(snapshots?.n).toBe(3);
+    // The saved access URL's user and password reached SimpleFIN as Basic auth, not in the URL.
     const auth = fetch.calls[0]?.headers.Authorization ?? '';
-    expect(atob(auth.replace('Basic ', ''))).toBe('test_token_demo:');
+    expect(atob(auth.replace('Basic ', ''))).toBe('demouser:demopass');
+    expect(fetch.calls[0]?.url.username).toBe('');
   });
 
   it('a repeat sync adds nothing and keeps one row per provider id', async () => {
-    await addConnection(connection('conn_teller', 'teller'));
-    await saveCredentials(env, 'conn_teller', { TELLER_ACCESS_TOKEN: 'test_token_demo' });
-    const first = await syncConnection(env, 'conn_teller', {
-      fetch: fakeFetch(tellerRoutes()),
+    await addConnection(connection('conn_sf', 'simplefin'));
+    await saveCredentials(env, 'conn_sf', { SIMPLEFIN_ACCESS_URL: SF_URL });
+    const first = await syncConnection(env, 'conn_sf', {
+      fetch: fakeFetch(sfRoutes()),
       now: () => NOW,
     });
     const before = await selectAll(db, transactionsTable);
-    const again = await syncConnection(env, 'conn_teller', {
-      fetch: fakeFetch(tellerRoutes()),
+    const again = await syncConnection(env, 'conn_sf', {
+      fetch: fakeFetch(sfRoutes()),
       now: () => NOW,
     });
     expect(again.summary).toMatchObject({ accountsCreated: 0, inserted: 0, removed: 0 });
@@ -213,24 +203,10 @@ describe('syncConnection with the connectors package', () => {
     expect(first.summary?.inserted).toBe(before.length);
   });
 
-  it('sends Teller calls through the TELLER_CERT mTLS binding and nothing else', async () => {
-    await addConnection(connection('conn_teller', 'teller'));
-    await saveCredentials(env, 'conn_teller', { TELLER_ACCESS_TOKEN: 'test_token_demo' });
-    const viaCert = fakeFetch(tellerRoutes());
-    const report = await syncConnection(
-      { ...env, TELLER_CERT: { fetch: viaCert } },
-      'conn_teller',
-      { now: () => NOW },
-    );
-    expect(report.outcome).toBe('ok');
-    expect(viaCert.calls.length).toBeGreaterThan(0);
-    expect(viaCert.calls.every((c) => c.url.host === 'api.teller.io')).toBe(true);
-
-    const cert = { fetch: fakeFetch({}) };
-    expect(fetchForConnector({ ...env, TELLER_CERT: cert }, 'plaid')).not.toBe(cert.fetch);
-    // an injected fetch (tests) wins
+  it('uses an injected fetch for every connector', () => {
     const injected = fakeFetch({});
-    expect(fetchForConnector({ ...env, TELLER_CERT: cert }, 'teller', injected)).toBe(injected);
+    expect(fetchForConnector(env, 'sophtron', injected)).toBe(injected);
+    expect(fetchForConnector(env, 'plaid')).not.toBe(injected);
   });
 
   it('saves a rotated Questrade token, applies holdings, lots and activities', async () => {
@@ -279,28 +255,28 @@ describe('syncConnection with the connectors package', () => {
   });
 
   it('marks an expired login needs_repair, and the next run does not call the provider', async () => {
-    await addConnection(connection('conn_teller', 'teller'));
-    await saveCredentials(env, 'conn_teller', { TELLER_ACCESS_TOKEN: 'expired' });
+    await addConnection(connection('conn_sf', 'simplefin'));
+    await saveCredentials(env, 'conn_sf', { SIMPLEFIN_ACCESS_URL: SF_URL });
     const dead = fakeFetch({
-      'GET api.teller.io/accounts': { status: 401, json: { error: { code: 'unauthorized' } } },
+      'GET bridge.example.invalid/simplefin/accounts': { status: 403, json: {} },
     });
-    const report = await syncConnection(env, 'conn_teller', { fetch: dead, now: () => NOW });
+    const report = await syncConnection(env, 'conn_sf', { fetch: dead, now: () => NOW });
     expect(report).toMatchObject({ outcome: 'needs_repair', status: 'needs_repair' });
-    const conn = await selectOne(db, connectionsTable, 'id = ?', ['conn_teller']);
+    const conn = await selectOne(db, connectionsTable, 'id = ?', ['conn_sf']);
     expect(conn?.status).toBe('needs_repair');
     expect(conn?.lastError).toBeTruthy();
 
     const again = fakeFetch({});
-    const second = await syncConnection(env, 'conn_teller', { fetch: again, now: () => NOW });
+    const second = await syncConnection(env, 'conn_sf', { fetch: again, now: () => NOW });
     expect(second).toMatchObject({ outcome: 'skipped', skippedBecause: 'needs_repair' });
     expect(again.calls).toHaveLength(0);
   });
 
   it('force syncs a repaired connection and brings it back to healthy', async () => {
-    await addConnection(connection('conn_teller', 'teller', { status: 'needs_repair' }));
-    await saveCredentials(env, 'conn_teller', { TELLER_ACCESS_TOKEN: 'fresh' });
-    const report = await syncConnection(env, 'conn_teller', {
-      fetch: fakeFetch(tellerRoutes()),
+    await addConnection(connection('conn_sf', 'simplefin', { status: 'needs_repair' }));
+    await saveCredentials(env, 'conn_sf', { SIMPLEFIN_ACCESS_URL: SF_URL });
+    const report = await syncConnection(env, 'conn_sf', {
+      fetch: fakeFetch(sfRoutes()),
       now: () => NOW,
       force: true,
     });
@@ -308,10 +284,10 @@ describe('syncConnection with the connectors package', () => {
   });
 
   it('records a missing CREDENTIALS_SECRET as an error without losing data', async () => {
-    await addConnection(connection('conn_teller', 'teller'));
-    await saveCredentials(env, 'conn_teller', { TELLER_ACCESS_TOKEN: 't' });
-    const report = await syncConnection({ ...env, CREDENTIALS_SECRET: undefined }, 'conn_teller', {
-      fetch: fakeFetch(tellerRoutes()),
+    await addConnection(connection('conn_sf', 'simplefin'));
+    await saveCredentials(env, 'conn_sf', { SIMPLEFIN_ACCESS_URL: SF_URL });
+    const report = await syncConnection({ ...env, CREDENTIALS_SECRET: undefined }, 'conn_sf', {
+      fetch: fakeFetch(sfRoutes()),
       now: () => NOW,
     });
     expect(report.outcome).toBe('error');
@@ -355,22 +331,24 @@ describe('property values refresh at most monthly', () => {
 
 describe('daily sync of all connections', () => {
   it('syncs healthy and errored connections, skips needs_repair and disconnected ones', async () => {
-    await addConnection(connection('conn_ok', 'teller'));
+    await addConnection(connection('conn_ok', 'simplefin'));
     await addConnection(
-      connection('conn_err', 'teller', { status: 'error', lastError: 'timeout' }),
+      connection('conn_err', 'simplefin', { status: 'error', lastError: 'timeout' }),
     );
-    await addConnection(connection('conn_dead', 'teller', { status: 'needs_repair' }));
-    await addConnection(connection('conn_off', 'teller', { status: 'disconnected' }));
+    await addConnection(connection('conn_dead', 'simplefin', { status: 'needs_repair' }));
+    await addConnection(connection('conn_off', 'simplefin', { status: 'disconnected' }));
     for (const id of ['conn_ok', 'conn_err', 'conn_dead', 'conn_off']) {
-      await saveCredentials(env, id, { TELLER_ACCESS_TOKEN: `token_${id}` });
+      await saveCredentials(env, id, {
+        SIMPLEFIN_ACCESS_URL: `https://token_${id}:pw@bridge.example.invalid/simplefin`,
+      });
     }
-    const fetch = fakeFetch(tellerRoutes());
+    const fetch = fakeFetch(sfRoutes());
     const reports = await syncAllConnections(env, { fetch, now: () => NOW });
     expect(reports.map((r) => r.connectionId).sort()).toEqual(['conn_err', 'conn_ok']);
     const users = new Set(
       fetch.calls.map((c) => atob((c.headers.Authorization ?? '').replace('Basic ', ''))),
     );
-    expect(users).toEqual(new Set(['token_conn_ok:', 'token_conn_err:']));
+    expect(users).toEqual(new Set(['token_conn_ok:pw', 'token_conn_err:pw']));
     const statuses = Object.fromEntries(
       (await selectAll(db, connectionsTable)).map((c) => [c.id, c.status]),
     );
@@ -383,17 +361,20 @@ describe('daily sync of all connections', () => {
   });
 
   it('one failing connection does not stop the others', async () => {
-    await addConnection(connection('conn_a', 'teller'));
-    await addConnection(connection('conn_b', 'teller'));
-    await saveCredentials(env, 'conn_a', { TELLER_ACCESS_TOKEN: 'bad' });
-    await saveCredentials(env, 'conn_b', { TELLER_ACCESS_TOKEN: 'good' });
+    await addConnection(connection('conn_a', 'simplefin'));
+    await addConnection(connection('conn_b', 'simplefin'));
+    await saveCredentials(env, 'conn_a', {
+      SIMPLEFIN_ACCESS_URL: 'https://bad:pw@bridge.example.invalid/simplefin',
+    });
+    await saveCredentials(env, 'conn_b', {
+      SIMPLEFIN_ACCESS_URL: 'https://good:pw@bridge.example.invalid/simplefin',
+    });
     const fetch = fakeFetch({
-      ...tellerRoutes(),
-      'GET api.teller.io/accounts': (_url: URL, init?: RequestInit) => {
+      'GET bridge.example.invalid/simplefin/accounts': (_url: URL, init?: RequestInit) => {
         const auth = String((init?.headers as Record<string, string>).Authorization);
-        return atob(auth.replace('Basic ', '')) === 'bad:'
+        return atob(auth.replace('Basic ', '')) === 'bad:pw'
           ? { status: 500, json: { error: 'boom' } }
-          : tellerAccounts;
+          : sfAccounts;
       },
     });
     const reports = await syncAllConnections(env, { fetch, now: () => NOW });
@@ -407,16 +388,16 @@ describe('daily sync of all connections', () => {
 describe('the sync route', () => {
   it('answers 502 with the report when the provider fails and 200 when it works', async () => {
     const { client } = await import('./worker');
-    await addConnection(connection('conn_teller', 'teller'));
-    await saveCredentials(env, 'conn_teller', { TELLER_ACCESS_TOKEN: 'x' });
+    await addConnection(connection('conn_sf', 'simplefin'));
+    await saveCredentials(env, 'conn_sf', { SIMPLEFIN_ACCESS_URL: SF_URL });
     const bad = await client({ fetch: fakeFetch({}) }, env).api(
       'POST',
-      '/v1/connections/conn_teller/sync',
+      '/v1/connections/conn_sf/sync',
     );
     expect(bad.status).toBe(502);
-    const good = await client({ fetch: fakeFetch(tellerRoutes()) }, env).api(
+    const good = await client({ fetch: fakeFetch(sfRoutes()) }, env).api(
       'POST',
-      '/v1/connections/conn_teller/sync',
+      '/v1/connections/conn_sf/sync',
     );
     expect(good.status).toBe(200);
     expect((good.body as { outcome: string }).outcome).toBe('ok');

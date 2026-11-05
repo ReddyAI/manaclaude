@@ -3,7 +3,6 @@ export interface FakeState {
   d1: { uuid: string; name: string }[];
   r2: string[];
   kv: { id: string; title: string }[];
-  certs: { id: string; name: string }[];
   subdomain: string | null;
   pages: { name: string; subdomain: string }[];
   r2Enabled: boolean;
@@ -15,7 +14,6 @@ export function newState(over: Partial<FakeState> = {}): FakeState {
     d1: [],
     r2: [],
     kv: [],
-    certs: [],
     subdomain: null,
     pages: [],
     r2Enabled: true,
@@ -101,12 +99,6 @@ export function fakeCloudflare(state: FakeState, account = 'acct123'): typeof fe
     if (path === '/storage/kv/namespaces' && method === 'POST') {
       const row = { id: id(), title: body.title as string };
       state.kv.push(row);
-      return reply(200, row);
-    }
-    if (path === '/mtls_certificates' && method === 'GET') return reply(200, state.certs);
-    if (path === '/mtls_certificates' && method === 'POST') {
-      const row = { id: id(), name: body.name as string };
-      state.certs.push(row);
       return reply(200, row);
     }
     if (path === '/workers/subdomain' && method === 'GET')

@@ -54,11 +54,10 @@ describe('deploy workflow', () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it('uploads the Teller certificate only from the two PEM secrets', () => {
+  it('prepares resources without any Teller certificate (Teller shut down its API in July 2026)', () => {
     const prep = step(deploy, 'Create or reuse Cloudflare resources');
-    expect(prep).toContain('TELLER_CERT_PEM: ${{ secrets.TELLER_CERT_PEM }}');
-    expect(prep).toContain('TELLER_KEY_PEM: ${{ secrets.TELLER_KEY_PEM }}');
     expect(prep).toContain('node backend/deploy/prepare.ts');
+    expect(deploy).not.toContain('TELLER_');
   });
 
   it('deploys with the generated config, so the committed file keeps its placeholders', () => {

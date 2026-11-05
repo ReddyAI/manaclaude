@@ -53,17 +53,20 @@ describe('connector registry', () => {
   });
 
   it('counts free slots left with lifetime caps', () => {
-    const live = withSlotUsage({ teller: 3, plaid: 10 });
-    const teller = live.find((c) => c.id === 'teller');
+    const live = withSlotUsage({ snaptrade: 3, plaid: 10 });
+    const snaptrade = live.find((c) => c.id === 'snaptrade');
     const plaid = live.find((c) => c.id === 'plaid');
     const sophtron = live.find((c) => c.id === 'sophtron');
-    expect(teller && freeSlotsLeft(teller)).toBe(97);
+    expect(snaptrade && freeSlotsLeft(snaptrade)).toBe(17);
     expect(plaid && freeSlotsLeft(plaid)).toBe(0);
     expect(sophtron && freeSlotsLeft(sophtron)).toBeNull();
   });
 
   it("keeps the brief's free-slot facts", () => {
-    expect(getConnector('teller')).toMatchObject({ freeSlotsTotal: 100, slotsAreLifetime: true });
+    expect(getConnector('teller')).toMatchObject({
+      availability: 'unavailable',
+      reason: 'Teller shut down its API in July 2026',
+    });
     expect(getConnector('plaid')).toMatchObject({ freeSlotsTotal: 10, slotsAreLifetime: true });
     expect(getConnector('snaptrade')).toMatchObject({
       freeSlotsTotal: 20,
@@ -124,19 +127,19 @@ describe('registry and adapters agree', () => {
 describe('connector overview for the Accounts screen', () => {
   it('lists usable connectors first, unavailable last with reasons, with slots and connection health', () => {
     const rows = describeConnectors(
-      { teller: 3 },
+      { plaid: 3 },
       [
-        makeConnection('teller', { status: 'needs_repair', lastError: 'Teller: login expired.' }),
-        makeConnection('plaid'),
+        makeConnection('plaid', { status: 'needs_repair', lastError: 'Plaid: login expired.' }),
+        makeConnection('sophtron'),
       ],
       NOW,
     );
     expect(rows[0]?.definition.availability).toBe('available');
     expect(rows[rows.length - 1]?.definition.availability).toBe('unavailable');
-    const teller = rows.find((r) => r.definition.id === 'teller');
-    expect(teller?.slots).toMatchObject({ used: 3, left: 97 });
-    expect(teller?.definition.freeSlotsUsed).toBe(3);
-    expect(teller?.connections[0]?.health).toMatchObject({
+    const plaid = rows.find((r) => r.definition.id === 'plaid');
+    expect(plaid?.slots).toMatchObject({ used: 3, left: 7 });
+    expect(plaid?.definition.freeSlotsUsed).toBe(3);
+    expect(plaid?.connections[0]?.health).toMatchObject({
       label: 'Repair needed',
       needsRepair: true,
     });

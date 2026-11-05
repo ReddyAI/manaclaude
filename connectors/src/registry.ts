@@ -17,9 +17,9 @@ const defs: Def[] = [
     id: 'teller',
     name: 'Teller',
     kinds: ['bank', 'card'],
-    availability: 'available',
-    reason: null,
-    cost: 'Free, 100 lifetime logins',
+    availability: 'unavailable',
+    reason: 'Teller shut down its API in July 2026',
+    cost: 'n/a (was free for 100 lifetime logins)',
     regions: ['US'],
     dataTypes: ['transactions', 'balances'],
     auth: 'link_widget',
@@ -47,7 +47,7 @@ const defs: Def[] = [
     name: 'Plaid Trial',
     kinds: ['bank', 'card', 'brokerage'],
     availability: 'available',
-    reason: 'Keep the 10 lifetime logins for banks Teller and Sophtron cannot reach',
+    reason: 'Keep the 10 lifetime logins for banks Sophtron and SimpleFIN cannot reach',
     cost: 'Free, 10 lifetime logins',
     regions: ['US', 'CA'],
     dataTypes: ['transactions', 'balances', 'liabilities', 'holdings', 'lots'],
@@ -61,7 +61,8 @@ const defs: Def[] = [
     name: 'SimpleFIN',
     kinds: ['bank', 'card'],
     availability: 'paid',
-    reason: 'Paid fallback if the free connectors run out',
+    reason:
+      'Second choice for US banks and cards after Sophtron: 25 institutions, one refresh a day',
     cost: '$15/yr, 25 institutions',
     regions: ['US'],
     dataTypes: ['transactions', 'balances', 'holdings'],
@@ -639,7 +640,7 @@ const defs: Def[] = [
     name: 'Capital One direct link',
     kinds: ['bank', 'card'],
     availability: 'unavailable',
-    reason: 'Not offered to personal developers; use Teller, Sophtron or Plaid',
+    reason: 'Not offered to personal developers; use Sophtron, SimpleFIN or Plaid',
     cost: 'n/a',
     regions: ['US'],
     dataTypes: ['transactions', 'balances'],
@@ -669,23 +670,24 @@ export const CONNECTOR_REGISTRY: readonly ConnectorDefinition[] = defs.map((d) =
   ...d,
 }));
 
-/** Order to try when linking a new account (docs/project-brief.md "Connector order"). */
+/**
+ * Order to try when linking a new account. Changed in November 2026 (session
+ * E2): Teller shut down its API in July 2026, so US banks and cards go
+ * Sophtron (free), then SimpleFIN ($15 a year, paid but already part of the
+ * plan), then Plaid only for a bank the other two can't handle (10 lifetime
+ * logins). Brokerages: SnapTrade Personal, then Zerodha Kite, then Sophtron.
+ * Crypto: the exchange's own API. India NRE and NRO accounts use PDF and CSV
+ * import, so they have no connector.
+ */
 export const LINK_ORDER = {
-  bank: ['teller', 'sophtron', 'plaid'],
-  brokerage: [
-    'snaptrade',
-    'ibkr_flex',
-    'zerodha_kite',
-    'trading212',
-    'questrade',
-    'trade_republic',
-    'indexa',
-    'sophtron',
-    'plaid',
-  ],
-  crypto: ['coinbase', 'kraken', 'binance', 'coinspot', 'wazirx', 'onchain', 'coinstats'],
-  paidFallback: ['simplefin', 'lunch_flow'],
+  bank: ['sophtron', 'simplefin', 'plaid'],
+  brokerage: ['snaptrade', 'zerodha_kite', 'sophtron'],
+  crypto: ['coinbase', 'wazirx', 'kraken', 'binance', 'coinspot', 'onchain', 'coinstats'],
+  paidFallback: ['lunch_flow'],
 } as const;
+
+/** Connectors in LINK_ORDER that are paid but chosen on purpose, so chooseConnector does not skip them. */
+export const PLANNED_PAID_CONNECTORS: readonly string[] = ['simplefin'];
 
 export function getConnector(id: string): ConnectorDefinition | undefined {
   return CONNECTOR_REGISTRY.find((c) => c.id === id);

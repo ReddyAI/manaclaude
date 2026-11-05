@@ -1,6 +1,6 @@
 # Deploys everything to Cloudflare from the two secrets CLOUDFLARE_API_TOKEN and
 # CLOUDFLARE_ACCOUNT_ID: the Worker (with its D1 database, R2 bucket, OAuth KV
-# namespace and optional Teller certificate) and the web app (Cloudflare Pages).
+# namespace) and the web app (Cloudflare Pages).
 # Every other GitHub secret listed under "Copy secrets" is optional and is copied
 # into a Worker secret of the same name when it exists.
 # It does nothing until CLOUDFLARE_API_TOKEN exists. Steps: docs/setup.md.
@@ -58,15 +58,11 @@ jobs:
         run: npm test -w @manaclaude/backend
 
       # Creates or reuses, by name: D1 "manaclaude", R2 "manaclaude-files", the
-      # OAuth KV namespace, the Teller certificate (only when both PEM secrets
-      # exist), the workers.dev address and the Pages project. Writes
+      # OAuth KV namespace, the workers.dev address and the Pages project. Writes
       # backend/wrangler.deploy.toml with the real ids and the Worker's URL.
       - name: Create or reuse Cloudflare resources
         id: prepare
         if: steps.gate.outputs.ready == 'true'
-        env:
-          TELLER_CERT_PEM: ${{ secrets.TELLER_CERT_PEM }}
-          TELLER_KEY_PEM: ${{ secrets.TELLER_KEY_PEM }}
         run: node backend/deploy/prepare.ts
 
       - name: Apply D1 migrations
@@ -89,7 +85,6 @@ jobs:
           MCP_OWNER_PASSWORD: ${{ secrets.MCP_OWNER_PASSWORD }}
           CREDENTIALS_SECRET: ${{ secrets.CREDENTIALS_SECRET }}
           OXR_APP_ID: ${{ secrets.OXR_APP_ID }}
-          TELLER_APPLICATION_ID: ${{ secrets.TELLER_APPLICATION_ID }}
           PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
           PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
           PLAID_ENV: ${{ secrets.PLAID_ENV }}

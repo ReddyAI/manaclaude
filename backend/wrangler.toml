@@ -8,10 +8,12 @@ main = "src/index.ts"
 compatibility_date = "2026-10-15"
 compatibility_flags = ["nodejs_compat"]
 
-# Hourly: Open Exchange Rates latest.json. Daily 06:30 UTC: ECB rates via
-# Frankfurter, history backfill, connector syncs and the AI jobs.
+# Every 5 minutes: connector syncs (unfinished first syncs first, then
+# connections not synced since 06:30 UTC), as many as one invocation's D1
+# query allowance takes. Hourly: Open Exchange Rates latest.json. Daily 06:30
+# UTC: ECB rates via Frankfurter, history backfill and the AI jobs.
 [triggers]
-crons = ["0 * * * *", "30 6 * * *"]
+crons = ["*/5 * * * *", "0 * * * *", "30 6 * * *"]
 
 [vars]
 AI_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
@@ -41,11 +43,3 @@ id = "00000000000000000000000000000000"
 # Workers AI (runs on Cloudflare even in `wrangler dev`, so it needs a login there).
 [ai]
 binding = "AI"
-
-# Teller's client certificate (mTLS). The deploy workflow uploads it from the
-# TELLER_CERT_PEM and TELLER_KEY_PEM GitHub secrets and swaps in the real id
-# (backend/deploy/prepare.ts); with no secrets it removes this block. Only
-# Teller calls go through it (src/sync/run.ts, fetchForConnector).
-[[mtls_certificates]]
-binding = "TELLER_CERT"
-certificate_id = "00000000-0000-0000-0000-00000000cert"

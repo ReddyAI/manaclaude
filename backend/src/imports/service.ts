@@ -1,4 +1,5 @@
 import {
+  applyRules,
   assignOccurrences,
   buildSplitChildren,
   csvHeaderSignature,
@@ -27,13 +28,19 @@ import {
 } from '@manaclaude/shared';
 import type { Env } from '../env';
 import { getAi, type AiDeps } from '../ai/provider';
-import { batchInChunks, insertStatement, selectAll, snake, toSqlValue } from '../db/table';
-import { accountsTable, categoriesTable, tagsTable, transactionsTable } from '../db/tables';
+import { bulkInsertSpecs, runSpecs } from '../db/bulk';
+import { selectAll } from '../db/table';
+import {
+  accountsTable,
+  categoriesTable,
+  rulesTable,
+  tagsTable,
+  transactionsTable,
+} from '../db/tables';
 import { badRequest, conflict, notFound } from '../util/errors';
 import { newId, nowIso, sha256Hex } from '../util/ids';
 import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
-import { runRules } from '../services/rules';
 import { getSettings } from '../services/settings';
 import { makeTransaction } from '../services/transactions';
 import { categoryMatcher } from './categories';
@@ -600,15 +607,12 @@ async function commitLocked(
   const accounts = new Map([...existingAccounts, ...created].map((a) => [a.id, a]));
   const categoryFor = categoryMatcher(categories);
 
-  if (created.length > 0)
-    await batchInChunks(
-      db,
-      created.map((a) => insertStatement(db, accountsTable, a)),
-    );
+  if (created.length > 0) await runSpecs(db, bulkInsertSpecs(accountsTable, created));
 
-  // One group per row: the row itself, then its split children. Children are
-  // inserted only if the parent row was (its id is new, so it exists only then).
-  const groups: { txn: Transaction; statements: D1PreparedStatement[] }[] = [];
+  // Rules run in memory before the rows are written (one query for the rules, none per row).
+  const rules = await selectAll(db, rulesTable, 'enabled = 1');
+  const parents: Transaction[] = [];
+  const childrenOf = new Map<Id, Transaction[]>();
   let skipped = 0;
   for (const row of preview.rows) {
     if (row.decision !== 'new' || !row.accountId || skip.has(row.line)) {
@@ -621,8 +625,6 @@ async function commitLocked(
       continue;
     }
     let txn = toTransaction(row, account, importId, tagByName, now);
-    const statements: D1PreparedStatement[] = [];
-    let children: Transaction[] = [];
     if (row.splits.length >= 2) {
       const built = buildSplitChildren(
         txn,
@@ -635,47 +637,35 @@ async function commitLocked(
         now,
       );
       txn = built.parent;
-      children = built.children;
+      childrenOf.set(txn.id, built.children);
+    } else if (rules.length > 0) {
+      txn = applyRules(txn, rules).transaction;
     }
-    statements.push(insertStatement(db, transactionsTable, txn, 'ignore'));
-    const cols = Object.keys(transactionsTable.columns).map(snake);
-    for (const c of children) {
-      statements.push(
-        db
-          .prepare(
-            `INSERT INTO transactions (${cols.join(', ')}) SELECT ${cols.map(() => '?').join(', ')} WHERE EXISTS (SELECT 1 FROM transactions WHERE id = ?)`,
-          )
-          .bind(
-            ...Object.entries(transactionsTable.columns).map(([f, type]) =>
-              toSqlValue(type, (c as unknown as Record<string, unknown>)[f]),
-            ),
-            txn.id,
-          ),
-      );
-    }
-    groups.push({ txn, statements });
+    parents.push(txn);
   }
 
-  const addedTxns: Transaction[] = [];
-  let chunk: typeof groups = [];
-  let size = 0;
-  const flush = async () => {
-    if (chunk.length === 0) return;
-    const results = await db.batch(chunk.flatMap((g) => g.statements));
-    let i = 0;
-    for (const g of chunk) {
-      if ((results[i]?.meta.changes ?? 0) > 0) addedTxns.push(g.txn);
-      i += g.statements.length;
-    }
-    chunk = [];
-    size = 0;
-  };
-  for (const g of groups) {
-    if (size + g.statements.length > 50) await flush();
-    chunk.push(g);
-    size += g.statements.length;
+  // Multi-row writes (Free plan: about 50 D1 queries per invocation). The unique
+  // fingerprint and provider-id indexes skip rows stored before; the new ids that
+  // exist afterwards are the rows this commit added, and only their split
+  // children are written.
+  await runSpecs(db, bulkInsertSpecs(transactionsTable, parents, 'ignore'));
+  const addedIds = new Set<string>();
+  for (let i = 0; i < parents.length; i += 2000) {
+    const res = await db
+      .prepare('SELECT id FROM transactions WHERE id IN (SELECT value FROM json_each(?))')
+      .bind(JSON.stringify(parents.slice(i, i + 2000).map((t) => t.id)))
+      .all<{ id: string }>();
+    for (const r of res.results) addedIds.add(r.id);
   }
-  await flush();
+  const addedTxns = parents.filter((t) => addedIds.has(t.id));
+  await runSpecs(
+    db,
+    bulkInsertSpecs(
+      transactionsTable,
+      addedTxns.flatMap((t) => childrenOf.get(t.id) ?? []),
+    ),
+  );
+  const groups = parents;
 
   const added = addedTxns.length;
   const matched =
@@ -704,7 +694,6 @@ async function commitLocked(
       .run();
   }
   const ids = addedTxns.map((t) => t.id);
-  await runRules(db, ids);
   const atm = await recordAtmWithdrawals(db, addedTxns);
   const match = await runTransferMatcher(db);
   return {

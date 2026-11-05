@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  liabilitySignView,
   mapSophtronType,
   sophtronAdapter,
   sophtronAuthHeader,
@@ -121,7 +122,7 @@ describe('sophtron adapter', () => {
       first.calls.find((c) => c.url.pathname.endsWith('GetTransactionsByTransactionDate'))?.body ??
         '{}',
     );
-    expect(body1).toMatchObject({ StartDate: '2025-11-05', EndDate: '2026-11-06' });
+    expect(body1).toMatchObject({ StartDate: '2024-11-05', EndDate: '2026-11-06' });
     const second = fakeFetch(routes());
     await sophtronAdapter.sync(
       makeCtx(SECRETS, second),
@@ -165,5 +166,152 @@ describe('sophtron adapter', () => {
     expect(mapSophtronType('Investment', '401k').type).toBe('retirement');
     expect(mapSophtronType('Savings', undefined).type).toBe('savings');
     expect(mapSophtronType(undefined, undefined).type).toBe('checking');
+  });
+
+  describe('card and loan signs (Sure issues 3252 and 4350)', () => {
+    const bankRoutes = () => ({
+      [`POST ${H}/api/UserInstitution/GetUserInstitutionAccounts`]: {
+        json: fixture('sophtron', 'accounts_bank_view.json'),
+      },
+      [`POST ${H}/api/Transaction/GetTransactionsByTransactionDate`]: (call: { body?: string }) => {
+        const id = JSON.parse(call.body ?? '{}').AccountID as string;
+        if (id === 'soph-acc-101')
+          return { json: fixture('sophtron', 'transactions_101_bank_view.json') };
+        if (id === 'soph-acc-102')
+          return { json: fixture('sophtron', 'transactions_102_bank_view.json') };
+        return { json: { Transactions: [] } };
+      },
+      [`POST ${H}/api/UserInstitutionAccount/RefreshUserInstitutionAccount`]: {
+        json: fixture('sophtron', 'refresh_ok.json'),
+      },
+    });
+
+    it('a bank that reports purchases as positive: purchases become spending, payments arrive', async () => {
+      const result = await sophtronAdapter.sync(
+        makeCtx(SECRETS, fakeFetch(bankRoutes())),
+        makeConnection('sophtron'),
+      );
+      const byId = new Map(result.transactions.map((t) => [t.externalId, t.amount]));
+      expect(byId.get('t-10101')).toBe(-6_420);
+      expect(byId.get('t-10102')).toBe(-1_250);
+      expect(byId.get('t-10103')).toBe(50_000);
+      // owed balance reported as positive stays positive (owed)
+      expect(result.accounts.find((a) => a.externalId === 'soph-acc-101')?.balance).toBe(194_718);
+    });
+
+    it('a loan in the bank ledger: payments arrive (positive), interest leaves (negative), balance owed', async () => {
+      const result = await sophtronAdapter.sync(
+        makeCtx(SECRETS, fakeFetch(bankRoutes())),
+        makeConnection('sophtron'),
+      );
+      const byId = new Map(result.transactions.map((t) => [t.externalId, t.amount]));
+      expect(byId.get('t-10201')).toBe(35_000);
+      expect(byId.get('t-10203')).toBe(-6_140);
+      const loan = result.accounts.find((a) => a.externalId === 'soph-acc-102');
+      expect(loan).toMatchObject({ type: 'loan', balance: 1_500_000 });
+    });
+
+    it('a card with no rows yet counts its balance as owed, then keeps the last answer from the cursor', async () => {
+      const first = await sophtronAdapter.sync(
+        makeCtx(SECRETS, fakeFetch(bankRoutes())),
+        makeConnection('sophtron'),
+      );
+      expect(first.accounts.find((a) => a.externalId === 'soph-acc-103')?.balance).toBe(25_000);
+      expect(JSON.parse(first.nextCursor ?? '{}').liabilitySigns).toMatchObject({
+        'soph-acc-101': 'bank',
+        'soph-acc-102': 'bank',
+      });
+      // Next month card 101 has no rows; the saved answer still applies (a credit balance stays negative).
+      const quiet = {
+        ...bankRoutes(),
+        [`POST ${H}/api/UserInstitution/GetUserInstitutionAccounts`]: {
+          json: {
+            Accounts: [
+              {
+                AccountID: 'soph-acc-101',
+                AccountName: 'Cashback Card',
+                AccountType: 'CreditCard',
+                AccountBalance: -20.0,
+                BalanceCurrency: 'USD',
+              },
+            ],
+          },
+        },
+        [`POST ${H}/api/Transaction/GetTransactionsByTransactionDate`]: {
+          json: { Transactions: [] },
+        },
+      };
+      const second = await sophtronAdapter.sync(
+        makeCtx(SECRETS, fakeFetch(quiet)),
+        makeConnection('sophtron', { syncCursor: first.nextCursor }),
+      );
+      expect(second.accounts[0]?.balance).toBe(-2_000);
+    });
+
+    it('the customer view (the existing fixture) is left as it is', async () => {
+      const result = await sophtronAdapter.sync(
+        makeCtx(SECRETS, fakeFetch(routes())),
+        makeConnection('sophtron'),
+      );
+      const byId = new Map(result.transactions.map((t) => [t.externalId, t.amount]));
+      expect(byId.get('t-2001')).toBe(-12_000);
+      expect(byId.get('t-2002')).toBe(30_000);
+      expect(JSON.parse(result.nextCursor ?? '{}').liabilitySigns).toEqual({
+        'soph-acc-002': 'customer',
+      });
+    });
+
+    it('SOPHTRON_LIABILITY_SIGNS overrides the guess', async () => {
+      const result = await sophtronAdapter.sync(
+        makeCtx({ ...SECRETS, SOPHTRON_LIABILITY_SIGNS: 'customer' }, fakeFetch(bankRoutes())),
+        makeConnection('sophtron'),
+      );
+      const byId = new Map(result.transactions.map((t) => [t.externalId, t.amount]));
+      expect(byId.get('t-10101')).toBe(6_420);
+      expect(result.accounts.find((a) => a.externalId === 'soph-acc-101')?.balance).toBe(-194_718);
+    });
+
+    it('decides from Debit/Credit types first, then a payment row, then most rows', () => {
+      expect(
+        liabilitySignView('credit_card', [
+          { amount: 20, type: 'Debit', text: 'SHOP' },
+          { amount: -100, type: 'Credit', text: 'REFUND' },
+        ]),
+      ).toBe('bank');
+      expect(
+        liabilitySignView('credit_card', [
+          { amount: -20, type: 'Debit', text: 'SHOP' },
+          { amount: 100, type: 'Credit', text: 'PAYMENT' },
+        ]),
+      ).toBe('customer');
+      expect(
+        liabilitySignView('credit_card', [
+          { amount: 5, text: 'A' },
+          { amount: 6, text: 'B' },
+          { amount: 300, text: 'AUTOPAY' },
+        ]),
+      ).toBe('customer');
+      expect(
+        liabilitySignView('credit_card', [
+          { amount: 5, text: 'A' },
+          { amount: 6, text: 'B' },
+          { amount: -1, text: 'C' },
+        ]),
+      ).toBe('bank');
+      expect(
+        liabilitySignView('loan', [
+          { amount: -350, text: 'X' },
+          { amount: -350, text: 'Y' },
+          { amount: 60, text: 'Z' },
+        ]),
+      ).toBe('bank');
+      expect(liabilitySignView('loan', [])).toBeNull();
+      expect(
+        liabilitySignView('credit_card', [
+          { amount: 5, text: 'A' },
+          { amount: -5, text: 'B' },
+        ]),
+      ).toBeNull();
+    });
   });
 });
