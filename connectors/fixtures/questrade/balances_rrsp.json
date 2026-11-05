@@ -1,0 +1,6 @@
+{
+  "perCurrencyBalances": [
+    { "currency": "CAD", "cash": 10.0, "marketValue": 0, "totalEquity": 10.0 }
+  ],
+  "combinedBalances": [{ "currency": "CAD", "cash": 10.0, "marketValue": 0, "totalEquity": 10.0 }]
+}

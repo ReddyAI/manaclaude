@@ -5,15 +5,19 @@ import { coinbaseAdapter } from './coinbase';
 import { coinspotAdapter } from './coinspot';
 import { coinstatsAdapter } from './coinstats';
 import { fioAdapter } from './fio';
+import { ibkrFlexAdapter } from './ibkr_flex';
+import { indexaAdapter } from './indexa';
 import { krakenAdapter } from './kraken';
 import { lunchFlowAdapter } from './lunch_flow';
 import { monobankAdapter } from './monobank';
 import { onchainAdapter } from './onchain';
 import { plaidAdapter } from './plaid';
+import { questradeAdapter } from './questrade';
 import { simplefinAdapter } from './simplefin';
 import { snaptradeAdapter } from './snaptrade';
 import { sophtronAdapter } from './sophtron';
 import { tellerAdapter } from './teller';
+import { trading212Adapter } from './trading212';
 import { upAdapter } from './up';
 import { wazirxAdapter } from './wazirx';
 import { zerodhaKiteAdapter } from './zerodha_kite';
@@ -41,6 +45,10 @@ const list: ConnectorAdapter[] = [
   coinspotAdapter,
   coinstatsAdapter,
   onchainAdapter,
+  ibkrFlexAdapter,
+  trading212Adapter,
+  questradeAdapter,
+  indexaAdapter,
 ];
 
 export const ADAPTERS: Readonly<Record<string, ConnectorAdapter>> = Object.fromEntries(

@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "order": {
+        "id": 1000,
+        "side": "BUY",
+        "status": "FILLED",
+        "ticker": "VUSAl_EQ",
+        "instrument": { "ticker": "VUSAl_EQ", "name": "US 500 UCITS ETF", "currency": "GBX" },
+        "createdAt": "2025-12-01T10:00:00Z"
+      },
+      "fill": {
+        "id": 4999,
+        "quantity": 25,
+        "price": 8000,
+        "filledAt": "2025-12-01T10:00:05Z",
+        "walletImpact": { "currency": "GBP", "netValue": 2000.0 }
+      }
+    }
+  ],
+  "nextPagePath": null
+}
