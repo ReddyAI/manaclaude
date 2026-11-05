@@ -13,5 +13,5 @@ apps/mobile/android/
 apps/mobile/ios/
 package-lock.json
 LICENSE
-# Claude Code skills (tool config, not app code)
+# Claude Code skills (third-party prompts, not our code)
 .claude/

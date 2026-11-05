@@ -5,7 +5,7 @@ import { newId, nowIso } from '../util/ids';
 import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
 import { runRules } from '../services/rules';
-import { planSync } from './plan';
+import { categoryFromHint, planSync } from './plan';
 
 export interface SyncSummary {
   accountsCreated: number;
@@ -106,43 +106,66 @@ export async function applySyncResult(
           accountIds,
         );
   const categories = await selectAll(db, categoriesTable);
+  const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
+  // When session D's planTransactionSync lands on main, call it here instead:
+  // it takes the same input and returns the same shape.
   const plan = planSync({
-    connection,
-    result,
-    accountsByExternalId: byExternal,
+    connectionId: connection.id,
+    accounts: new Map([...byExternal.entries()].map(([ext, a]) => [ext, a.id])),
     existing,
-    categories,
+    result,
     now,
   });
-  const statements: D1PreparedStatement[] = [
-    ...plan.inserts.map((t) => insertStatement(db, transactionsTable, t, 'ignore')),
-    ...plan.updates.map((u) => insertStatement(db, transactionsTable, u.after, 'upsert')),
-  ];
-  for (const id of plan.removals) {
+  const byId = new Map(existing.map((t) => [t.id, t]));
+  const inserts = plan.inserts.map((t) => {
+    const hint = t.externalId ? plan.categoryHints[t.externalId] : undefined;
+    const fromHint = categoryFromHint(t, hint, categoryByName);
+    return fromHint ? { ...t, ...fromHint } : t;
+  });
+  const statements: D1PreparedStatement[] = inserts.map((t) =>
+    insertStatement(db, transactionsTable, t, 'ignore'),
+  );
+  for (const u of plan.updates) {
+    const before = byId.get(u.id);
+    const after = before ? { ...before, ...u.changes } : null;
+    const hint = after?.externalId ? plan.categoryHints[after.externalId] : undefined;
+    const fromHint = after ? categoryFromHint(after, hint, categoryByName) : null;
+    statements.push(
+      updateStatement(db, transactionsTable, { id: u.id }, { ...u.changes, ...(fromHint ?? {}) }),
+    );
+  }
+  for (const r of plan.removals) {
     statements.push(
       db
         .prepare(
           "UPDATE transfer_links SET status = 'rejected', updated_at = ? WHERE (out_transaction_id = ? OR in_transaction_id = ?) AND status != 'rejected'",
         )
-        .bind(now, id, id),
+        .bind(now, r.id, r.id),
       db
         .prepare(
           'UPDATE transactions SET transfer_link_id = NULL WHERE transfer_link_id IN (SELECT id FROM transfer_links WHERE out_transaction_id = ? OR in_transaction_id = ?)',
         )
-        .bind(id, id),
-      db.prepare('DELETE FROM transactions WHERE id = ? OR split_parent_id = ?').bind(id, id),
+        .bind(r.id, r.id),
+      r.hadUserEdits
+        ? // Keep a row the user touched, out of reports, so their edits aren't lost silently.
+          db
+            .prepare('UPDATE transactions SET excluded = 1, updated_at = ? WHERE id = ?')
+            .bind(now, r.id)
+        : db
+            .prepare('DELETE FROM transactions WHERE id = ? OR split_parent_id = ?')
+            .bind(r.id, r.id),
     );
   }
   await batchInChunks(db, statements);
   await runRules(
     db,
-    plan.inserts.map((t) => t.id),
+    inserts.map((t) => t.id),
   );
-  const atm = await recordAtmWithdrawals(db, plan.inserts);
+  const atm = await recordAtmWithdrawals(db, inserts);
   const match = await runTransferMatcher(db);
   return {
     accountsCreated,
-    inserted: plan.inserts.length,
+    inserted: inserts.length,
     updated: plan.updates.length,
     removed: plan.removals.length,
     linked: match.linked + atm,

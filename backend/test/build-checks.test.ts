@@ -793,3 +793,66 @@ describe('matcher guards', () => {
     expect(await runTransferMatcher(db)).toEqual({ linked: 0, suggested: 0 });
   });
 });
+
+describe('sync removals', () => {
+  it('deletes a dropped pending charge but keeps (excluded) one the user edited', async () => {
+    const connection = {
+      id: 'conn_rm',
+      connectorId: 'teller',
+      institutionName: 'Sample Bank',
+      status: 'healthy' as const,
+      lastSyncAt: null,
+      lastSuccessfulSyncAt: null,
+      lastError: null,
+      syncCursor: null,
+      accountIds: [],
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z',
+    };
+    await insertStatement(db, connectionsTable, connection).run();
+    const base = {
+      accountExternalId: 'ext_chk',
+      date: '2026-11-01',
+      currency: 'USD',
+      originalAmount: null,
+      originalCurrency: null,
+      merchantName: null,
+      pending: true,
+      pendingExternalId: null,
+      categoryHint: null,
+    };
+    const account = {
+      externalId: 'ext_chk',
+      name: 'Checking',
+      institutionName: null,
+      type: 'checking' as const,
+      subtype: null,
+      currency: 'USD',
+      balance: 0,
+      availableBalance: null,
+      creditLimit: null,
+      mask: null,
+    };
+    const result = (removed: string[]): SyncResult => ({
+      accounts: [account],
+      transactions: removed.length
+        ? []
+        : [
+            { ...base, externalId: 'P1', amount: -1_000, rawName: 'HOLD ONE' },
+            { ...base, externalId: 'P2', amount: -2_000, rawName: 'HOLD TWO' },
+          ],
+      removedTransactionExternalIds: removed,
+      holdings: [],
+      activities: [],
+      nextCursor: null,
+    });
+    await applySyncResult(db, connection, result([]));
+    const edited = (await allTxns()).find((t) => t.externalId === 'P2')!;
+    await editTransaction(db, edited.id, { notes: 'ask the bank' });
+    const summary = await applySyncResult(db, connection, result(['P1', 'P2']));
+    expect(summary.removed).toBe(2);
+    const left = await allTxns();
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ id: edited.id, excluded: true, notes: 'ask the bank' });
+  });
+});

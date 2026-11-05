@@ -1,21 +1,26 @@
 import {
   addDays,
+  addMonthsToMonth,
   buildTreatmentContext,
+  classifyAccountType,
+  convertAmount,
   firstDayOfMonth,
   formatMoney,
   lastDayOfMonth,
   monthOf,
-  addMonthsToMonth,
   reportTreatment,
   summarizeSpending,
+  type Account,
+  type BalanceSnapshot,
+  type FxRate,
   type LocalDate,
   type Recap,
-  type RecapData,
-  type RecapPeriod,
 } from '@manaclaude/shared';
 import type { Env } from '../../env';
 import { selectAll } from '../../db/table';
 import {
+  accountsTable,
+  balanceSnapshotsTable,
   categoriesTable,
   recurringTable,
   transactionsTable,
@@ -24,14 +29,14 @@ import {
 import { loadRates } from '../../fx/service';
 import { newId, nowIso } from '../../util/ids';
 import { getSettings } from '../../services/settings';
-import { tryGetAi, type AiDeps } from '../provider';
+import { completeJson, tryGetAi, type AiDeps, type JsonSchema } from '../provider';
 
 export function periodRange(
-  period: RecapPeriod,
+  period: Recap['kind'],
   anchor: LocalDate,
   weekStartsOn: 0 | 1,
 ): { start: LocalDate; end: LocalDate } {
-  if (period === 'month') {
+  if (period === 'monthly') {
     const m = monthOf(anchor);
     return { start: firstDayOfMonth(m), end: lastDayOfMonth(m) };
   }
@@ -42,50 +47,86 @@ export function periodRange(
 }
 
 /** The last complete week or month before `today`. */
-export function lastCompletePeriod(period: RecapPeriod, today: LocalDate, weekStartsOn: 0 | 1) {
-  if (period === 'month')
+export function lastCompletePeriod(period: Recap['kind'], today: LocalDate, weekStartsOn: 0 | 1) {
+  if (period === 'monthly')
     return periodRange(
-      'month',
+      'monthly',
       firstDayOfMonth(addMonthsToMonth(monthOf(today), -1)),
       weekStartsOn,
     );
-  const thisWeek = periodRange('week', today, weekStartsOn);
-  return periodRange('week', addDays(thisWeek.start, -7), weekStartsOn);
+  const thisWeek = periodRange('weekly', today, weekStartsOn);
+  return periodRange('weekly', addDays(thisWeek.start, -7), weekStartsOn);
 }
 
-function templateText(period: RecapPeriod, d: RecapData): string {
+interface RecapFacts {
+  currency: string;
+  spending: number;
+  income: number;
+  previousSpending: number;
+  top: { name: string; amount: number }[];
+  biggest: { name: string; amount: number } | null;
+  newRecurring: number;
+}
+
+function templateSentences(kind: Recap['kind'], d: RecapFacts): string[] {
   const fmt = (v: number) => formatMoney(v, d.currency);
+  const word = kind === 'weekly' ? 'week' : 'month';
   const change =
     d.previousSpending === 0
       ? null
       : Math.round(((d.spending - d.previousSpending) / Math.abs(d.previousSpending)) * 100);
-  const parts = [
-    `You spent ${fmt(d.spending)} this ${period}${change === null ? '' : `, ${change >= 0 ? `${change}% more` : `${-change}% less`} than the ${period} before`}.`,
+  const out = [
+    `You spent ${fmt(d.spending)} this ${word}${change === null ? '' : `, ${change >= 0 ? `${change}% more` : `${-change}% less`} than the ${word} before`}.`,
   ];
-  if (d.income > 0) parts.push(`Income was ${fmt(d.income)}.`);
-  if (d.topCategories[0]) {
-    parts.push(
-      `Most went to ${d.topCategories
+  if (d.income > 0) out.push(`Income was ${fmt(d.income)}.`);
+  if (d.top[0]) {
+    out.push(
+      `Most went to ${d.top
         .slice(0, 3)
         .map((c) => `${c.name} (${fmt(c.amount)})`)
         .join(', ')}.`,
     );
   }
-  if (d.largestTransactions[0])
-    parts.push(
-      `The largest charge was ${d.largestTransactions[0].name} at ${fmt(d.largestTransactions[0].amount)}.`,
-    );
-  return parts.join(' ');
+  if (d.biggest) out.push(`The largest charge was ${d.biggest.name} at ${fmt(d.biggest.amount)}.`);
+  if (d.newRecurring > 0)
+    out.push(`${d.newRecurring} new recurring charge${d.newRecurring === 1 ? '' : 's'} showed up.`);
+  return out;
+}
+
+function netWorthOn(
+  accounts: readonly Account[],
+  snaps: readonly BalanceSnapshot[],
+  rates: readonly FxRate[],
+  currency: string,
+  date: LocalDate,
+): number | null {
+  const latest = new Map<string, BalanceSnapshot>();
+  for (const s of snaps) {
+    if (s.date > date) continue;
+    const prev = latest.get(s.accountId);
+    if (!prev || prev.date < s.date) latest.set(s.accountId, s);
+  }
+  if (latest.size === 0) return null;
+  let total = 0;
+  for (const a of accounts) {
+    const s = latest.get(a.id);
+    if (!s || !a.includeInNetWorth) continue;
+    const v = convertAmount(s.balance, s.currency, currency, rates, { mode: 'latest' });
+    if (v === null) continue;
+    total += classifyAccountType(a.type) === 'liability' ? -v : v;
+  }
+  return total;
 }
 
 /**
- * Weekly or monthly recap. The numbers come from summarizeSpending (the same
- * policy code as every report); the AI only writes the sentences. With AI off
- * a plain template writes them.
+ * Weekly recap or Month in Review, in the shared Recap shape (session C's
+ * screens read it). The numbers come from summarizeSpending, the same policy
+ * code as every report; the AI only writes the headline and highlights from
+ * those numbers. With AI off a plain template writes them (source "local").
  */
 export async function generateRecap(
   env: Env,
-  period: RecapPeriod,
+  kind: Recap['kind'],
   range: { start: LocalDate; end: LocalDate },
   deps: AiDeps = {},
 ): Promise<Recap> {
@@ -94,122 +135,140 @@ export async function generateRecap(
   const currency = settings.primaryCurrency;
   const days = Math.round((Date.parse(range.end) - Date.parse(range.start)) / 86_400_000) + 1;
   const prevStart =
-    period === 'month'
+    kind === 'monthly'
       ? firstDayOfMonth(addMonthsToMonth(monthOf(range.start), -1))
       : addDays(range.start, -days);
-  const prevEnd = addDays(range.start, -1);
-  const [txns, categories, links, rates, recurring] = await Promise.all([
+  const prevEnd =
+    kind === 'monthly' ? lastDayOfMonth(monthOf(prevStart)) : addDays(range.start, -1);
+  const [txns, categories, links, rates, recurring, accounts, snaps] = await Promise.all([
     selectAll(db, transactionsTable, 'date >= ? AND date <= ?', [prevStart, range.end]),
     selectAll(db, categoriesTable),
     selectAll(db, transferLinksTable),
     loadRates(db),
     selectAll(db, recurringTable),
+    selectAll(db, accountsTable),
+    selectAll(db, balanceSnapshotsTable),
   ]);
   const ctx = buildTreatmentContext(settings.moneyPolicies, categories, links);
   const now = summarizeSpending(txns, ctx, { from: range.start, to: range.end, currency, rates });
   const prev = summarizeSpending(txns, ctx, { from: prevStart, to: prevEnd, currency, rates });
   const names = new Map(categories.map((c) => [c.id, c.name]));
-  const largest = txns
+  const biggest = txns
     .filter(
       (t) =>
         t.date >= range.start &&
         t.date <= range.end &&
-        reportTreatment(t, ctx).kind === 'spending' &&
         t.amount < 0 &&
-        t.currency === currency,
+        reportTreatment(t, ctx).kind === 'spending',
     )
-    .sort((a, b) => a.amount - b.amount)
+    .map((t) => ({
+      t,
+      amount: -(
+        convertAmount(t.amount, t.currency, currency, rates, { mode: 'on', date: t.date }) ?? 0
+      ),
+    }))
+    .sort((a, b) => b.amount - a.amount)
     .slice(0, 3);
-  const data: RecapData = {
+  const topCategories = Object.entries(now.byCategory)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([categoryId, amount]) => ({
+      categoryId,
+      amount,
+      previous: prev.byCategory[categoryId] ?? 0,
+    }));
+  const facts: RecapFacts = {
     currency,
     spending: now.spending,
     income: now.income,
     previousSpending: prev.spending,
-    topCategories: Object.entries(now.byCategory)
-      .filter(([, v]) => v > 0)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([categoryId, amount]) => ({
-        categoryId,
-        name: names.get(categoryId) ?? 'Uncategorized',
-        amount,
-      })),
-    largestTransactions: largest.map((t) => ({
-      transactionId: t.id,
-      name: t.name || t.rawName,
-      amount: -t.amount,
+    top: topCategories.map((c) => ({
+      name: names.get(c.categoryId) ?? 'Uncategorized',
+      amount: c.amount,
     })),
-    newRecurring: recurring.filter((r) => (r.priceHistory[0]?.date ?? '') >= range.start).length,
-    transactionsCounted: now.counted,
+    biggest: biggest[0]
+      ? { name: biggest[0].t.name || biggest[0].t.rawName, amount: biggest[0].amount }
+      : null,
+    newRecurring: recurring.filter((r) => {
+      const first = r.priceHistory[0]?.date ?? '';
+      return first >= range.start && first <= range.end;
+    }).length,
   };
-  let text = templateText(period, data);
-  let provider: Recap['provider'] = 'template';
+  const startWorth = netWorthOn(accounts, snaps, rates, currency, addDays(range.start, -1));
+  const endWorth = netWorthOn(accounts, snaps, rates, currency, range.end);
+  const sentences = templateSentences(kind, facts);
+  let headline = sentences[0]!;
+  let highlights = sentences.slice(1);
+  let source: Recap['source'] = 'local';
   const ai = tryGetAi(env, settings, deps);
   if (ai) {
     try {
-      const reply = await ai.complete({
+      const reply = await completeJson<{ headline: string; highlights: string[] }>(ai, {
         system:
-          'You write a short, friendly money recap for one person: 2 to 4 plain sentences, no headings, no lists, no advice unless something stands out. Use only the numbers given; amounts are already formatted.',
-        prompt: `Period: ${period} ${range.start} to ${range.end}\nFacts: ${templateText(period, data)}${
-          data.newRecurring ? ` ${data.newRecurring} new recurring charge(s) appeared.` : ''
-        }`,
-        maxTokens: 400,
+          'You write a short, friendly money recap for one person. Use only the facts given; amounts are already formatted. No advice unless something stands out. Return JSON only.',
+        prompt: `Period: ${kind} ${range.start} to ${range.end}\nFacts:\n${sentences.map((x) => `- ${x}`).join('\n')}\n\nWrite a one-line headline and two to four short highlight sentences.`,
+        schema: RECAP_SCHEMA,
+        maxTokens: 600,
       });
-      if (reply.trim()) {
-        text = reply.trim();
-        provider = ai.provider;
+      if (reply.headline?.trim()) {
+        headline = reply.headline.trim();
+        highlights = (reply.highlights ?? [])
+          .map((h) => String(h).trim())
+          .filter(Boolean)
+          .slice(0, 5);
+        source = 'ai';
       }
     } catch {
       // Keep the template text.
     }
   }
+  const existing = await db
+    .prepare('SELECT id FROM recaps WHERE kind = ? AND period_start = ?')
+    .bind(kind, range.start)
+    .first<{ id: string }>();
   const recap: Recap = {
-    id: newId('rcp'),
-    period,
+    id: existing?.id ?? newId('rcp'),
+    kind,
     periodStart: range.start,
     periodEnd: range.end,
-    text,
-    data,
-    provider,
+    currency,
+    spending: now.spending,
+    income: now.income,
+    previousSpending: prev.spending,
+    topCategories,
+    biggestTransactions: biggest.map((b) => ({ transactionId: b.t.id, amount: b.amount })),
+    netWorthChange: startWorth === null || endWorth === null ? null : endWorth - startWorth,
+    headline,
+    highlights,
+    source,
     createdAt: nowIso(),
   };
   await db
     .prepare(
-      'INSERT INTO recaps (id, period, period_start, period_end, text, data, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (period, period_start) DO UPDATE SET text = excluded.text, data = excluded.data, provider = excluded.provider, period_end = excluded.period_end, created_at = excluded.created_at',
+      'INSERT INTO recaps (id, kind, period_start, period_end, data, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (kind, period_start) DO UPDATE SET data = excluded.data, period_end = excluded.period_end, created_at = excluded.created_at',
     )
-    .bind(
-      recap.id,
-      period,
-      range.start,
-      range.end,
-      text,
-      JSON.stringify(data),
-      provider,
-      recap.createdAt,
-    )
+    .bind(recap.id, kind, range.start, range.end, JSON.stringify(recap), recap.createdAt)
     .run();
-  const stored = await db
-    .prepare('SELECT id FROM recaps WHERE period = ? AND period_start = ?')
-    .bind(period, range.start)
-    .first<{ id: string }>();
-  return { ...recap, id: stored?.id ?? recap.id };
+  return recap;
 }
 
-export async function listRecaps(db: D1Database, period?: RecapPeriod): Promise<Recap[]> {
+const RECAP_SCHEMA: JsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    headline: { type: 'string' },
+    highlights: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['headline', 'highlights'],
+};
+
+export async function listRecaps(db: D1Database, kind?: Recap['kind']): Promise<Recap[]> {
   const res = await db
     .prepare(
-      `SELECT * FROM recaps ${period ? 'WHERE period = ?' : ''} ORDER BY period_start DESC LIMIT 60`,
+      `SELECT data FROM recaps ${kind ? 'WHERE kind = ?' : ''} ORDER BY period_start DESC LIMIT 60`,
     )
-    .bind(...(period ? [period] : []))
-    .all<Record<string, string>>();
-  return res.results.map((r) => ({
-    id: r.id!,
-    period: r.period as RecapPeriod,
-    periodStart: r.period_start!,
-    periodEnd: r.period_end!,
-    text: r.text!,
-    data: JSON.parse(r.data!) as RecapData,
-    provider: r.provider as Recap['provider'],
-    createdAt: r.created_at!,
-  }));
+    .bind(...(kind ? [kind] : []))
+    .all<{ data: string }>();
+  return res.results.map((r) => JSON.parse(r.data) as Recap);
 }

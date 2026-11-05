@@ -212,29 +212,47 @@ describe('recaps', () => {
     });
   }
 
-  it('writes a template recap when AI is off, from the shared spending numbers', async () => {
+  it('writes a template recap in the shared Recap shape when AI is off', async () => {
     await updateSettings(db, { aiEnabled: false });
     await seedWeek();
-    const range = lastCompletePeriod('week', '2026-11-04', 0);
+    const range = lastCompletePeriod('weekly', '2026-11-04', 0);
     expect(range).toEqual({ start: '2026-10-25', end: '2026-10-31' });
-    const recap = await generateRecap(testEnv, 'week', range);
-    expect(recap.provider).toBe('template');
-    expect(recap.data).toMatchObject({ spending: 6_500, previousSpending: 5_000 });
-    expect(recap.text).toBe(
-      'You spent $65.00 this week, 30% more than the week before. Most went to Groceries ($40.00), Restaurants ($25.00). The largest charge was GROCER at $40.00.',
-    );
+    const recap = await generateRecap(testEnv, 'weekly', range);
+    expect(recap).toMatchObject({
+      kind: 'weekly',
+      source: 'local',
+      currency: 'USD',
+      spending: 6_500,
+      previousSpending: 5_000,
+      topCategories: [
+        { categoryId: 'cat_groceries', amount: 4_000, previous: 5_000 },
+        { categoryId: 'cat_dining', amount: 2_500, previous: 0 },
+      ],
+      headline: 'You spent $65.00 this week, 30% more than the week before.',
+      highlights: [
+        'Most went to Groceries ($40.00), Restaurants ($25.00).',
+        'The largest charge was GROCER at $40.00.',
+      ],
+    });
+    expect(recap.biggestTransactions[0]?.amount).toBe(4_000);
   });
 
-  it('lets the AI write the sentences, stores one recap per period and serves it to the app', async () => {
+  it('lets the AI write the headline and highlights, keeps one recap per period and serves it', async () => {
     await seedWeek();
-    const ai = fakeAi({ text: 'A calm week: $65.00 spent, mostly groceries.' });
-    await generateRecap(testEnv, 'week', { start: '2026-10-25', end: '2026-10-31' }, ai.deps);
-    await generateRecap(testEnv, 'week', { start: '2026-10-25', end: '2026-10-31' }, ai.deps);
-    const res = await client().api<{ recaps: Recap[] }>('GET', '/v1/recaps?period=week');
+    const ai = fakeAi({
+      text: JSON.stringify({
+        headline: 'A calm week.',
+        highlights: ['$65.00 spent, mostly groceries.'],
+      }),
+    });
+    await generateRecap(testEnv, 'weekly', { start: '2026-10-25', end: '2026-10-31' }, ai.deps);
+    await generateRecap(testEnv, 'weekly', { start: '2026-10-25', end: '2026-10-31' }, ai.deps);
+    const res = await client().api<{ recaps: Recap[] }>('GET', '/v1/recaps?kind=weekly');
     expect(res.body.recaps).toHaveLength(1);
     expect(res.body.recaps[0]).toMatchObject({
-      text: 'A calm week: $65.00 spent, mostly groceries.',
-      provider: 'workers_ai',
+      headline: 'A calm week.',
+      highlights: ['$65.00 spent, mostly groceries.'],
+      source: 'ai',
     });
     expect(ai.calls[0]!.prompt).toContain('You spent $65.00 this week');
   });

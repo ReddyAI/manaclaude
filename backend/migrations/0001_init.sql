@@ -383,18 +383,16 @@ CREATE TABLE alerts (
 );
 CREATE UNIQUE INDEX alerts_unique ON alerts (type, transaction_id) WHERE transaction_id IS NOT NULL;
 
--- Weekly and monthly recap text.
+-- Weekly recaps and Month in Review (the shared Recap shape, stored whole in data).
 CREATE TABLE recaps (
   id TEXT PRIMARY KEY,
-  period TEXT NOT NULL,
+  kind TEXT NOT NULL,
   period_start TEXT NOT NULL,
   period_end TEXT NOT NULL,
-  text TEXT NOT NULL,
   data TEXT NOT NULL,
-  provider TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
-CREATE UNIQUE INDEX recaps_period ON recaps (period, period_start);
+CREATE UNIQUE INDEX recaps_period ON recaps (kind, period_start);
 
 -- AI calls per day and provider, to stay inside the free Workers AI allowance.
 CREATE TABLE ai_usage (

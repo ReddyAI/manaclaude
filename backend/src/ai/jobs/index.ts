@@ -36,14 +36,14 @@ export async function runJob(
     case 'recap_week':
     case 'recap_month': {
       const settings = await getSettings(env.DB);
-      const period = job === 'recap_week' ? 'week' : 'month';
+      const period = job === 'recap_week' ? 'weekly' : 'monthly';
       const recap = await generateRecap(
         env,
         period,
         lastCompletePeriod(period, today, settings.weekStartsOn),
         deps,
       );
-      return { job, changed: 1, usedAi: recap.provider !== 'template', note: null };
+      return { job, changed: 1, usedAi: recap.source === 'ai', note: null };
     }
   }
 }

@@ -675,13 +675,14 @@ export function createApp(deps: AppDeps = {}) {
     return c.json({ ok: true });
   });
   app.get('/v1/recaps', async (c) => {
-    const period = c.req.query('period');
-    return c.json({
-      recaps: await listRecaps(
-        c.env.DB,
-        period === 'week' || period === 'month' ? period : undefined,
-      ),
-    });
+    const q = c.req.query('kind') ?? c.req.query('period');
+    const kind =
+      q === 'weekly' || q === 'week'
+        ? 'weekly'
+        : q === 'monthly' || q === 'month'
+          ? 'monthly'
+          : undefined;
+    return c.json({ recaps: await listRecaps(c.env.DB, kind) });
   });
   app.get('/v1/recurring', async (c) =>
     c.json({ recurring: await selectAll(c.env.DB, recurringTable) }),

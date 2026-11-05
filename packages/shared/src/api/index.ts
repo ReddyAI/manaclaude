@@ -8,6 +8,7 @@ import type { CurrencyCode, Id, IsoDateTime, LocalDate, MinorUnits } from '../mo
 import type { FinanceDataset } from '../model/dataset';
 import type { FxRate } from '../model/fx';
 import type { Receipt } from '../model/receipt';
+import type { Recap } from '../model/recap';
 import type { RecurringItem } from '../model/recurring';
 import type { Rule } from '../model/rule';
 import type {
@@ -350,33 +351,7 @@ export interface AlertsResponse {
   alerts: Alert[];
 }
 
-export type RecapPeriod = 'week' | 'month';
-
-/** Numbers behind a recap; the text is written from these. */
-export interface RecapData {
-  currency: CurrencyCode;
-  spending: MinorUnits;
-  income: MinorUnits;
-  previousSpending: MinorUnits;
-  topCategories: { categoryId: Id; name: string; amount: MinorUnits }[];
-  largestTransactions: { transactionId: Id; name: string; amount: MinorUnits }[];
-  newRecurring: number;
-  transactionsCounted: number;
-}
-
-/** GET /v1/recaps?period=week|month (latest first). Fed to session C's recap screens. */
-export interface Recap {
-  id: Id;
-  period: RecapPeriod;
-  periodStart: LocalDate;
-  periodEnd: LocalDate;
-  text: string;
-  data: RecapData;
-  /** 'template' when AI was off. */
-  provider: AiProvider | 'template';
-  createdAt: IsoDateTime;
-}
-
+/** GET /v1/recaps?kind=weekly|monthly (newest first). Session C's recap screens read these. */
 export interface RecapsResponse {
   recaps: Recap[];
 }
