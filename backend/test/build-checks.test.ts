@@ -778,3 +778,18 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
     // Settings changes are read back from D1 by the API (see api.test.ts).
   });
 });
+
+describe('matcher guards', () => {
+  it('a card refund that happens to equal a checking purchase is not linked as a card payment', async () => {
+    const checking = await addAccount({ type: 'checking' });
+    const card = await addAccount({ type: 'credit_card' });
+    await addTxn(checking, { date: '2026-11-02', amount: -5_000, rawName: 'HARDWARE STORE' });
+    await addTxn(card, {
+      date: '2026-11-03',
+      amount: 5_000,
+      rawName: 'OUTFITTERS RETURN',
+      categoryId: 'cat_shopping',
+    });
+    expect(await runTransferMatcher(db)).toEqual({ linked: 0, suggested: 0 });
+  });
+});

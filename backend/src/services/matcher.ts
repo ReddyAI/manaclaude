@@ -99,6 +99,7 @@ export function planTransferMatches(input: {
   const ins = pool.filter((t) => t.amount > 0);
   const byOut = new Map<Id, MatchCandidate[]>();
   const byIn = new Map<Id, MatchCandidate[]>();
+  const known = new Set<MatchCandidate>();
   for (const out of outs) {
     const outAcc = accounts.get(out.accountId)!;
     for (const into of ins) {
@@ -107,6 +108,10 @@ export function planTransferMatches(input: {
       if (days > MATCH_MAX_DAYS) continue;
       const inAcc = accounts.get(into.accountId)!;
       const words = TRANSFER_WORDS.test(out.rawName) || TRANSFER_WORDS.test(into.rawName);
+      // Money into a card or loan without a payment word is more likely a refund
+      // that happens to match a purchase elsewhere.
+      const debtSide = ['credit_card', 'loan', 'mortgage', 'other_liability'].includes(inAcc.type);
+      if (debtSide && !words) continue;
       let diff: number;
       if (out.currency === into.currency) {
         if (-out.amount !== into.amount) continue;
@@ -134,13 +139,13 @@ export function planTransferMatches(input: {
       // Known pairs still count towards ambiguity but are never re-proposed.
       byOut.set(out.id, [...(byOut.get(out.id) ?? []), candidate]);
       byIn.set(into.id, [...(byIn.get(into.id) ?? []), candidate]);
-      if (knownPairs.has(key)) (candidate as MatchCandidate & { known?: boolean }).known = true;
+      if (knownPairs.has(key)) known.add(candidate);
     }
   }
   const auto: MatchCandidate[] = [];
   const suggested: MatchCandidate[] = [];
   for (const list of byOut.values()) {
-    const fresh = list.filter((c) => !(c as { known?: boolean }).known);
+    const fresh = list.filter((c) => !known.has(c));
     if (fresh.length === 0) continue;
     const onlyOne = list.length === 1 && (byIn.get(list[0]!.in.id)?.length ?? 0) === 1;
     if (onlyOne) auto.push(fresh[0]!);
