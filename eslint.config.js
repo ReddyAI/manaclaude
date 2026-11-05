@@ -58,7 +58,7 @@ module.exports = defineConfig([
   {
     // Worker code: cloudflare:* modules exist only inside workerd, and the MCP
     // SDK publishes its entry points through a wildcard exports map.
-    files: ['backend/**/*.ts'],
+    files: ['backend/**/*.{ts,mjs}'],
     rules: {
       'import/no-unresolved': [
         'error',

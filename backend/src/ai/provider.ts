@@ -117,9 +117,15 @@ function workersAi(env: Env, deps: AiDeps): AiClient {
       let prompt = req.prompt;
       if (req.pdf) {
         if (!binding.toMarkdown) throw new AiUnavailableError('Workers AI cannot read PDFs here.');
-        const [doc] = await binding.toMarkdown([
-          { name: req.pdf.fileName, blob: new Blob([req.pdf.data], { type: 'application/pdf' }) },
-        ]);
+        const [doc] = await binding
+          .toMarkdown([
+            { name: req.pdf.fileName, blob: new Blob([req.pdf.data], { type: 'application/pdf' }) },
+          ])
+          .catch((e: unknown) => {
+            throw new AiUnavailableError(
+              `Workers AI could not read the PDF (${e instanceof Error ? e.message.slice(0, 120) : 'error'}).`,
+            );
+          });
         if (!doc || doc.error || !doc.data)
           throw new AiUnavailableError('Could not read text from this PDF.');
         prompt = `${req.prompt}\n\nStatement text:\n${doc.data}`;
@@ -144,7 +150,14 @@ function workersAi(env: Env, deps: AiDeps): AiClient {
       const model = req.image
         ? (env.AI_VISION_MODEL ?? DEFAULT_MODELS.workersVision)
         : (env.AI_TEXT_MODEL ?? DEFAULT_MODELS.workersText);
-      const out = (await binding.run(model, inputs)) as { response?: unknown };
+      let out: { response?: unknown };
+      try {
+        out = (await binding.run(model, inputs)) as { response?: unknown };
+      } catch (e) {
+        throw new AiUnavailableError(
+          `Workers AI could not answer (${e instanceof Error ? e.message.slice(0, 120) : 'error'}).`,
+        );
+      }
       const response = out?.response;
       if (response === undefined || response === null)
         throw new AiUnavailableError('Workers AI returned nothing.');

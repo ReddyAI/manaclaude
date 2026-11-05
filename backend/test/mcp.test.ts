@@ -232,4 +232,21 @@ describe('MCP server at /mcp', () => {
     expect(names).not.toContain('categorize_transaction');
     await mcp.close();
   });
+
+  it('can create a confidential client for assistants that need a client ID and secret', async () => {
+    const res = await client().api<{ clientId: string; clientSecret: string }>(
+      'POST',
+      '/v1/mcp/clients',
+      {
+        name: 'Perplexity',
+        redirectUris: ['https://assistant.example/callback'],
+      },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.clientId).toBeTruthy();
+    expect(res.body.clientSecret).toBeTruthy();
+    expect(
+      (await client().api('POST', '/v1/mcp/clients', { name: 'x', redirectUris: [] })).status,
+    ).toBe(400);
+  });
 });

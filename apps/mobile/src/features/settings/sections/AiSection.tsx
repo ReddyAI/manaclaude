@@ -21,7 +21,7 @@ const PROVIDERS: { value: AiProvider; label: string; note: string }[] = [
   {
     value: 'gemini_paid',
     label: 'Gemini (paid tier)',
-    note: 'Paid keys only; the free tier allows human review',
+    note: 'Paid keys only (GEMINI_API_KEY); the free tier allows human review',
   },
 ];
 
@@ -32,7 +32,11 @@ export function AiSection() {
     <SettingsGroup title="AI">
       <SettingsRow
         label="AI features"
-        description="One switch for every AI call: categorizing, receipts, statements, recaps"
+        description={
+          settings.aiEnabled
+            ? 'One switch for every AI call: categorizing, receipts, statements, recaps'
+            : 'Off: nothing is sent to any AI. Rules and your past corrections still categorize, and recaps use plain numbers.'
+        }
         control={
           <Switch
             value={settings.aiEnabled}
@@ -57,7 +61,7 @@ export function AiSection() {
         : null}
       <SettingsRow
         label="Let AI assistants make changes"
-        description="MCP write tools (categorize, add cash, tag, link transfers). Read tools are always on."
+        description="MCP write tools (categorize, add cash, tag, link transfers). Read tools are always on. Your assistant asks before each change."
         control={
           <Switch
             value={settings.mcpWriteToolsEnabled}

@@ -695,6 +695,28 @@ export function createApp(deps: AppDeps = {}) {
     c.json(await runConnectionSync(c.env, c.req.param('id'), c.get('deps').fetch)),
   );
 
+  // ---- MCP OAuth clients (fallback when an assistant can't self-register) ----
+  app.post('/v1/mcp/clients', async (c) => {
+    const b = await body(
+      c,
+      z.object({
+        name: z.string().min(1).max(100),
+        redirectUris: z.array(z.string().url()).min(1).max(5),
+      }),
+    );
+    const oauth = c.env.OAUTH_PROVIDER;
+    if (!oauth) throw new ApiError(503, 'not_configured', 'OAuth is not available.');
+    const created = await oauth.createClient({
+      clientName: b.name,
+      redirectUris: b.redirectUris,
+      tokenEndpointAuthMethod: 'client_secret_post',
+      grantTypes: ['authorization_code', 'refresh_token'],
+      responseTypes: ['code'],
+    });
+    // The secret is shown once; it is stored only as a hash.
+    return c.json({ clientId: created.clientId, clientSecret: created.clientSecret ?? null }, 201);
+  });
+
   // ---- Local development ----------------------------------------------------------
   app.post('/v1/dev/seed', async (c) => {
     if (c.env.ALLOW_SAMPLE_SEED !== 'true') throw notFound();
