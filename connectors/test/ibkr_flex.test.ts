@@ -145,7 +145,7 @@ describe('ibkr flex adapter', () => {
         ),
         makeConnection('ibkr_flex'),
       ),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(ConnectorRateLimitedError);
   });
 });
 

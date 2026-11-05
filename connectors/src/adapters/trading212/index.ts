@@ -1,10 +1,4 @@
-import type {
-  Connection,
-  ConnectorContext,
-  ProviderActivity,
-  ProviderHolding,
-  SyncResult,
-} from '@manaclaude/shared';
+import type { Connection, ConnectorContext, ProviderHolding, SyncResult } from '@manaclaude/shared';
 import { HttpClient } from '../../http';
 import { sinceCursor } from '../../util/cursor';
 import { todayUtc, toLocalDate } from '../../util/dates';
