@@ -16,7 +16,7 @@ R2 holds receipts and statement files. Cloudflare asks you to switch it on yours
 
 1. Sign in at dash.cloudflare.com.
 2. In the left menu open R2 Object Storage.
-3. Press the button to get started or enable R2. Cloudflare may ask for a payment card. The first 10 GB stays free, and Mana will use far less.
+3. Press the button to get started or enable R2. Cloudflare may ask for a payment card. The first 10 GB stays free, and Billionaire will use far less.
 
 If you skip this, the deploy stops at the "Create or reuse Cloudflare resources" step with a message that says R2 is not turned on. Do this step, then run the workflow again.
 
@@ -36,7 +36,7 @@ If you skip this, the deploy stops at the "Create or reuse Cloudflare resources"
 | Account        | Account Settings     | Read  |
 | Account        | SSL and Certificates | Edit  |
 
-4. Under Account Resources choose Include, then your account. Leave Zone Resources empty; Mana uses no custom domain.
+4. Under Account Resources choose Include, then your account. Leave Zone Resources empty; Billionaire uses no custom domain.
 5. Create the token and copy it right away. Cloudflare shows it once.
 
 The last row (SSL and Certificates) is only for uploading the Teller certificate. It is my best match for the permission that covers mTLS certificates, and I could not confirm the name because Cloudflare's documentation was not reachable from the build environment. If you have no Teller certificate yet, you can leave that row out and add it later. If the deploy log shows an authentication error on the Teller certificate step, open the token, look for the permission with "certificate" or "mTLS" in its name, add it and run the workflow again. The other six rows are the ones Cloudflare's own Workers token template and third-party guides list for this kind of deploy.
@@ -67,7 +67,7 @@ In GitHub open the repository, then Settings, then Secrets and variables, then A
 | SOPHTRON_ACCESS_KEY    | Your Sophtron access key                                                                                                                                                                                                                                       | Sophtron                      |
 | KITE_API_KEY           | The API key of your Kite Connect app                                                                                                                                                                                                                           | Zerodha direct                |
 | KITE_API_SECRET        | The API secret of the same app                                                                                                                                                                                                                                 | Zerodha direct                |
-| ANTHROPIC_API_KEY      | An Anthropic API key. Optional: Mana's AI uses Cloudflare Workers AI by default and this only adds Claude as a choice. It bills per use.                                                                                                                       | Claude as the AI provider     |
+| ANTHROPIC_API_KEY      | An Anthropic API key. Optional: Billionaire's AI uses Cloudflare Workers AI by default and this only adds Claude as a choice. It bills per use.                                                                                                                | Claude as the AI provider     |
 
 A secret that is not set is skipped. A Worker secret that already exists in Cloudflare is left alone when the GitHub secret is missing, so removing a GitHub secret does not remove it from the Worker. To remove one for good, delete it in the Cloudflare dashboard under Workers & Pages, manaclaude-api, Settings, Variables and Secrets.
 
@@ -80,7 +80,7 @@ All of these have a free personal route. Sign-ups and key pages:
 - SnapTrade (snaptrade.com). Sign up for the Personal (free) plan in their dashboard. It shows a client ID and a consumer key. It covers Robinhood, E*TRADE and Zerodha with up to 20 connections.
 - Sophtron (sophtron.com). Create a personal developer account and open the API or developer page. It shows a user ID and an access key. Free for personal use, 10,000 requests a month.
 - Zerodha Kite Connect (developers.kite.trade). Sign in with your Zerodha login, open My apps, and create an app of the free Personal type. Kite shows the API key and API secret on the app's page. The same page has a Redirect URL field (see step 5).
-- Open Exchange Rates (openexchangerates.org). Sign up for the free plan, then open the App IDs page and copy the default app ID. The free plan allows hourly updates and a USD base, which is what Mana uses.
+- Open Exchange Rates (openexchangerates.org). Sign up for the free plan, then open the App IDs page and copy the default app ID. The free plan allows hourly updates and a USD base, which is what Billionaire uses.
 
 ## 5. Register the Zerodha redirect URL
 
@@ -125,7 +125,7 @@ If your Cloudflare account has never had a workers.dev address, the workflow reg
 
 The server address is the MCP line from the run summary. The full click-by-click steps are in docs/mcp.md. In short:
 
-1. Claude (Pro): open Settings, then Connectors, press Add custom connector, name it Mana, paste the MCP address, press Add, then Connect. A Mana page opens. Type MCP_OWNER_PASSWORD and press Allow.
+1. Claude (Pro): open Settings, then Connectors, press Add custom connector, name it Billionaire, paste the MCP address, press Add, then Connect. A Billionaire page opens. Type MCP_OWNER_PASSWORD and press Allow.
 2. Perplexity (Pro): on the website open Settings, then Connectors, press Add custom connector, choose Remote, paste the MCP address, pick OAuth, save, and sign in with the same password. If Perplexity asks for a client ID and secret, docs/mcp.md shows how to create them.
 
 Write tools (changing categories, adding cash entries) stay off until you turn on "Let AI assistants make changes" in the app's Settings.

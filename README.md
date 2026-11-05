@@ -1,4 +1,4 @@
-# Mana
+# Billionaire
 
 A personal finance app for one person's own accounts: US banks, cards and brokerages, Indian NRE/NRO accounts and investments, crypto, and cash in USD and INR. Android first, then web, then iOS.
 
@@ -6,9 +6,9 @@ Everything here is built by Claude in Claude Code cloud sessions. Start with [CL
 
 ## Get the Android app
 
-Every push to a pull request that touches the app runs the **Android APK** workflow. Open the run under the repo's Actions tab, scroll to **Artifacts** and download `mana-android-apk`. Unzip it and install the `.apk` on the phone (allow installs from your browser or file manager when Android asks). New builds install over old ones.
+Every push to a pull request that touches the app runs the **Android APK** workflow. Open the run under the repo's Actions tab, scroll to **Artifacts** and download `billionaire-android-apk`. Unzip it and install the `.apk` on the phone (allow installs from your browser or file manager when Android asks). New builds install over old ones.
 
-The web build is the `mana-web` artifact of the **Web build** workflow: a static site you can open with any static file server.
+The web build is the `billionaire-web` artifact of the **Web build** workflow: a static site you can open with any static file server.
 
 ## Develop
 

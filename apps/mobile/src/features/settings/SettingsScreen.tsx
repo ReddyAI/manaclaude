@@ -24,7 +24,7 @@ export function SettingsScreen() {
       <AiSection />
       <Card>
         <VStack gap="xs">
-          <Text variant="bodyStrong">{`Mana ${Constants.expoConfig?.version ?? ''}`}</Text>
+          <Text variant="bodyStrong">{`Billionaire ${Constants.expoConfig?.version ?? ''}`}</Text>
           <Text variant="caption" tone="muted">
             Showing made-up sample data. Nothing leaves this device yet.
           </Text>

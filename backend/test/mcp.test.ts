@@ -60,7 +60,7 @@ async function getAccessToken(raw: ReturnType<typeof client>['raw'], scope = 're
   const page = await raw(authUrl);
   expect(page.status).toBe(200);
   const html = await page.text();
-  expect(html).toContain('Connect Test Assistant to Mana');
+  expect(html).toContain('Connect Test Assistant to Billionaire');
   const handle = html.match(/name="handle" value="([^"]+)"/)![1]!;
   const cookie = (page.headers.get('set-cookie') ?? '').split(';')[0]!;
 

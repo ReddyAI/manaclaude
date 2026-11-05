@@ -59,7 +59,7 @@ export function createWorker(deps: AppDeps = {}) {
       clientRegistrationEndpoint: '/register',
       scopesSupported: ['read', 'write'],
       accessTokenTTL: 3600,
-      resourceMetadata: { resource: `${base}/mcp`, resource_name: 'Mana personal finance' },
+      resourceMetadata: { resource: `${base}/mcp`, resource_name: 'Billionaire personal finance' },
     });
     return provider;
   };

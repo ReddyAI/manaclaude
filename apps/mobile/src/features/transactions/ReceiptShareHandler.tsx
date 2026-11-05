@@ -37,7 +37,7 @@ export function receiptTargets(
 }
 
 /**
- * Android share sheet: share a photo from the gallery or camera app to Mana
+ * Android share sheet: share a photo from the gallery or camera app to Billionaire
  * and this sheet asks which purchase it belongs to. Mounted once in the root
  * layout. The share plugin is switched on for Android only (see app.json).
  */

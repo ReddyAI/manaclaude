@@ -72,7 +72,7 @@ export function ReceiptSection({
           ))}
         </HStack>
         <Text variant="caption" tone="faint">
-          You can also share a photo to Mana from your gallery.
+          You can also share a photo to Billionaire from your gallery.
         </Text>
         {message ? (
           <Text variant="caption" tone="danger">

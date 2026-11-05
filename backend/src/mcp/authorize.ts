@@ -20,7 +20,7 @@ function page(opts: {
 }): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Connect to Mana</title>
+<title>Connect to Billionaire</title>
 <style>
 :root{color-scheme:light dark;--bg:#f6f7f9;--card:#fff;--text:#14171c;--muted:#5b6370;--accent:#2457d6;--danger:#b42318;--line:#d9dde3}
 @media (prefers-color-scheme:dark){:root{--bg:#000814;--card:#0b1424;--text:#e6e8eb;--muted:#9aa3b2;--accent:#6c9bff;--danger:#ff8a80;--line:#1f2b40}}
@@ -31,10 +31,10 @@ input[type=password]{width:100%;box-sizing:border-box;padding:10px 12px;border:1
 .row{display:flex;gap:8px;margin-top:16px}button{flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);font-size:16px;cursor:pointer;background:transparent;color:var(--text)}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.error{color:var(--danger);margin-bottom:12px}
 </style></head><body><main>
-<h1>Connect ${escape(opts.clientName)} to Mana</h1>
+<h1>Connect ${escape(opts.clientName)} to Billionaire</h1>
 <p>${escape(opts.clientName)} wants to read your accounts, transactions, budgets, investments and receipts. It will send you back to <strong>${escape(opts.redirectHost)}</strong>.${
     opts.scopes.includes('write')
-      ? " Write tools stay off unless you turn them on in Mana's settings."
+      ? " Write tools stay off unless you turn them on in Billionaire's settings."
       : ''
   }</p>
 ${opts.error ? `<p class="error">${escape(opts.error)}</p>` : ''}

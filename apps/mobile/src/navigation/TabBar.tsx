@@ -29,7 +29,7 @@ export function TabBar({ state, navigateToTab, wide }: TabBarProps) {
     return (
       <View style={styles.sidebar} accessibilityRole="tablist">
         <Text variant="headline" style={styles.brand}>
-          Mana
+          Billionaire
         </Text>
         {TABS.map((tab) => {
           const active = tab.name === activeName;

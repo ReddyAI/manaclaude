@@ -17,10 +17,10 @@ The backend's sign-in is fine: every `/v1` request needs `APP_API_TOKEN`, and th
 
 Session E is split in two so each session stays small and cheap:
 
-| Session | Where | Environment | Model | Effort | Cost guess |
-| ------- | ----- | ----------- | ----- | ------ | ---------- |
-| E1: merge, wire B to D, one-place setup, deploy workflows | Claude Code on the web (cloud) | Default | Sonnet 5.5 | High | $6 to $10 |
-| E2: link accounts, app on the backend | Your regular Claude Code, after setup | Your computer | Opus 5.5 | High | your plan |
+| Session                                                   | Where                                 | Environment   | Model      | Effort | Cost guess |
+| --------------------------------------------------------- | ------------------------------------- | ------------- | ---------- | ------ | ---------- |
+| E1: merge, wire B to D, one-place setup, deploy workflows | Claude Code on the web (cloud)        | Default       | Sonnet 5.5 | High   | $6 to $10  |
+| E2: link accounts, app on the backend                     | Your regular Claude Code, after setup | Your computer | Opus 5.5   | High   | your plan  |
 
 Don't merge #3, #4, #5 or #6 yourself. E1 merges all four into one pull request.
 
@@ -58,10 +58,10 @@ Menu names on these sites may differ a little from what's written here. E1's `do
 
 In your password manager, generate and save:
 
-| Name | What it is |
-| ---- | ---------- |
-| APP_API_TOKEN | 40 or more random characters. The app sends it to your backend. |
-| MCP_OWNER_PASSWORD | A password you'll type when connecting Claude or Perplexity. |
+| Name               | What it is                                                               |
+| ------------------ | ------------------------------------------------------------------------ |
+| APP_API_TOKEN      | 40 or more random characters. The app sends it to your backend.          |
+| MCP_OWNER_PASSWORD | A password you'll type when connecting Claude or Perplexity.             |
 | CREDENTIALS_SECRET | 40 or more random characters. Encrypts your bank logins in the database. |
 
 Never paste them into a chat.
@@ -80,39 +80,39 @@ Sign up at https://openexchangerates.org/signup/free and copy the App ID.
 
 ### 2.7 Connector keys (free developer accounts)
 
-| Connector | Sign up | What to copy |
-| --------- | ------- | ------------ |
-| Teller | https://teller.io | Application ID; download the certificate and private key files |
-| Plaid | https://dashboard.plaid.com/signup | client_id and the Sandbox secret (start with Sandbox) |
-| SnapTrade | https://snaptrade.com | Client ID and consumer key from the personal or developer plan |
-| Sophtron | https://sophtron.com | User ID and access key |
-| Zerodha Kite Connect | https://developers.kite.trade | Create a Personal app. Redirect URL: https://manaclaude-api.YOUR-SUBDOMAIN.workers.dev/v1/link/zerodha_kite/callback. Copy API key and API secret |
-| Coinbase, WazirX | nothing yet | You'll make read-only keys and enter them in the app after E2 |
+| Connector            | Sign up                            | What to copy                                                                                                                                      |
+| -------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Teller               | https://teller.io                  | Application ID; download the certificate and private key files                                                                                    |
+| Plaid                | https://dashboard.plaid.com/signup | client_id and the Sandbox secret (start with Sandbox)                                                                                             |
+| SnapTrade            | https://snaptrade.com              | Client ID and consumer key from the personal or developer plan                                                                                    |
+| Sophtron             | https://sophtron.com               | User ID and access key                                                                                                                            |
+| Zerodha Kite Connect | https://developers.kite.trade      | Create a Personal app. Redirect URL: https://manaclaude-api.YOUR-SUBDOMAIN.workers.dev/v1/link/zerodha_kite/callback. Copy API key and API secret |
+| Coinbase, WazirX     | nothing yet                        | You'll make read-only keys and enter them in the app after E2                                                                                     |
 
 ### 2.8 Put everything into GitHub
 
 Open https://github.com/ReddyAI/manaclaude/settings/secrets/actions and click "New repository secret" once per row. Skip any you don't have yet; you can add it later and re-run the deploy.
 
-| Secret name | Value |
-| ----------- | ----- |
-| CLOUDFLARE_API_TOKEN | token from 2.5 |
-| CLOUDFLARE_ACCOUNT_ID | Account ID from 2.4 |
-| APP_API_TOKEN | from 2.1 |
-| MCP_OWNER_PASSWORD | from 2.1 |
-| CREDENTIALS_SECRET | from 2.1 |
-| OXR_APP_ID | Open Exchange Rates App ID |
-| TELLER_APPLICATION_ID | Teller Application ID |
-| TELLER_CERT_PEM | open Teller's certificate file in Notepad and copy all of it, including the BEGIN and END lines |
-| TELLER_KEY_PEM | the same for Teller's private key file |
-| PLAID_CLIENT_ID | Plaid client_id |
-| PLAID_SECRET | Plaid Sandbox secret |
-| PLAID_ENV | sandbox |
-| SNAPTRADE_CLIENT_ID | SnapTrade client ID |
-| SNAPTRADE_CONSUMER_KEY | SnapTrade consumer key |
-| SOPHTRON_USER_ID | Sophtron user ID |
-| SOPHTRON_ACCESS_KEY | Sophtron access key |
-| KITE_API_KEY | Zerodha API key |
-| KITE_API_SECRET | Zerodha API secret |
+| Secret name            | Value                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| CLOUDFLARE_API_TOKEN   | token from 2.5                                                                                  |
+| CLOUDFLARE_ACCOUNT_ID  | Account ID from 2.4                                                                             |
+| APP_API_TOKEN          | from 2.1                                                                                        |
+| MCP_OWNER_PASSWORD     | from 2.1                                                                                        |
+| CREDENTIALS_SECRET     | from 2.1                                                                                        |
+| OXR_APP_ID             | Open Exchange Rates App ID                                                                      |
+| TELLER_APPLICATION_ID  | Teller Application ID                                                                           |
+| TELLER_CERT_PEM        | open Teller's certificate file in Notepad and copy all of it, including the BEGIN and END lines |
+| TELLER_KEY_PEM         | the same for Teller's private key file                                                          |
+| PLAID_CLIENT_ID        | Plaid client_id                                                                                 |
+| PLAID_SECRET           | Plaid Sandbox secret                                                                            |
+| PLAID_ENV              | sandbox                                                                                         |
+| SNAPTRADE_CLIENT_ID    | SnapTrade client ID                                                                             |
+| SNAPTRADE_CONSUMER_KEY | SnapTrade consumer key                                                                          |
+| SOPHTRON_USER_ID       | Sophtron user ID                                                                                |
+| SOPHTRON_ACCESS_KEY    | Sophtron access key                                                                             |
+| KITE_API_KEY           | Zerodha API key                                                                                 |
+| KITE_API_SECRET        | Zerodha API secret                                                                              |
 
 ## Step 3: after E1 opens its pull request
 
