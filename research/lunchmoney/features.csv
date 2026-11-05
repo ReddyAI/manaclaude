@@ -1,0 +1,48 @@
+feature,area,priority,original,clone,notes
+Spreadsheet-style transactions table with inline cell editing,transactions,must,yes,no,Best bulk workflow of the group
+Reviewed / unreviewed status with auto-review options,review,must,yes,no,Synced starts unreviewed; rules can mark reviewed
+"Three filter modes: quick search, quick filter, advanced filter",transactions,must,yes,no,
+"Bulk edit: date, payee, category, notes, currency, account, tags, recurring link, reviewed",transactions,must,yes,no,Complete action list
+Selected-transactions panel with total and average,transactions,should,yes,no,
+"Split even, custom or equal payments over time; unsplit",transactions,must,yes,no,Total must match
+Group transactions into one row without changing children,transactions,should,yes,no,Declutters; netting transfers
+"Create transfer: two linked sides, net zero, excluded from budget",transactions,must,yes,no,Dedicated flow
+Duplicate transaction,transactions,could,yes,no,
+Quick Add for rapid manual entry,transactions,could,yes,no,
+Create transaction from a recurring item,transactions,could,yes,no,
+Per-transaction change history log,transactions,should,yes,no,Monarch shipped the same in July 2026
+Direct link and stable id per transaction,transactions,could,yes,no,
+"Attachments (receipts, pay stubs)",transactions,should,yes,no,
+Pending transactions locked except notes; synced amounts locked,transactions,should,yes,no,Allow-modifications flag per account
+CSV export of current view,transactions,should,yes,no,
+"Rules with conditions: payee, category, notes, amount range, day range, account",rules,must,yes,no,"Operators contains, starts with, exact"
+"Rule actions: category, payee, notes, tags, recurring link, split, reviewed, email, delete",rules,must,yes,no,Includes disable-recurring-suggestion
+One-time rules and apply to existing transactions,rules,should,yes,no,
+Rules also drive recurring linking,rules,should,yes,no,
+"Category properties: treat as income, exclude from budget, exclude from totals",categories,must,yes,no,Flexible without a transaction-kind enum
+Category groups and group budgeting,categories,should,yes,no,
+Export and import categories,categories,could,yes,no,
+Auto-categorization mapping from provider categories,categories,should,yes,no,Plaid categories to own
+"Tags: create, manage, assign, analyze",tags,should,yes,no,
+Budget with custom period start and income pool,budgets,must,yes,no,Budgeting v2
+Rollovers for the general pool and per category,budgets,should,yes,no,
+"Recurring items by month: paid, not yet, unlinked",recurring,must,yes,no,
+Suggested recurring from detection,recurring,should,yes,no,
+"Recurring properties: category, active period, account, cadence",recurring,should,yes,no,
+Recurring items excluded from stats via toggle,recurring,could,yes,no,Include-recurring toggle on Stats and Trends
+"Analyze query tool: report, pie, bar, line, stacked bar with date range and granularity",reports,must,yes,no,Ad hoc views
+Overview with period picker and attention cards,dashboard,must,yes,no,
+"Net Worth with manual and historical balances, CSV export",net worth,must,yes,no,
+Stats: top purchases and new merchants,reports,should,yes,no,New-merchant card is useful
+Trends over time,reports,should,yes,no,
+"Multicurrency: 160+ currencies, primary currency for totals",currency,must,yes,no,Per-amount currency dropdown
+Manual crypto holdings in 300+ coins with live rates,crypto,should,yes,no,
+Crypto sync via Coinbase and Kraken API keys and Ethereum address,crypto,could,yes,no,Staked balances not shown
+Plaid automatic imports,connectors,could,yes,no,"US, Canada, some EU"
+CSV and PDF statement import with column mapping,imports,must,yes,no,
+Mint and YNAB migration tools,imports,could,yes,no,
+Collaborators on a shared budget,sharing,could,yes,no,"Priced per budget, not per person"
+Developer API with personal token,api,should,yes,no,"Open beta, lunchmoney.dev"
+Mobile companion: add transactions and view stats,platform,could,yes,no,Not a full app
+Email notifications from rules,alerts,could,yes,no,
+"Beta testing program, affiliate program, Discord community",community,could,yes,skip,Not product features
