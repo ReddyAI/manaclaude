@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { monobankAdapter } from '../src/adapters/monobank';
 import { ConnectorRateLimitedError } from '../src/errors';
 import { describeBankSuite } from './helpers/bankSuite';
-import { fakeFetch, fixture, makeConnection, makeCtx, type FakeCall } from './helpers/fakeFetch';
+import { fakeFetch, fixture, makeConnection, makeCtx } from './helpers/fakeFetch';
 
 const SECRETS = { MONOBANK_TOKEN: 'mono_token_demo' };
 const H = 'api.monobank.ua/personal';

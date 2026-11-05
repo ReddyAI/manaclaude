@@ -34,6 +34,7 @@ const unauthorized = () =>
     SECRETS,
     fakeFetch({
       [`GET ${H}/accounts`]: { status: 401, json: fixture('up', 'error_unauthorized.json') },
+      [`GET ${H}/util/ping`]: { status: 401, json: fixture('up', 'error_unauthorized.json') },
     }),
   );
 

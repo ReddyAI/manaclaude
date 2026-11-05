@@ -1,17 +1,17 @@
 import type { ConnectorAdapter } from '@manaclaude/shared';
-import { tellerAdapter } from './teller';
-import { sophtronAdapter } from './sophtron';
-import { plaidAdapter } from './plaid';
-import { snaptradeAdapter } from './snaptrade';
-import { zerodhaKiteAdapter } from './zerodha_kite';
-import { coinbaseAdapter } from './coinbase';
-import { wazirxAdapter } from './wazirx';
-import { simplefinAdapter } from './simplefin';
-import { lunchFlowAdapter } from './lunch_flow';
-import { upAdapter } from './up';
 import { akahuAdapter } from './akahu';
-import { monobankAdapter } from './monobank';
+import { coinbaseAdapter } from './coinbase';
 import { fioAdapter } from './fio';
+import { lunchFlowAdapter } from './lunch_flow';
+import { monobankAdapter } from './monobank';
+import { plaidAdapter } from './plaid';
+import { simplefinAdapter } from './simplefin';
+import { snaptradeAdapter } from './snaptrade';
+import { sophtronAdapter } from './sophtron';
+import { tellerAdapter } from './teller';
+import { upAdapter } from './up';
+import { wazirxAdapter } from './wazirx';
+import { zerodhaKiteAdapter } from './zerodha_kite';
 
 /**
  * Adapter lookup by connector id. Session D adds one file per adapter under
@@ -25,6 +25,12 @@ const list: ConnectorAdapter[] = [
   zerodhaKiteAdapter,
   coinbaseAdapter,
   wazirxAdapter,
+  simplefinAdapter,
+  lunchFlowAdapter,
+  upAdapter,
+  akahuAdapter,
+  monobankAdapter,
+  fioAdapter,
 ];
 
 export const ADAPTERS: Readonly<Record<string, ConnectorAdapter>> = Object.fromEntries(
