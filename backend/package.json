@@ -11,10 +11,16 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.5.0",
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
     "@manaclaude/connectors": "0.1.0",
-    "@manaclaude/shared": "0.1.0"
+    "@manaclaude/shared": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "hono": "^4.13.16",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.5.1",
     "@cloudflare/workers-types": "^5.20261101.1",
     "typescript": "~6.0.3",
     "vitest": "4.1.11",

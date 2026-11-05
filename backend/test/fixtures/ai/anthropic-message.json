@@ -1,0 +1,17 @@
+{
+  "id": "msg_sample_0001",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-opus-5-5",
+  "content": [
+    { "type": "thinking", "thinking": "", "signature": "sample" },
+    {
+      "type": "text",
+      "text": "{\"merchant\":\"Greenleaf Bistro\",\"date\":\"2026-11-02\",\"currency\":\"USD\",\"subtotal\":\"38.00\",\"tax\":\"3.37\",\"tip\":null,\"total\":\"41.37\",\"confidence\":0.93,\"lineItems\":[{\"description\":\"Mushroom risotto\",\"quantity\":\"1\",\"amount\":\"22.00\",\"category\":\"Restaurants\"},{\"description\":\"Lemonade\",\"quantity\":\"2\",\"amount\":\"8.00\",\"category\":\"Restaurants\"},{\"description\":\"Gift card\",\"quantity\":\"1\",\"amount\":\"8.00\",\"category\":\"Gifts & family\"}]}"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
+  "usage": { "input_tokens": 1520, "output_tokens": 160, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0 }
+}
