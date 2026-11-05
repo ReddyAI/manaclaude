@@ -56,6 +56,17 @@ module.exports = defineConfig([
     },
   },
   {
+    // Worker code: cloudflare:* modules exist only inside workerd, and the MCP
+    // SDK publishes its entry points through a wildcard exports map.
+    files: ['backend/**/*.ts'],
+    rules: {
+      'import/no-unresolved': [
+        'error',
+        { ignore: ['^cloudflare:', '^@modelcontextprotocol/sdk/'] },
+      ],
+    },
+  },
+  {
     files: ['**/*.test.{ts,tsx}', '**/__tests__/**/*.{ts,tsx}', 'apps/mobile/jest.setup.ts'],
     languageOptions: { globals: { jest: 'readonly' } },
     // jest.mock factories have to use require().

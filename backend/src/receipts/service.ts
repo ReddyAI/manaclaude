@@ -6,8 +6,9 @@ import {
   type Receipt,
   type ReceiptLineItem,
   type Transaction,
+  type ReceiptMatch,
+  type ReceiptResponse,
 } from '@manaclaude/shared';
-import type { ReceiptMatch, ReceiptResponse } from '@manaclaude/shared';
 import type { Env } from '../env';
 import { completeJson, getAi, type AiDeps, type JsonSchema } from '../ai/provider';
 import { cleanMerchantName } from '../ai/merchant';
@@ -45,7 +46,17 @@ const RECEIPT_SCHEMA: JsonSchema = {
       },
     },
   },
-  required: ['merchant', 'date', 'currency', 'subtotal', 'tax', 'tip', 'total', 'confidence', 'lineItems'],
+  required: [
+    'merchant',
+    'date',
+    'currency',
+    'subtotal',
+    'tax',
+    'tip',
+    'total',
+    'confidence',
+    'lineItems',
+  ],
 };
 
 interface ReceiptJson {
@@ -57,7 +68,12 @@ interface ReceiptJson {
   tip: string | null;
   total: string | null;
   confidence: number;
-  lineItems: { description: string; quantity: string | null; amount: string; category: string | null }[];
+  lineItems: {
+    description: string;
+    quantity: string | null;
+    amount: string;
+    category: string | null;
+  }[];
 }
 
 const MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -67,11 +83,20 @@ const TIP_CATEGORIES = new Set(['cat_dining', 'cat_coffee']);
 const MAX_TIP_RATE = 0.3;
 
 function similarity(a: string, b: string): number {
-  const ta = new Set(normalizeDescription(cleanMerchantName(a)).split(' ').filter((w) => w.length > 1));
-  const tb = new Set(normalizeDescription(cleanMerchantName(b)).split(' ').filter((w) => w.length > 1));
+  const ta = new Set(
+    normalizeDescription(cleanMerchantName(a))
+      .split(' ')
+      .filter((w) => w.length > 1),
+  );
+  const tb = new Set(
+    normalizeDescription(cleanMerchantName(b))
+      .split(' ')
+      .filter((w) => w.length > 1),
+  );
   if (ta.size === 0 || tb.size === 0) return 0;
   let common = 0;
-  for (const w of ta) if (tb.has(w) || [...tb].some((x) => x.startsWith(w) || w.startsWith(x))) common += 1;
+  for (const w of ta)
+    if (tb.has(w) || [...tb].some((x) => x.startsWith(w) || w.startsWith(x))) common += 1;
   return common / Math.min(ta.size, tb.size);
 }
 
@@ -79,12 +104,20 @@ function similarity(a: string, b: string): number {
  * Scores transactions for a receipt: amount (exact, or within a tip range for
  * restaurants), date within 3 days, merchant similarity.
  */
-export function scoreReceiptMatches(receipt: Receipt, txns: readonly Transaction[]): ReceiptMatch[] {
+export function scoreReceiptMatches(
+  receipt: Receipt,
+  txns: readonly Transaction[],
+): ReceiptMatch[] {
   if (receipt.total === null || !receipt.date) return [];
   const out: ReceiptMatch[] = [];
   for (const t of txns) {
     if (t.amount >= 0 || t.isSplitParent || t.receiptId) continue;
-    if (receipt.currency && t.currency !== receipt.currency && t.originalCurrency !== receipt.currency) continue;
+    if (
+      receipt.currency &&
+      t.currency !== receipt.currency &&
+      t.originalCurrency !== receipt.currency
+    )
+      continue;
     const days = Math.abs(daysBetween(t.date, receipt.date));
     if (days > 3) continue;
     const charged = t.originalCurrency === receipt.currency ? -t.originalAmount : -t.amount;
@@ -93,18 +126,34 @@ export function scoreReceiptMatches(receipt: Receipt, txns: readonly Transaction
       !exact &&
       charged > receipt.total &&
       charged <= Math.round(receipt.total * (1 + MAX_TIP_RATE)) &&
-      ((t.categoryId !== null && TIP_CATEGORIES.has(t.categoryId)) || receipt.tip !== null || /restaurant|cafe|bar|grill|kitchen|pizza|coffee/i.test(`${t.rawName} ${receipt.merchant ?? ''}`));
+      ((t.categoryId !== null && TIP_CATEGORIES.has(t.categoryId)) ||
+        receipt.tip !== null ||
+        /restaurant|cafe|bar|grill|kitchen|pizza|coffee/i.test(
+          `${t.rawName} ${receipt.merchant ?? ''}`,
+        ));
     if (!exact && !tipOk) continue;
     const sim = receipt.merchant ? similarity(receipt.merchant, t.rawName) : 0;
     const score = Math.min(1, (exact ? 0.6 : 0.4) + (3 - days) * 0.05 + sim * 0.3);
-    const reasons = [exact ? 'same amount' : 'amount plus a tip', days === 0 ? 'same day' : `${days} day${days === 1 ? '' : 's'} apart`];
+    const reasons = [
+      exact ? 'same amount' : 'amount plus a tip',
+      days === 0 ? 'same day' : `${days} day${days === 1 ? '' : 's'} apart`,
+    ];
     if (sim >= 0.5) reasons.push('merchant matches');
-    out.push({ transactionId: t.id, score: Math.round(score * 100) / 100, reason: reasons.join(', ') });
+    out.push({
+      transactionId: t.id,
+      score: Math.round(score * 100) / 100,
+      reason: reasons.join(', '),
+    });
   }
   return out.sort((a, b) => b.score - a.score);
 }
 
-async function readReceipt(env: Env, image: Uint8Array<ArrayBuffer>, mediaType: string, aiDeps: AiDeps) {
+async function readReceipt(
+  env: Env,
+  image: Uint8Array<ArrayBuffer>,
+  mediaType: string,
+  aiDeps: AiDeps,
+) {
   const settings = await getSettings(env.DB);
   const ai = getAi(env, settings, aiDeps);
   const categories = await selectAll(env.DB, categoriesTable, "kind = 'expense' AND archived = 0");
@@ -153,7 +202,8 @@ export async function uploadReceipt(
   input: { bytes: Uint8Array<ArrayBuffer>; contentType: string; transactionId?: Id },
   aiDeps: AiDeps = {},
 ): Promise<ReceiptResponse> {
-  if (!MEDIA_TYPES.includes(input.contentType)) throw badRequest('Send a JPEG, PNG, WebP or GIF image.');
+  if (!MEDIA_TYPES.includes(input.contentType))
+    throw badRequest('Send a JPEG, PNG, WebP or GIF image.');
   if (input.bytes.byteLength > 10 * 1024 * 1024) throw badRequest('Receipt images up to 10 MB.');
   const now = nowIso();
   const id = newId('rcpt');
@@ -179,7 +229,11 @@ export async function uploadReceipt(
   const settings = await getSettings(env.DB);
   if (settings.aiEnabled) {
     try {
-      receipt = { ...receipt, ...(await readReceipt(env, input.bytes, input.contentType, aiDeps)), status: 'parsed' };
+      receipt = {
+        ...receipt,
+        ...(await readReceipt(env, input.bytes, input.contentType, aiDeps)),
+        status: 'parsed',
+      };
     } catch {
       receipt.status = 'failed';
     }
@@ -187,28 +241,42 @@ export async function uploadReceipt(
   await insertStatement(env.DB, receiptsTable, receipt).run();
   if (input.transactionId) {
     const attached = await attachReceipt(env.DB, id, input.transactionId);
-    return { receipt: attached, match: { transactionId: input.transactionId, score: 1, reason: 'attached by you' }, candidates: [] };
+    return {
+      receipt: attached,
+      match: { transactionId: input.transactionId, score: 1, reason: 'attached by you' },
+      candidates: [],
+    };
   }
   return matchReceipt(env.DB, receipt);
 }
 
 export async function matchReceipt(db: D1Database, receipt: Receipt): Promise<ReceiptResponse> {
   if (!receipt.date || receipt.total === null) return { receipt, match: null, candidates: [] };
-  const txns = await selectAll(db, transactionsTable, "date >= date(?, '-3 days') AND date <= date(?, '+3 days') AND amount < 0", [
-    receipt.date,
-    receipt.date,
-  ]);
+  const txns = await selectAll(
+    db,
+    transactionsTable,
+    "date >= date(?, '-3 days') AND date <= date(?, '+3 days') AND amount < 0",
+    [receipt.date, receipt.date],
+  );
   const candidates = scoreReceiptMatches(receipt, txns);
   const best = candidates[0];
   // Auto-match only a clear winner.
-  const clear = best && best.score >= 0.6 && (candidates.length === 1 || best.score - candidates[1]!.score >= 0.15);
+  const clear =
+    best &&
+    best.score >= 0.6 &&
+    (candidates.length === 1 || best.score - candidates[1]!.score >= 0.15);
   if (best && clear) {
     const attached = await attachReceipt(db, receipt.id, best.transactionId, 'matched');
     return { receipt: attached, match: best, candidates: candidates.slice(1, 4) };
   }
   const status = candidates.length > 0 ? 'needs_review' : receipt.status;
   if (status !== receipt.status) {
-    await updateStatement(db, receiptsTable, { id: receipt.id }, { status, updatedAt: nowIso() }).run();
+    await updateStatement(
+      db,
+      receiptsTable,
+      { id: receipt.id },
+      { status, updatedAt: nowIso() },
+    ).run();
   }
   return { receipt: { ...receipt, status }, match: null, candidates: candidates.slice(0, 4) };
 }
@@ -225,9 +293,18 @@ export async function attachReceipt(
   if (!txn) throw notFound('Transaction not found.');
   const now = nowIso();
   await db.batch([
-    db.prepare('UPDATE transactions SET receipt_id = NULL, updated_at = ? WHERE receipt_id = ?').bind(now, receiptId),
-    db.prepare('UPDATE transactions SET receipt_id = ?, updated_at = ? WHERE id = ?').bind(receiptId, now, transactionId),
-    updateStatement(db, receiptsTable, { id: receiptId }, { matchedTransactionId: transactionId, status, updatedAt: now }),
+    db
+      .prepare('UPDATE transactions SET receipt_id = NULL, updated_at = ? WHERE receipt_id = ?')
+      .bind(now, receiptId),
+    db
+      .prepare('UPDATE transactions SET receipt_id = ?, updated_at = ? WHERE id = ?')
+      .bind(receiptId, now, transactionId),
+    updateStatement(
+      db,
+      receiptsTable,
+      { id: receiptId },
+      { matchedTransactionId: transactionId, status, updatedAt: now },
+    ),
   ]);
   return { ...receipt, matchedTransactionId: transactionId, status, updatedAt: now };
 }
@@ -239,8 +316,10 @@ export async function attachReceipt(
  */
 export async function splitByReceipt(db: D1Database, receiptId: Id, idempotencyKey: string) {
   const receipt = await selectOne(db, receiptsTable, 'id = ?', [receiptId]);
-  if (!receipt?.matchedTransactionId) throw badRequest('Attach the receipt to a transaction first.');
-  if (receipt.lineItems.length < 2) throw badRequest('The receipt needs at least two line items to split.');
+  if (!receipt?.matchedTransactionId)
+    throw badRequest('Attach the receipt to a transaction first.');
+  if (receipt.lineItems.length < 2)
+    throw badRequest('The receipt needs at least two line items to split.');
   const txn = await selectOne(db, transactionsTable, 'id = ?', [receipt.matchedTransactionId]);
   if (!txn) throw notFound('Transaction not found.');
   const total = -txn.amount;
@@ -267,7 +346,10 @@ export async function splitByReceipt(db: D1Database, receiptId: Id, idempotencyK
   });
 }
 
-export async function searchReceipts(db: D1Database, q: { query?: string; from?: string; to?: string }): Promise<Receipt[]> {
+export async function searchReceipts(
+  db: D1Database,
+  q: { query?: string; from?: string; to?: string },
+): Promise<Receipt[]> {
   const where: string[] = [];
   const params: string[] = [];
   if (q.query) {

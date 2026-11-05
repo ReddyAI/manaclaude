@@ -69,10 +69,13 @@ export function planSync(input: SyncPlanInput): SyncPlan {
   for (const p of result.transactions) {
     const account = accountsByExternalId.get(p.accountExternalId);
     if (!account) {
-      if (!plan.unknownAccounts.includes(p.accountExternalId)) plan.unknownAccounts.push(p.accountExternalId);
+      if (!plan.unknownAccounts.includes(p.accountExternalId))
+        plan.unknownAccounts.push(p.accountExternalId);
       continue;
     }
-    const hintCategory = p.categoryHint ? (categoryByName.get(p.categoryHint.toLowerCase()) ?? null) : null;
+    const hintCategory = p.categoryHint
+      ? (categoryByName.get(p.categoryHint.toLowerCase()) ?? null)
+      : null;
     const current =
       byExternal.get(`${account.id}|${p.externalId}`) ??
       (p.pendingExternalId ? byExternal.get(`${account.id}|${p.pendingExternalId}`) : undefined);
@@ -89,8 +92,15 @@ export function planSync(input: SyncPlanInput): SyncPlan {
         fields.name = p.merchantName ?? p.rawName;
       }
       const { transaction } = mergeRespectingUserEdits(current, fields);
-      const changed = JSON.stringify({ ...transaction, updatedAt: '' }) !== JSON.stringify({ ...current, updatedAt: '' });
-      if (changed) plan.updates.push({ id: current.id, before: current, after: { ...transaction, updatedAt: now } });
+      const changed =
+        JSON.stringify({ ...transaction, updatedAt: '' }) !==
+        JSON.stringify({ ...current, updatedAt: '' });
+      if (changed)
+        plan.updates.push({
+          id: current.id,
+          before: current,
+          after: { ...transaction, updatedAt: now },
+        });
       byExternal.set(`${account.id}|${p.externalId}`, transaction);
       continue;
     }

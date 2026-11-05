@@ -56,7 +56,8 @@ export async function editTransaction(
   if (!txn) throw notFound('Transaction not found.');
   if (patch.amount !== undefined) {
     if (!Number.isSafeInteger(patch.amount)) throw badRequest('Amount must be whole minor units.');
-    if (txn.isSplitParent || txn.splitParentId) throw badRequest('Undo the split before changing the amount.');
+    if (txn.isSplitParent || txn.splitParentId)
+      throw badRequest('Undo the split before changing the amount.');
     if (txn.transferLinkId) throw badRequest('Unlink the transfer before changing the amount.');
   }
   const now = nowIso();
@@ -85,14 +86,22 @@ export async function editTransaction(
   changes.updatedAt = now;
   const statements = [updateStatement(db, transactionsTable, { id }, changes)];
   const corrected =
-    'categoryId' in changes && changes.categoryId && txn.categorySource !== 'user' && options.learn !== false;
+    'categoryId' in changes &&
+    changes.categoryId &&
+    txn.categorySource !== 'user' &&
+    options.learn !== false;
   if (corrected) statements.push(...learnStatements(db, txn, changes.categoryId!, now));
   await db.batch(statements);
   return { ...txn, ...changes };
 }
 
 /** Example + learned rule for a category correction. The newest correction for a merchant wins. */
-function learnStatements(db: D1Database, txn: Transaction, categoryId: Id, now: string): D1PreparedStatement[] {
+function learnStatements(
+  db: D1Database,
+  txn: Transaction,
+  categoryId: Id,
+  now: string,
+): D1PreparedStatement[] {
   const key = merchantKey(txn.rawName);
   if (!key) return [];
   const rule: Rule = {

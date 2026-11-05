@@ -8,10 +8,22 @@ import { runMerchantCleanup } from './merchants';
 import { generateRecap, lastCompletePeriod } from './recap';
 import { runRecurringDetection } from './recurring';
 
-export const JOBS = ['categorize', 'merchants', 'recurring', 'alerts', 'recap_week', 'recap_month'] as const;
+export const JOBS = [
+  'categorize',
+  'merchants',
+  'recurring',
+  'alerts',
+  'recap_week',
+  'recap_month',
+] as const;
 export type JobName = (typeof JOBS)[number];
 
-export async function runJob(env: Env, job: JobName, deps: AiDeps = {}, today = new Date().toISOString().slice(0, 10)): Promise<AiJobResponse> {
+export async function runJob(
+  env: Env,
+  job: JobName,
+  deps: AiDeps = {},
+  today = new Date().toISOString().slice(0, 10),
+): Promise<AiJobResponse> {
   switch (job) {
     case 'categorize':
       return runCategorization(env, {}, deps);
@@ -25,14 +37,23 @@ export async function runJob(env: Env, job: JobName, deps: AiDeps = {}, today = 
     case 'recap_month': {
       const settings = await getSettings(env.DB);
       const period = job === 'recap_week' ? 'week' : 'month';
-      const recap = await generateRecap(env, period, lastCompletePeriod(period, today, settings.weekStartsOn), deps);
+      const recap = await generateRecap(
+        env,
+        period,
+        lastCompletePeriod(period, today, settings.weekStartsOn),
+        deps,
+      );
       return { job, changed: 1, usedAi: recap.provider !== 'template', note: null };
     }
   }
 }
 
 /** Daily cron: merchant cleanup, categorization, recurring, alerts, and recaps when a period just ended. */
-export async function runDailyJobs(env: Env, today: string, deps: AiDeps = {}): Promise<AiJobResponse[]> {
+export async function runDailyJobs(
+  env: Env,
+  today: string,
+  deps: AiDeps = {},
+): Promise<AiJobResponse[]> {
   const settings = await getSettings(env.DB);
   const out: AiJobResponse[] = [];
   for (const job of ['merchants', 'categorize', 'recurring', 'alerts'] as const) {

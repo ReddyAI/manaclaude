@@ -47,11 +47,18 @@ function eligible(t: Transaction): boolean {
   );
 }
 
-function linkKind(outAcc: Account, inAcc: Account, out: Transaction, into: Transaction): TransferLinkKind {
+function linkKind(
+  outAcc: Account,
+  inAcc: Account,
+  out: Transaction,
+  into: Transaction,
+): TransferLinkKind {
   if (inAcc.type === 'credit_card') return 'card_payment';
   if (inAcc.type === 'loan' || inAcc.type === 'mortgage') return 'loan_payment';
   if (inAcc.type === 'brokerage' || inAcc.type === 'retirement') {
-    return outAcc.type === 'brokerage' || outAcc.type === 'retirement' ? 'transfer' : 'investment_contribution';
+    return outAcc.type === 'brokerage' || outAcc.type === 'retirement'
+      ? 'transfer'
+      : 'investment_contribution';
   }
   if (inAcc.type === 'cash' || /\batm\b/i.test(out.rawName) || /\batm\b/i.test(into.rawName)) {
     return inAcc.type === 'cash' ? 'atm_withdrawal' : 'transfer';
@@ -82,7 +89,9 @@ export function planTransferMatches(input: {
 }): MatchPlan {
   const accounts = new Map(input.accounts.map((a) => [a.id, a]));
   const categories = new Map(input.categories.map((c) => [c.id, c]));
-  const knownPairs = new Set(input.existingLinks.map((l) => `${l.outTransactionId}>${l.inTransactionId}`));
+  const knownPairs = new Set(
+    input.existingLinks.map((l) => `${l.outTransactionId}>${l.inTransactionId}`),
+  );
   const pool = input.transactions.filter(
     (t) => eligible(t) && accounts.has(t.accountId) && !userSaysNotTransfer(t, categories),
   );
@@ -157,7 +166,12 @@ export async function runTransferMatcher(
   const where = options.from && options.to ? 'date >= ? AND date <= ?' : '';
   const params = options.from && options.to ? [options.from, options.to] : [];
   const [transactions, accounts, categories, rates, existingLinks] = await Promise.all([
-    selectAll(db, transactionsTable, where ? `${where} AND transfer_link_id IS NULL` : 'transfer_link_id IS NULL', params),
+    selectAll(
+      db,
+      transactionsTable,
+      where ? `${where} AND transfer_link_id IS NULL` : 'transfer_link_id IS NULL',
+      params,
+    ),
     selectAll(db, accountsTable),
     selectAll(db, categoriesTable),
     selectAll(db, fxRatesTable),
@@ -172,13 +186,18 @@ export async function runTransferMatcher(
       const results = await db.batch([
         insertStatement(db, transferLinksTable, link),
         db
-          .prepare('UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id = ? AND transfer_link_id IS NULL')
+          .prepare(
+            'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id = ? AND transfer_link_id IS NULL',
+          )
           .bind(link.id, now, c.out.id),
         db
-          .prepare('UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id = ? AND transfer_link_id IS NULL')
+          .prepare(
+            'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id = ? AND transfer_link_id IS NULL',
+          )
           .bind(link.id, now, c.in.id),
       ]);
-      if ((results[1]?.meta.changes ?? 0) === 1 && (results[2]?.meta.changes ?? 0) === 1) linked += 1;
+      if ((results[1]?.meta.changes ?? 0) === 1 && (results[2]?.meta.changes ?? 0) === 1)
+        linked += 1;
     } catch {
       // A concurrent run linked one side first; the unique index rolled this batch back.
     }
@@ -187,7 +206,12 @@ export async function runTransferMatcher(
   if (plan.suggested.length > 0) {
     const results = await db.batch(
       plan.suggested.map((c) =>
-        insertStatement(db, transferLinksTable, linkFromCandidate(c, 'suggested', 'matcher', now), 'ignore'),
+        insertStatement(
+          db,
+          transferLinksTable,
+          linkFromCandidate(c, 'suggested', 'matcher', now),
+          'ignore',
+        ),
       ),
     );
     suggested = results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);

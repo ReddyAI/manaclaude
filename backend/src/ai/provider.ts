@@ -101,7 +101,9 @@ async function countWorkersAiCall(env: Env, today: string): Promise<void> {
     .bind(today, 'workers_ai')
     .first<{ calls: number }>();
   if ((row?.calls ?? 0) > limit) {
-    throw new AiUnavailableError(`Today's Workers AI allowance (${limit} calls) is used up. Try again tomorrow.`);
+    throw new AiUnavailableError(
+      `Today's Workers AI allowance (${limit} calls) is used up. Try again tomorrow.`,
+    );
   }
 }
 
@@ -118,7 +120,8 @@ function workersAi(env: Env, deps: AiDeps): AiClient {
         const [doc] = await binding.toMarkdown([
           { name: req.pdf.fileName, blob: new Blob([req.pdf.data], { type: 'application/pdf' }) },
         ]);
-        if (!doc || doc.error || !doc.data) throw new AiUnavailableError('Could not read text from this PDF.');
+        if (!doc || doc.error || !doc.data)
+          throw new AiUnavailableError('Could not read text from this PDF.');
         prompt = `${req.prompt}\n\nStatement text:\n${doc.data}`;
       }
       const userContent: unknown = req.image
@@ -143,7 +146,8 @@ function workersAi(env: Env, deps: AiDeps): AiClient {
         : (env.AI_TEXT_MODEL ?? DEFAULT_MODELS.workersText);
       const out = (await binding.run(model, inputs)) as { response?: unknown };
       const response = out?.response;
-      if (response === undefined || response === null) throw new AiUnavailableError('Workers AI returned nothing.');
+      if (response === undefined || response === null)
+        throw new AiUnavailableError('Workers AI returned nothing.');
       return typeof response === 'string' ? response : JSON.stringify(response);
     },
   };
@@ -176,7 +180,8 @@ function anthropic(env: Env, deps: AiDeps): AiClient {
           type: 'image',
           source: {
             type: 'base64',
-            media_type: req.image.mediaType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
+            media_type: req.image.mediaType as
+              'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif',
             data: toBase64(req.image.data),
           },
         });
@@ -191,11 +196,19 @@ function anthropic(env: Env, deps: AiDeps): AiClient {
         // These are short extraction and labelling tasks.
         output_config: {
           effort: 'low',
-          ...(req.schema ? { format: { type: 'json_schema', schema: req.schema as unknown as Record<string, unknown> } } : {}),
+          ...(req.schema
+            ? {
+                format: {
+                  type: 'json_schema',
+                  schema: req.schema as unknown as Record<string, unknown>,
+                },
+              }
+            : {}),
         },
         messages: [{ role: 'user', content }],
       });
-      if (message.stop_reason === 'refusal') throw new AiUnavailableError('The model declined this request.');
+      if (message.stop_reason === 'refusal')
+        throw new AiUnavailableError('The model declined this request.');
       const text = message.content
         .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
         .map((b) => b.text)
@@ -222,7 +235,10 @@ function openAiLike(
   return {
     provider,
     async complete(req) {
-      if (req.pdf) throw new AiUnavailableError(`${provider} PDF reading is not set up; use Workers AI or Anthropic.`);
+      if (req.pdf)
+        throw new AiUnavailableError(
+          `${provider} PDF reading is not set up; use Workers AI or Anthropic.`,
+        );
       const user: unknown = req.image
         ? [
             { type: 'text', text: req.prompt },
@@ -273,10 +289,22 @@ export function getAi(env: Env, settings: Settings, deps: AiDeps = {}): AiClient
     case 'anthropic':
       return anthropic(env, deps);
     case 'openai':
-      return openAiLike('openai', 'https://api.openai.com/v1', env.OPENAI_API_KEY, env.OPENAI_MODEL ?? DEFAULT_MODELS.openai, deps);
+      return openAiLike(
+        'openai',
+        'https://api.openai.com/v1',
+        env.OPENAI_API_KEY,
+        env.OPENAI_MODEL ?? DEFAULT_MODELS.openai,
+        deps,
+      );
     case 'openai_compatible':
       if (!env.OPENAI_BASE_URL) throw new AiUnavailableError('OPENAI_BASE_URL is not set.');
-      return openAiLike('openai_compatible', env.OPENAI_BASE_URL, env.OPENAI_API_KEY, env.OPENAI_MODEL ?? DEFAULT_MODELS.openai, deps);
+      return openAiLike(
+        'openai_compatible',
+        env.OPENAI_BASE_URL,
+        env.OPENAI_API_KEY,
+        env.OPENAI_MODEL ?? DEFAULT_MODELS.openai,
+        deps,
+      );
     case 'gemini_paid':
       // Paid key only: Gemini's free tier lets reviewers read inputs, so it is never used.
       return openAiLike(

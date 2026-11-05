@@ -2,7 +2,11 @@ import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
 import { createApp, type AppDeps } from './api/app';
 import type { Env } from './env';
 import { runDailyJobs } from './ai/jobs';
-import { backfillMissingHistory, fetchFrankfurterLatest, fetchOpenExchangeRates } from './fx/service';
+import {
+  backfillMissingHistory,
+  fetchFrankfurterLatest,
+  fetchOpenExchangeRates,
+} from './fx/service';
 import { handleAuthorize } from './mcp/authorize';
 import { handleMcp } from './mcp/handler';
 import type { McpAuthProps } from './mcp/tools';
@@ -32,7 +36,10 @@ export function createWorker(deps: AppDeps = {}) {
 
   const mcpHandler = {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-      const props = (ctx as ExecutionContext & { props?: McpAuthProps }).props ?? { userId: 'owner', scopes: ['read'] };
+      const props = (ctx as ExecutionContext & { props?: McpAuthProps }).props ?? {
+        userId: 'owner',
+        scopes: ['read'],
+      };
       return handleMcp(request, env, props);
     },
   };
@@ -64,18 +71,30 @@ export function createWorker(deps: AppDeps = {}) {
       return getProvider(env).fetch(request as never, env, ctx) as Promise<Response>;
     },
 
-    async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    async scheduled(
+      controller: ScheduledController,
+      env: Env,
+      ctx: ExecutionContext,
+    ): Promise<void> {
       const f = deps.fetch ?? fetch;
       if (controller.cron === '0 * * * *') {
-        await fetchOpenExchangeRates(env, f).catch((e) => console.error('OXR fetch failed', String(e)));
+        await fetchOpenExchangeRates(env, f).catch((e) =>
+          console.error('OXR fetch failed', String(e)),
+        );
         return;
       }
       const today = new Date(controller.scheduledTime).toISOString().slice(0, 10);
-      await fetchFrankfurterLatest(env, f).catch((e) => console.error('Frankfurter fetch failed', String(e)));
-      await backfillMissingHistory(env, f).catch((e) => console.error('FX backfill failed', String(e)));
+      await fetchFrankfurterLatest(env, f).catch((e) =>
+        console.error('Frankfurter fetch failed', String(e)),
+      );
+      await backfillMissingHistory(env, f).catch((e) =>
+        console.error('FX backfill failed', String(e)),
+      );
       const connections = await selectAll(env.DB, connectionsTable, "status != 'disconnected'");
       for (const c of connections) {
-        await runConnectionSync(env, c.id, f).catch((e) => console.error('Sync failed', c.connectorId, String(e)));
+        await runConnectionSync(env, c.id, f).catch((e) =>
+          console.error('Sync failed', c.connectorId, String(e)),
+        );
       }
       ctx.waitUntil(runDailyJobs(env, today, deps).then(() => undefined));
     },
@@ -86,5 +105,6 @@ const worker = createWorker();
 
 export default {
   fetch: (request: Request, env: Env, ctx: ExecutionContext) => worker.fetch(request, env, ctx),
-  scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) => worker.scheduled(controller, env, ctx),
+  scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) =>
+    worker.scheduled(controller, env, ctx),
 } satisfies ExportedHandler<Env>;

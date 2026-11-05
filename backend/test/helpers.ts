@@ -21,7 +21,9 @@ import { ensureDefaultCategories } from '../src/services/seed';
 import { makeTransaction } from '../src/services/transactions';
 import { updateSettings } from '../src/services/settings';
 
-export const testEnv = workerEnv as unknown as Env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
+export const testEnv = workerEnv as unknown as Env & {
+  TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
+};
 export const db = testEnv.DB;
 
 const TABLES = [
@@ -65,7 +67,9 @@ export async function freshDb(): Promise<void> {
 }
 
 let accountSeq = 0;
-export async function addAccount(fields: Partial<Account> & Pick<Account, 'type'>): Promise<Account> {
+export async function addAccount(
+  fields: Partial<Account> & Pick<Account, 'type'>,
+): Promise<Account> {
   accountSeq += 1;
   const now = '2026-10-01T00:00:00.000Z';
   const account: Account = {

@@ -13,5 +13,10 @@
   "stop_reason": "end_turn",
   "stop_sequence": null,
   "stop_details": null,
-  "usage": { "input_tokens": 1520, "output_tokens": 160, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0 }
+  "usage": {
+    "input_tokens": 1520,
+    "output_tokens": 160,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0
+  }
 }

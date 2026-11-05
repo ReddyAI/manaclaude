@@ -9,23 +9,41 @@ import {
   type CsvMapping,
   type ImportFormat,
   type Rule,
+  type AiStatusResponse,
+  type FxLatestResponse,
+  type ImportResponse,
+  type TransferLinkStatus,
 } from '@manaclaude/shared';
 import { createSampleData } from '@manaclaude/shared/sample';
-import type {
-  AiStatusResponse,
-  FxLatestResponse,
-  ImportResponse,
-  TransferLinkStatus,
-} from '@manaclaude/shared';
 import type { Env } from '../env';
 import { AiDisabledError, AiUnavailableError, providerStatus, type AiDeps } from '../ai/provider';
 import { answerQuestion } from '../ai/jobs/ask';
 import { JOBS, runJob, type JobName } from '../ai/jobs';
 import { listRecaps } from '../ai/jobs/recap';
 import { insertStatement, selectAll, selectOne, updateStatement } from '../db/table';
-import { accountsTable, categoriesTable, connectionsTable, receiptsTable, recurringTable, rulesTable } from '../db/tables';
-import { backfillFrankfurter, fetchFrankfurterLatest, fetchOpenExchangeRates, latestRate, loadRates } from '../fx/service';
-import { commitImport, discardImport, getImport, listImports, previewImport, undoImport } from '../imports/service';
+import {
+  accountsTable,
+  categoriesTable,
+  connectionsTable,
+  receiptsTable,
+  recurringTable,
+  rulesTable,
+} from '../db/tables';
+import {
+  backfillFrankfurter,
+  fetchFrankfurterLatest,
+  fetchOpenExchangeRates,
+  latestRate,
+  loadRates,
+} from '../fx/service';
+import {
+  commitImport,
+  discardImport,
+  getImport,
+  listImports,
+  previewImport,
+  undoImport,
+} from '../imports/service';
 import { attachReceipt, searchReceipts, splitByReceipt, uploadReceipt } from '../receipts/service';
 import { addCashTransaction, createCashAccount } from '../services/cash';
 import { loadDataset } from '../services/dataset';
@@ -48,7 +66,10 @@ export interface AppDeps extends AiDeps {
 
 type AppEnv = { Bindings: Env; Variables: { deps: AppDeps } };
 
-const money = z.number().int().refine((n) => Number.isSafeInteger(n), 'Must be whole minor units.');
+const money = z
+  .number()
+  .int()
+  .refine((n) => Number.isSafeInteger(n), 'Must be whole minor units.');
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD.');
 const currency = z.string().regex(/^[A-Z]{3}$/, 'Use a 3-letter currency code.');
 
@@ -59,7 +80,13 @@ const patchSchema = z
     amount: money,
     categoryId: z.string().nullable(),
     merchantId: z.string().nullable(),
-    kind: z.enum(['regular', 'transfer', 'card_payment', 'loan_payment', 'investment_contribution']),
+    kind: z.enum([
+      'regular',
+      'transfer',
+      'card_payment',
+      'loan_payment',
+      'investment_contribution',
+    ]),
     notes: z.string().max(2000).nullable(),
     tagIds: z.array(z.string()),
     excluded: z.boolean(),
@@ -78,7 +105,9 @@ const splitSchema = z.object({
         name: z.string().max(200).optional(),
         notes: z.string().max(2000).optional(),
         tagIds: z.array(z.string()).optional(),
-        kind: z.enum(['regular', 'transfer', 'card_payment', 'loan_payment', 'investment_contribution']).optional(),
+        kind: z
+          .enum(['regular', 'transfer', 'card_payment', 'loan_payment', 'investment_contribution'])
+          .optional(),
       }),
     )
     .min(2)
@@ -103,7 +132,11 @@ const conditionSchema = z.union([
     caseSensitive: z.boolean().optional(),
   }),
   z.object({ field: z.literal('amount'), op: z.enum(['equals', 'gt', 'lt']), value: money }),
-  z.object({ field: z.literal('amount'), op: z.literal('between'), value: z.tuple([money, money]) }),
+  z.object({
+    field: z.literal('amount'),
+    op: z.literal('between'),
+    value: z.tuple([money, money]),
+  }),
   z.object({
     field: z.enum(['accountId', 'categoryId', 'currency']),
     op: z.enum(['equals', 'in']),
@@ -115,7 +148,13 @@ const actionSchema = z.union([
   z.object({ type: z.literal('set_name'), name: z.string().min(1).max(200) }),
   z.object({
     type: z.literal('set_kind'),
-    kind: z.enum(['regular', 'transfer', 'card_payment', 'loan_payment', 'investment_contribution']),
+    kind: z.enum([
+      'regular',
+      'transfer',
+      'card_payment',
+      'loan_payment',
+      'investment_contribution',
+    ]),
   }),
   z.object({ type: z.literal('add_tag'), tagId: z.string() }),
   z.object({ type: z.literal('mark_reviewed') }),
@@ -171,14 +210,18 @@ async function body<T extends z.ZodTypeAny>(c: Context<AppEnv>, schema: T): Prom
   const parsed = schema.safeParse(json);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    throw badRequest(issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : 'Invalid body.', 'invalid_body');
+    throw badRequest(
+      issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : 'Invalid body.',
+      'invalid_body',
+    );
   }
   return parsed.data;
 }
 
 async function fileFrom(c: Context<AppEnv>): Promise<{ form: FormData; file: File }> {
   const type = c.req.header('content-type') ?? '';
-  if (!type.includes('multipart/form-data')) throw badRequest('Send the file as multipart/form-data in a "file" field.');
+  if (!type.includes('multipart/form-data'))
+    throw badRequest('Send the file as multipart/form-data in a "file" field.');
   const form = await c.req.formData();
   const file = form.get('file');
   if (!file || typeof file === 'string') throw badRequest('Missing the "file" field.');
@@ -205,16 +248,24 @@ export function createApp(deps: AppDeps = {}) {
   app.use('/v1/*', async (c, next) => {
     if (c.req.method === 'OPTIONS') return next();
     const expected = c.env.APP_API_TOKEN;
-    if (!expected) return c.json({ error: 'not_configured', message: 'Set the APP_API_TOKEN secret first.' }, 503);
+    if (!expected)
+      return c.json(
+        { error: 'not_configured', message: 'Set the APP_API_TOKEN secret first.' },
+        503,
+      );
     const got = (c.req.header('authorization') ?? '').replace(/^Bearer\s+/i, '');
-    if (!got || !safeEqual(got, expected)) return c.json({ error: 'unauthorized', message: 'Missing or wrong API token.' }, 401);
+    if (!got || !safeEqual(got, expected))
+      return c.json({ error: 'unauthorized', message: 'Missing or wrong API token.' }, 401);
     await next();
   });
 
   app.onError((err, c) => {
-    if (err instanceof ApiError) return c.json({ error: err.code, message: err.message }, err.status as 400);
-    if (err instanceof AiDisabledError) return c.json({ error: 'ai_disabled', message: err.message }, 409);
-    if (err instanceof AiUnavailableError) return c.json({ error: 'ai_unavailable', message: err.message }, 503);
+    if (err instanceof ApiError)
+      return c.json({ error: err.code, message: err.message }, err.status as 400);
+    if (err instanceof AiDisabledError)
+      return c.json({ error: 'ai_disabled', message: err.message }, 409);
+    if (err instanceof AiUnavailableError)
+      return c.json({ error: 'ai_unavailable', message: err.message }, 503);
     console.error('Unhandled error', err instanceof Error ? err.message : err);
     return c.json({ error: 'internal', message: 'Something went wrong on the server.' }, 500);
   });
@@ -222,7 +273,11 @@ export function createApp(deps: AppDeps = {}) {
 
   app.get('/health', async (c) => {
     const settings = c.env.DB ? await getSettings(c.env.DB).catch(() => null) : null;
-    return c.json({ ok: true, service: 'manaclaude-api', policies: settings?.moneyPolicies ?? null });
+    return c.json({
+      ok: true,
+      service: 'manaclaude-api',
+      policies: settings?.moneyPolicies ?? null,
+    });
   });
 
   // ---- Dataset, accounts, transactions -----------------------------------
@@ -230,11 +285,18 @@ export function createApp(deps: AppDeps = {}) {
     await ensureDefaultCategories(c.env.DB);
     return c.json(await loadDataset(c.env.DB));
   });
-  app.get('/v1/accounts', async (c) => c.json({ accounts: await selectAll(c.env.DB, accountsTable, '', [], 'name') }));
+  app.get('/v1/accounts', async (c) =>
+    c.json({ accounts: await selectAll(c.env.DB, accountsTable, '', [], 'name') }),
+  );
   app.post('/v1/accounts/cash', async (c) => {
     const b = await body(
       c,
-      z.object({ name: z.string().min(1).max(100), currency, balance: money.optional(), isDefault: z.boolean().optional() }),
+      z.object({
+        name: z.string().min(1).max(100),
+        currency,
+        balance: money.optional(),
+        isDefault: z.boolean().optional(),
+      }),
     );
     return c.json({ account: await createCashAccount(c.env.DB, b) }, 201);
   });
@@ -263,11 +325,15 @@ export function createApp(deps: AppDeps = {}) {
   });
   app.post('/v1/transactions/:id/review', async (c) => {
     const b = await body(c, z.object({ reviewed: z.boolean() }));
-    return c.json({ transaction: await editTransaction(c.env.DB, c.req.param('id'), { reviewed: b.reviewed }) });
+    return c.json({
+      transaction: await editTransaction(c.env.DB, c.req.param('id'), { reviewed: b.reviewed }),
+    });
   });
   app.post('/v1/transactions/:id/category', async (c) => {
     const b = await body(c, z.object({ categoryId: z.string().nullable() }));
-    return c.json({ transaction: await editTransaction(c.env.DB, c.req.param('id'), { categoryId: b.categoryId }) });
+    return c.json({
+      transaction: await editTransaction(c.env.DB, c.req.param('id'), { categoryId: b.categoryId }),
+    });
   });
   app.post('/v1/transactions/:id/split', async (c) => {
     const b = await body(c, splitSchema);
@@ -280,7 +346,10 @@ export function createApp(deps: AppDeps = {}) {
   });
   app.post('/v1/transactions/:id/link', async (c) => {
     const b = await body(c, z.object({ otherTransactionId: z.string() }));
-    return c.json({ link: await linkManually(c.env.DB, c.req.param('id'), b.otherTransactionId) }, 201);
+    return c.json(
+      { link: await linkManually(c.env.DB, c.req.param('id'), b.otherTransactionId) },
+      201,
+    );
   });
   app.post('/v1/transactions/:id/unlink', async (c) => {
     const t = await getTransaction(c.env.DB, c.req.param('id'));
@@ -294,8 +363,12 @@ export function createApp(deps: AppDeps = {}) {
     return c.json({ links: await listLinks(c.env.DB, status) });
   });
   app.post('/v1/transfer-links/run', async (c) => c.json(await runTransferMatcher(c.env.DB)));
-  app.post('/v1/transfer-links/:id/confirm', async (c) => c.json({ link: await confirmLink(c.env.DB, c.req.param('id')) }));
-  app.post('/v1/transfer-links/:id/reject', async (c) => c.json({ link: await rejectLink(c.env.DB, c.req.param('id')) }));
+  app.post('/v1/transfer-links/:id/confirm', async (c) =>
+    c.json({ link: await confirmLink(c.env.DB, c.req.param('id')) }),
+  );
+  app.post('/v1/transfer-links/:id/reject', async (c) =>
+    c.json({ link: await rejectLink(c.env.DB, c.req.param('id')) }),
+  );
 
   app.post('/v1/cash', async (c) => {
     const b = await body(c, cashSchema);
@@ -316,7 +389,10 @@ export function createApp(deps: AppDeps = {}) {
         groupId: z.string(),
         kind: z.enum(['expense', 'income', 'transfer']),
         icon: z.string().default('circle'),
-        color: z.string().regex(/^c([1-9]|1[0-2])$/).default('c1'),
+        color: z
+          .string()
+          .regex(/^c([1-9]|1[0-2])$/)
+          .default('c1'),
         excludeFromBudget: z.boolean().default(false),
         order: z.number().int().optional(),
       }),
@@ -329,21 +405,36 @@ export function createApp(deps: AppDeps = {}) {
     const b = await body(
       c,
       z
-        .object({ name: z.string().min(1).max(60), archived: z.boolean(), excludeFromBudget: z.boolean(), order: z.number().int() })
+        .object({
+          name: z.string().min(1).max(60),
+          archived: z.boolean(),
+          excludeFromBudget: z.boolean(),
+          order: z.number().int(),
+        })
         .partial()
         .strict(),
     );
     const id = c.req.param('id');
-    if (!(await selectOne(c.env.DB, categoriesTable, 'id = ?', [id]))) throw notFound('Category not found.');
-    if (Object.keys(b).length > 0) await updateStatement(c.env.DB, categoriesTable, { id }, b).run();
+    if (!(await selectOne(c.env.DB, categoriesTable, 'id = ?', [id])))
+      throw notFound('Category not found.');
+    if (Object.keys(b).length > 0)
+      await updateStatement(c.env.DB, categoriesTable, { id }, b).run();
     return c.json({ category: await selectOne(c.env.DB, categoriesTable, 'id = ?', [id]) });
   });
 
-  app.get('/v1/rules', async (c) => c.json({ rules: await selectAll(c.env.DB, rulesTable, '', [], 'priority') }));
+  app.get('/v1/rules', async (c) =>
+    c.json({ rules: await selectAll(c.env.DB, rulesTable, '', [], 'priority') }),
+  );
   app.post('/v1/rules', async (c) => {
     const b = await body(c, ruleSchema);
     const now = nowIso();
-    const rule: Rule = { id: newId('rule'), source: 'user', createdAt: now, updatedAt: now, ...b } as Rule;
+    const rule: Rule = {
+      id: newId('rule'),
+      source: 'user',
+      createdAt: now,
+      updatedAt: now,
+      ...b,
+    } as Rule;
     await insertStatement(c.env.DB, rulesTable, rule).run();
     const applied = c.req.query('apply') === 'false' ? 0 : await runRules(c.env.DB);
     return c.json({ rule, applied }, 201);
@@ -367,7 +458,8 @@ export function createApp(deps: AppDeps = {}) {
   app.post('/v1/imports', async (c) => {
     const { form, file } = await fileFrom(c);
     const format = (form.get('format') as string | null) || undefined;
-    if (format && !IMPORT_FORMATS.includes(format as ImportFormat)) throw badRequest('Unknown format.');
+    if (format && !IMPORT_FORMATS.includes(format as ImportFormat))
+      throw badRequest('Unknown format.');
     let mapping: CsvMapping | undefined;
     const rawMapping = form.get('mapping');
     if (typeof rawMapping === 'string' && rawMapping) {
@@ -387,31 +479,45 @@ export function createApp(deps: AppDeps = {}) {
         accountId: (form.get('accountId') as string | null) || undefined,
         mapping,
         skipRows: form.get('skipRows') ? Number(form.get('skipRows')) : undefined,
-        preferDayFirst: form.get('preferDayFirst') ? form.get('preferDayFirst') === 'true' : undefined,
+        preferDayFirst: form.get('preferDayFirst')
+          ? form.get('preferDayFirst') === 'true'
+          : undefined,
       },
       c.get('deps'),
     );
     const wantCommit = form.get('commit') === 'true';
-    if (wantCommit && preview.format === 'pdf') throw badRequest('PDF statements need a look at the preview first.');
-    const result = wantCommit && preview.status === 'preview' ? await commitImport(c.env, preview.importId) : null;
+    if (wantCommit && preview.format === 'pdf')
+      throw badRequest('PDF statements need a look at the preview first.');
+    const result =
+      wantCommit && preview.status === 'preview'
+        ? await commitImport(c.env, preview.importId)
+        : null;
     const res: ImportResponse = { preview, result };
     return c.json(res, 201);
   });
   app.get('/v1/imports', async (c) => c.json({ imports: await listImports(c.env.DB) }));
   app.get('/v1/imports/:id', async (c) => c.json(await getImport(c.env.DB, c.req.param('id'))));
   app.post('/v1/imports/:id/commit', async (c) => {
-    const b = await body(c, z.object({ skipLines: z.array(z.number().int()).optional(), createAccounts: z.boolean().optional() }));
+    const b = await body(
+      c,
+      z.object({
+        skipLines: z.array(z.number().int()).optional(),
+        createAccounts: z.boolean().optional(),
+      }),
+    );
     return c.json(await commitImport(c.env, c.req.param('id'), b));
   });
   app.post('/v1/imports/:id/discard', async (c) => {
     await discardImport(c.env.DB, c.req.param('id'));
     return c.json({ ok: true });
   });
-  app.delete('/v1/imports/:id/transactions', async (c) => c.json({ removed: await undoImport(c.env.DB, c.req.param('id')) }));
+  app.delete('/v1/imports/:id/transactions', async (c) =>
+    c.json({ removed: await undoImport(c.env.DB, c.req.param('id')) }),
+  );
   app.get('/v1/import-mappings', async (c) => {
-    const res = await c.env.DB.prepare('SELECT signature, name, account_id, mapping, updated_at FROM import_mappings ORDER BY updated_at DESC').all<
-      Record<string, string>
-    >();
+    const res = await c.env.DB.prepare(
+      'SELECT signature, name, account_id, mapping, updated_at FROM import_mappings ORDER BY updated_at DESC',
+    ).all<Record<string, string>>();
     return c.json({
       mappings: res.results.map((r) => ({
         signature: r.signature,
@@ -451,7 +557,13 @@ export function createApp(deps: AppDeps = {}) {
     return c.json(res, 201);
   });
   app.get('/v1/receipts', async (c) =>
-    c.json({ receipts: await searchReceipts(c.env.DB, { query: c.req.query('q'), from: c.req.query('from'), to: c.req.query('to') }) }),
+    c.json({
+      receipts: await searchReceipts(c.env.DB, {
+        query: c.req.query('q'),
+        from: c.req.query('from'),
+        to: c.req.query('to'),
+      }),
+    }),
   );
   app.get('/v1/receipts/:id/image', async (c) => {
     const r = await selectOne(c.env.DB, receiptsTable, 'id = ?', [c.req.param('id')]);
@@ -459,7 +571,10 @@ export function createApp(deps: AppDeps = {}) {
     const obj = await c.env.FILES.get(r.r2Key);
     if (!obj) throw notFound('Image missing.');
     return new Response(obj.body, {
-      headers: { 'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg', 'cache-control': 'private, max-age=3600' },
+      headers: {
+        'content-type': obj.httpMetadata?.contentType ?? 'image/jpeg',
+        'cache-control': 'private, max-age=3600',
+      },
     });
   });
   app.post('/v1/receipts/:id/attach', async (c) => {
@@ -476,13 +591,21 @@ export function createApp(deps: AppDeps = {}) {
     const base = (c.req.query('base') ?? 'USD').toUpperCase();
     const quote = (c.req.query('quote') ?? 'INR').toUpperCase();
     const r = await latestRate(c.env.DB, base, quote);
-    const res: FxLatestResponse = { base, quote, rate: r?.rate ?? null, asOf: r?.asOf ?? null, source: r?.source ?? null };
+    const res: FxLatestResponse = {
+      base,
+      quote,
+      rate: r?.rate ?? null,
+      asOf: r?.asOf ?? null,
+      source: r?.source ?? null,
+    };
     return c.json(res);
   });
   app.get('/v1/fx/rates', async (c) => {
     const from = c.req.query('from');
     const to = c.req.query('to');
-    const rates = (await loadRates(c.env.DB)).filter((r) => (!from || r.date >= from) && (!to || r.date <= to));
+    const rates = (await loadRates(c.env.DB)).filter(
+      (r) => (!from || r.date >= from) && (!to || r.date <= to),
+    );
     return c.json({ rates });
   });
   app.post('/v1/fx/refresh', async (c) => {
@@ -504,7 +627,9 @@ export function createApp(deps: AppDeps = {}) {
   });
   app.get('/v1/ai/status', async (c) => {
     const settings = await getSettings(c.env.DB);
-    const usage = await c.env.DB.prepare("SELECT calls FROM ai_usage WHERE day = ? AND provider = 'workers_ai'")
+    const usage = await c.env.DB.prepare(
+      "SELECT calls FROM ai_usage WHERE day = ? AND provider = 'workers_ai'",
+    )
       .bind(todayLocal())
       .first<{ calls: number }>();
     const res: AiStatusResponse = {
@@ -526,9 +651,9 @@ export function createApp(deps: AppDeps = {}) {
     return c.json({ answer: await answerQuestion(c.env, b.question, c.get('deps')) });
   });
   app.get('/v1/alerts', async (c) => {
-    const res = await c.env.DB.prepare('SELECT * FROM alerts WHERE dismissed_at IS NULL ORDER BY created_at DESC LIMIT 100').all<
-      Record<string, string | number | null>
-    >();
+    const res = await c.env.DB.prepare(
+      'SELECT * FROM alerts WHERE dismissed_at IS NULL ORDER BY created_at DESC LIMIT 100',
+    ).all<Record<string, string | number | null>>();
     return c.json({
       alerts: res.results.map((r) => ({
         id: r.id,
@@ -544,18 +669,31 @@ export function createApp(deps: AppDeps = {}) {
     });
   });
   app.post('/v1/alerts/:id/dismiss', async (c) => {
-    await c.env.DB.prepare('UPDATE alerts SET dismissed_at = ? WHERE id = ?').bind(nowIso(), c.req.param('id')).run();
+    await c.env.DB.prepare('UPDATE alerts SET dismissed_at = ? WHERE id = ?')
+      .bind(nowIso(), c.req.param('id'))
+      .run();
     return c.json({ ok: true });
   });
   app.get('/v1/recaps', async (c) => {
     const period = c.req.query('period');
-    return c.json({ recaps: await listRecaps(c.env.DB, period === 'week' || period === 'month' ? period : undefined) });
+    return c.json({
+      recaps: await listRecaps(
+        c.env.DB,
+        period === 'week' || period === 'month' ? period : undefined,
+      ),
+    });
   });
-  app.get('/v1/recurring', async (c) => c.json({ recurring: await selectAll(c.env.DB, recurringTable) }));
+  app.get('/v1/recurring', async (c) =>
+    c.json({ recurring: await selectAll(c.env.DB, recurringTable) }),
+  );
 
   // ---- Connector sync -------------------------------------------------------------
-  app.get('/v1/connections', async (c) => c.json({ connections: await selectAll(c.env.DB, connectionsTable) }));
-  app.post('/v1/connections/:id/sync', async (c) => c.json(await runConnectionSync(c.env, c.req.param('id'), c.get('deps').fetch)));
+  app.get('/v1/connections', async (c) =>
+    c.json({ connections: await selectAll(c.env.DB, connectionsTable) }),
+  );
+  app.post('/v1/connections/:id/sync', async (c) =>
+    c.json(await runConnectionSync(c.env, c.req.param('id'), c.get('deps').fetch)),
+  );
 
   // ---- Local development ----------------------------------------------------------
   app.post('/v1/dev/seed', async (c) => {

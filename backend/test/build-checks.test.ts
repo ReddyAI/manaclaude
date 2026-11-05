@@ -13,7 +13,17 @@ import { splitTransaction, undoSplit } from '../src/services/splits';
 import { getTransaction } from '../src/services/transactions';
 import { applySyncResult } from '../src/sync/apply';
 import { fakeAi } from './fakes';
-import { addAccount, addRate, addTxn, allTxns, db, file, freshDb, spending, testEnv } from './helpers';
+import {
+  addAccount,
+  addRate,
+  addTxn,
+  allTxns,
+  db,
+  file,
+  freshDb,
+  spending,
+  testEnv,
+} from './helpers';
 
 /**
  * The five build checks from research/sure/rea.md, against a local D1
@@ -31,8 +41,17 @@ describe('check 1: no double counting of transfers and card payments', () => {
   it('1.1 a $200 card purchase plus its $200 payment from checking reports $200 of spending', async () => {
     const checking = await addAccount({ type: 'checking' });
     const card = await addAccount({ type: 'credit_card' });
-    await addTxn(card, { date: '2026-10-03', amount: -20_000, rawName: 'LAKESHORE OUTFITTERS', categoryId: 'cat_shopping' });
-    await addTxn(checking, { date: '2026-10-25', amount: -20_000, rawName: 'LAKESHORE CARD PAYMENT' });
+    await addTxn(card, {
+      date: '2026-10-03',
+      amount: -20_000,
+      rawName: 'LAKESHORE OUTFITTERS',
+      categoryId: 'cat_shopping',
+    });
+    await addTxn(checking, {
+      date: '2026-10-25',
+      amount: -20_000,
+      rawName: 'LAKESHORE CARD PAYMENT',
+    });
     await addTxn(card, { date: '2026-10-25', amount: 20_000, rawName: 'PAYMENT - THANK YOU' });
     expect(await runTransferMatcher(db)).toEqual({ linked: 1, suggested: 0 });
     const s = await spending('2026-10-01', '2026-10-31');
@@ -44,8 +63,16 @@ describe('check 1: no double counting of transfers and card payments', () => {
   it('1.1 the matcher links checking -$200 and card +$200 within 5 days as one card_payment link', async () => {
     const checking = await addAccount({ type: 'checking' });
     const card = await addAccount({ type: 'credit_card' });
-    const out = await addTxn(checking, { date: '2026-10-25', amount: -20_000, rawName: 'LAKESHORE CARD PAYMENT' });
-    const into = await addTxn(card, { date: '2026-10-27', amount: 20_000, rawName: 'PAYMENT - THANK YOU' });
+    const out = await addTxn(checking, {
+      date: '2026-10-25',
+      amount: -20_000,
+      rawName: 'LAKESHORE CARD PAYMENT',
+    });
+    const into = await addTxn(card, {
+      date: '2026-10-27',
+      amount: 20_000,
+      rawName: 'PAYMENT - THANK YOU',
+    });
     await runTransferMatcher(db);
     const all = await links();
     expect(all).toHaveLength(1);
@@ -76,8 +103,16 @@ describe('check 1: no double counting of transfers and card payments', () => {
     const checking = await addAccount({ type: 'checking' });
     const nre = await addAccount({ type: 'savings', subtype: 'nre', currency: 'INR' });
     await addRate('2026-10-15', 'INR', 88.0);
-    const out = await addTxn(checking, { date: '2026-10-15', amount: -200_000, rawName: 'WISE US INC' });
-    const into = await addTxn(nre, { date: '2026-10-17', amount: 17_624_000, rawName: 'INWARD REMITTANCE' });
+    const out = await addTxn(checking, {
+      date: '2026-10-15',
+      amount: -200_000,
+      rawName: 'WISE US INC',
+    });
+    const into = await addTxn(nre, {
+      date: '2026-10-17',
+      amount: 17_624_000,
+      rawName: 'INWARD REMITTANCE',
+    });
     await runTransferMatcher(db);
     const [link] = await links();
     expect(link).toMatchObject({
@@ -108,9 +143,18 @@ describe('check 1: no double counting of transfers and card payments', () => {
   it('1.4 an ATM withdrawal links to the cash account deposit as atm_withdrawal; later cash purchases count', async () => {
     const checking = await addAccount({ type: 'checking' });
     const cash = await addAccount({ type: 'cash', isDefaultCash: true });
-    await addTxn(checking, { date: '2026-10-28', amount: -20_000, rawName: 'ATM WITHDRAWAL 1123 MAIN ST' });
+    await addTxn(checking, {
+      date: '2026-10-28',
+      amount: -20_000,
+      rawName: 'ATM WITHDRAWAL 1123 MAIN ST',
+    });
     await addTxn(cash, { date: '2026-10-28', amount: 20_000, rawName: 'Cash' });
-    await addTxn(cash, { date: '2026-10-29', amount: -1_500, rawName: 'Farmers market', categoryId: 'cat_groceries' });
+    await addTxn(cash, {
+      date: '2026-10-29',
+      amount: -1_500,
+      rawName: 'Farmers market',
+      categoryId: 'cat_groceries',
+    });
     await runTransferMatcher(db);
     expect((await links()).map((l) => [l.kind, l.status])).toEqual([['atm_withdrawal', 'auto']]);
     const s = await spending('2026-10-01', '2026-10-31');
@@ -121,7 +165,10 @@ describe('check 1: no double counting of transfers and card payments', () => {
   it('1.4 an imported ATM withdrawal creates its cash deposit and links it, once', async () => {
     const checking = await addAccount({ type: 'checking' });
     const csv = 'Date,Description,Amount\n10/28/2026,ATM WITHDRAWAL 1123 MAIN ST,-200.00\n';
-    const preview = await previewImport(testEnv, { ...file(csv, 'atm.csv'), accountId: checking.id });
+    const preview = await previewImport(testEnv, {
+      ...file(csv, 'atm.csv'),
+      accountId: checking.id,
+    });
     const result = await commitImport(testEnv, preview.importId);
     expect(result.linked).toBe(1);
     const [link] = await links();
@@ -136,7 +183,11 @@ describe('check 1: no double counting of transfers and card payments', () => {
   it('1.5 several candidates create suggested links that do not count until confirmed', async () => {
     const checking = await addAccount({ type: 'checking' });
     const savings = await addAccount({ type: 'savings' });
-    const out = await addTxn(checking, { date: '2026-11-02', amount: -50_000, rawName: 'ONLINE TRANSFER' });
+    const out = await addTxn(checking, {
+      date: '2026-11-02',
+      amount: -50_000,
+      rawName: 'ONLINE TRANSFER',
+    });
     const a = await addTxn(savings, { date: '2026-11-02', amount: 50_000, rawName: 'DEPOSIT' });
     await addTxn(savings, { date: '2026-11-05', amount: 50_000, rawName: 'DEPOSIT' });
     expect(await runTransferMatcher(db)).toEqual({ linked: 0, suggested: 2 });
@@ -183,7 +234,10 @@ describe('check 1: no double counting of transfers and card payments', () => {
 describe('check 2: repeat imports are idempotent, real duplicates are kept', () => {
   it('2.1 a CSV with two identical $5.75 coffees on one day imports two rows', async () => {
     const checking = await addAccount({ type: 'checking' });
-    const preview = await previewImport(testEnv, { ...file(coffeesCsv, 'coffees.csv'), accountId: checking.id });
+    const preview = await previewImport(testEnv, {
+      ...file(coffeesCsv, 'coffees.csv'),
+      accountId: checking.id,
+    });
     expect(preview.counts).toMatchObject({ total: 2, new: 2 });
     expect(preview.rows.map((r) => r.occurrence)).toEqual([1, 2]);
     const result = await commitImport(testEnv, preview.importId);
@@ -196,9 +250,15 @@ describe('check 2: repeat imports are idempotent, real duplicates are kept', () 
 
   it('2.2 importing the same CSV again adds nothing and reports 2 matched, 0 added', async () => {
     const checking = await addAccount({ type: 'checking' });
-    const first = await previewImport(testEnv, { ...file(coffeesCsv, 'coffees.csv'), accountId: checking.id });
+    const first = await previewImport(testEnv, {
+      ...file(coffeesCsv, 'coffees.csv'),
+      accountId: checking.id,
+    });
     await commitImport(testEnv, first.importId);
-    const again = await previewImport(testEnv, { ...file(coffeesCsv, 'coffees.csv'), accountId: checking.id });
+    const again = await previewImport(testEnv, {
+      ...file(coffeesCsv, 'coffees.csv'),
+      accountId: checking.id,
+    });
     expect(again.counts).toMatchObject({ total: 2, new: 0, alreadyImported: 2 });
     expect(again.warnings.some((w) => w.includes('imported before'))).toBe(true);
     const result = await commitImport(testEnv, again.importId);
@@ -208,8 +268,14 @@ describe('check 2: repeat imports are idempotent, real duplicates are kept', () 
 
   it('2.2 two previews of one file committed one after the other still add the rows once', async () => {
     const checking = await addAccount({ type: 'checking' });
-    const a = await previewImport(testEnv, { ...file(coffeesCsv, 'coffees.csv'), accountId: checking.id });
-    const b = await previewImport(testEnv, { ...file(coffeesCsv, 'coffees.csv'), accountId: checking.id });
+    const a = await previewImport(testEnv, {
+      ...file(coffeesCsv, 'coffees.csv'),
+      accountId: checking.id,
+    });
+    const b = await previewImport(testEnv, {
+      ...file(coffeesCsv, 'coffees.csv'),
+      accountId: checking.id,
+    });
     expect((await commitImport(testEnv, a.importId)).added).toBe(2);
     // b's preview said "new", but the fingerprint index stops the duplicates.
     expect((await commitImport(testEnv, b.importId)).added).toBe(0);
@@ -219,9 +285,15 @@ describe('check 2: repeat imports are idempotent, real duplicates are kept', () 
   it('2.3 the same date and amount in a different account is never merged', async () => {
     const checking = await addAccount({ type: 'checking' });
     const card = await addAccount({ type: 'credit_card' });
-    const p1 = await previewImport(testEnv, { ...file(coffeesCsv, 'coffees.csv'), accountId: checking.id });
+    const p1 = await previewImport(testEnv, {
+      ...file(coffeesCsv, 'coffees.csv'),
+      accountId: checking.id,
+    });
     await commitImport(testEnv, p1.importId);
-    const p2 = await previewImport(testEnv, { ...file(coffeesCsv, 'card.csv'), accountId: card.id });
+    const p2 = await previewImport(testEnv, {
+      ...file(coffeesCsv, 'card.csv'),
+      accountId: card.id,
+    });
     expect(p2.counts.new).toBe(2);
     await commitImport(testEnv, p2.importId);
     const txns = await allTxns();
@@ -282,7 +354,11 @@ describe('check 2: repeat imports are idempotent, real duplicates are kept', () 
     await insertStatement(db, connectionsTable, connection).run();
     await applySyncResult(db, connection, sync([ptxn({})]));
     const [first] = await allTxns();
-    await applySyncResult(db, connection, sync([ptxn({ rawName: 'CORNER BISTRO NYC', amount: -1_900 })]));
+    await applySyncResult(
+      db,
+      connection,
+      sync([ptxn({ rawName: 'CORNER BISTRO NYC', amount: -1_900 })]),
+    );
     const txns = await allTxns();
     expect(txns).toHaveLength(1);
     expect(txns[0]).toMatchObject({ id: first!.id, amount: -1_900, rawName: 'CORNER BISTRO NYC' });
@@ -290,24 +366,40 @@ describe('check 2: repeat imports are idempotent, real duplicates are kept', () 
 
   it('2.5 a posted transaction replaces its pending version via pendingExternalId', async () => {
     await insertStatement(db, connectionsTable, connection).run();
-    await applySyncResult(db, connection, sync([ptxn({ externalId: 'P1', pending: true, amount: -1_847 })]));
+    await applySyncResult(
+      db,
+      connection,
+      sync([ptxn({ externalId: 'P1', pending: true, amount: -1_847 })]),
+    );
     const [pending] = await allTxns();
     expect(pending).toMatchObject({ pending: true, amount: -1_847 });
     await applySyncResult(
       db,
       connection,
-      sync([ptxn({ externalId: 'T2', pendingExternalId: 'P1', pending: false, amount: -2_147 })], ['P1']),
+      sync(
+        [ptxn({ externalId: 'T2', pendingExternalId: 'P1', pending: false, amount: -2_147 })],
+        ['P1'],
+      ),
     );
     const txns = await allTxns();
     expect(txns).toHaveLength(1);
-    expect(txns[0]).toMatchObject({ id: pending!.id, pending: false, amount: -2_147, externalId: 'T2' });
+    expect(txns[0]).toMatchObject({
+      id: pending!.id,
+      pending: false,
+      amount: -2_147,
+      externalId: 'T2',
+    });
   });
 });
 
 describe('check 3: splits balance exactly, write atomically and undo cleanly', () => {
   it('3.1 $100 split into $60 + $40 keeps $100 of spending across two categories', async () => {
     const card = await addAccount({ type: 'credit_card' });
-    const t = await addTxn(card, { date: '2026-11-02', amount: -10_000, categoryId: 'cat_shopping' });
+    const t = await addTxn(card, {
+      date: '2026-11-02',
+      amount: -10_000,
+      categoryId: 'cat_shopping',
+    });
     const res = await splitTransaction(db, {
       parentTransactionId: t.id,
       idempotencyKey: 'k-31',
@@ -326,7 +418,11 @@ describe('check 3: splits balance exactly, write atomically and undo cleanly', (
 
   it('3.2 $60 + $50 for a $100 transaction is rejected and nothing is written', async () => {
     const card = await addAccount({ type: 'credit_card' });
-    const t = await addTxn(card, { date: '2026-11-02', amount: -10_000, categoryId: 'cat_shopping' });
+    const t = await addTxn(card, {
+      date: '2026-11-02',
+      amount: -10_000,
+      categoryId: 'cat_shopping',
+    });
     await expect(
       splitTransaction(db, {
         parentTransactionId: t.id,
@@ -339,13 +435,19 @@ describe('check 3: splits balance exactly, write atomically and undo cleanly', (
     ).rejects.toMatchObject({ status: 400, code: 'invalid_split' });
     expect(await allTxns()).toHaveLength(1);
     expect((await getTransaction(db, t.id))?.isSplitParent).toBe(false);
-    const keys = await db.prepare('SELECT count(*) AS n FROM idempotency_keys').first<{ n: number }>();
+    const keys = await db
+      .prepare('SELECT count(*) AS n FROM idempotency_keys')
+      .first<{ n: number }>();
     expect(keys?.n).toBe(0);
   });
 
   it('3.3 two concurrent requests with the same idempotency key create one set of children', async () => {
     const card = await addAccount({ type: 'credit_card' });
-    const t = await addTxn(card, { date: '2026-11-02', amount: -10_000, categoryId: 'cat_shopping' });
+    const t = await addTxn(card, {
+      date: '2026-11-02',
+      amount: -10_000,
+      categoryId: 'cat_shopping',
+    });
     const req = {
       parentTransactionId: t.id,
       idempotencyKey: 'k-33',
@@ -359,13 +461,19 @@ describe('check 3: splits balance exactly, write atomically and undo cleanly', (
     const children = (await allTxns()).filter((x) => x.splitParentId === t.id);
     expect(children).toHaveLength(2);
     // A different key for the same parent is refused too (already split).
-    await expect(splitTransaction(db, { ...req, idempotencyKey: 'k-33b' })).rejects.toMatchObject({ status: 400 });
+    await expect(splitTransaction(db, { ...req, idempotencyKey: 'k-33b' })).rejects.toMatchObject({
+      status: 400,
+    });
     expect((await allTxns()).filter((x) => x.splitParentId === t.id)).toHaveLength(2);
   });
 
   it('3.4 undo removes the children and restores the parent in one D1 batch', async () => {
     const card = await addAccount({ type: 'credit_card' });
-    const t = await addTxn(card, { date: '2026-11-02', amount: -10_000, categoryId: 'cat_shopping' });
+    const t = await addTxn(card, {
+      date: '2026-11-02',
+      amount: -10_000,
+      categoryId: 'cat_shopping',
+    });
     await splitTransaction(db, {
       parentTransactionId: t.id,
       idempotencyKey: 'k-34',
@@ -401,14 +509,20 @@ describe('check 3: splits balance exactly, write atomically and undo cleanly', (
       { amount: -4_000, categoryId: 'cat_dining' },
     ];
     const pending = await addTxn(checking, { date: '2026-11-02', amount: -10_000, pending: true });
-    await expect(splitTransaction(db, { parentTransactionId: pending.id, idempotencyKey: 'p', lines })).rejects.toMatchObject({ status: 400 });
+    await expect(
+      splitTransaction(db, { parentTransactionId: pending.id, idempotencyKey: 'p', lines }),
+    ).rejects.toMatchObject({ status: 400 });
     const out = await addTxn(checking, { date: '2026-11-03', amount: -10_000 });
     await addTxn(savings, { date: '2026-11-03', amount: 10_000 });
     await runTransferMatcher(db);
-    await expect(splitTransaction(db, { parentTransactionId: out.id, idempotencyKey: 'l', lines })).rejects.toMatchObject({ status: 400 });
+    await expect(
+      splitTransaction(db, { parentTransactionId: out.id, idempotencyKey: 'l', lines }),
+    ).rejects.toMatchObject({ status: 400 });
     const plain = await addTxn(checking, { date: '2026-11-04', amount: -10_000 });
     await splitTransaction(db, { parentTransactionId: plain.id, idempotencyKey: 's1', lines });
-    await expect(splitTransaction(db, { parentTransactionId: plain.id, idempotencyKey: 's2', lines })).rejects.toMatchObject({ status: 400 });
+    await expect(
+      splitTransaction(db, { parentTransactionId: plain.id, idempotencyKey: 's2', lines }),
+    ).rejects.toMatchObject({ status: 400 });
     const child = (await allTxns()).find((x) => x.splitParentId === plain.id)!;
     await expect(
       splitTransaction(db, {
@@ -494,9 +608,17 @@ describe('check 4: user edits survive later syncs', () => {
     await applySyncResult(db, connection, result({}));
     const [t] = await allTxns();
     await editTransaction(db, t!.id, { name: 'Greenleaf Florist' });
-    await applySyncResult(db, connection, result({ amount: -4_950, rawName: 'SQ *GREENLEAF FLORIST' }));
+    await applySyncResult(
+      db,
+      connection,
+      result({ amount: -4_950, rawName: 'SQ *GREENLEAF FLORIST' }),
+    );
     const after = await getTransaction(db, t!.id);
-    expect(after).toMatchObject({ name: 'Greenleaf Florist', amount: -4_950, rawName: 'SQ *GREENLEAF FLORIST' });
+    expect(after).toMatchObject({
+      name: 'Greenleaf Florist',
+      amount: -4_950,
+      rawName: 'SQ *GREENLEAF FLORIST',
+    });
   });
 
   it('4.3 rules and AI never overwrite fields listed in userEditedFields', async () => {
@@ -525,7 +647,11 @@ describe('check 4: user edits survive later syncs', () => {
     const ai = fakeAi({ categorize: { [t!.id]: { category: 'Shopping', confidence: 0.97 } } });
     await runCategorization(testEnv, { all: true }, ai.deps);
     const after = await getTransaction(db, t!.id);
-    expect(after).toMatchObject({ categoryId: 'cat_gifts', name: 'Greenleaf Florist', categorySource: 'user' });
+    expect(after).toMatchObject({
+      categoryId: 'cat_gifts',
+      name: 'Greenleaf Florist',
+      categorySource: 'user',
+    });
     // Fields the user didn't touch still follow the rule.
     expect(after?.tagIds).toEqual(['tag_tax']);
   });
@@ -535,7 +661,12 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
   it('5.1 a $30 refund on a $100 category purchase reports $70 in that category', async () => {
     const card = await addAccount({ type: 'credit_card' });
     await addTxn(card, { date: '2026-11-02', amount: -10_000, categoryId: 'cat_shopping' });
-    await addTxn(card, { date: '2026-11-09', amount: 3_000, categoryId: 'cat_shopping', rawName: 'REFUND' });
+    await addTxn(card, {
+      date: '2026-11-09',
+      amount: 3_000,
+      categoryId: 'cat_shopping',
+      rawName: 'REFUND',
+    });
     const s = await spending('2026-11-01', '2026-11-30');
     expect(s.byCategory.cat_shopping).toBe(7_000);
     expect(s.spending).toBe(7_000);
@@ -545,16 +676,27 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
   it('5.2 a refund in a later month reduces that month and can make the category negative', async () => {
     const card = await addAccount({ type: 'credit_card' });
     await addTxn(card, { date: '2026-10-20', amount: -8_000, categoryId: 'cat_shopping' });
-    await addTxn(card, { date: '2026-11-03', amount: 2_450, categoryId: 'cat_shopping', rawName: 'REFUND' });
+    await addTxn(card, {
+      date: '2026-11-03',
+      amount: 2_450,
+      categoryId: 'cat_shopping',
+      rawName: 'REFUND',
+    });
     expect((await spending('2026-10-01', '2026-10-31')).byCategory.cat_shopping).toBe(8_000);
     const nov = await spending('2026-11-01', '2026-11-30');
     expect(nov.byCategory.cat_shopping).toBe(-2_450);
     expect(nov.spending).toBe(-2_450);
     // With the zero floor policy the category stops at 0.
-    const floored = await spending('2026-11-01', '2026-11-30', { ...DEFAULT_MONEY_POLICIES, categoryFloor: 'zero' });
+    const floored = await spending('2026-11-01', '2026-11-30', {
+      ...DEFAULT_MONEY_POLICIES,
+      categoryFloor: 'zero',
+    });
     expect(floored.byCategory.cat_shopping).toBe(0);
     // Counted as income instead, when the policy says so.
-    const asIncome = await spending('2026-11-01', '2026-11-30', { ...DEFAULT_MONEY_POLICIES, refunds: 'count_as_income' });
+    const asIncome = await spending('2026-11-01', '2026-11-30', {
+      ...DEFAULT_MONEY_POLICIES,
+      refunds: 'count_as_income',
+    });
     expect(asIncome.spending).toBe(0);
     expect(asIncome.income).toBe(2_450);
   });
@@ -562,7 +704,11 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
   it('5.3 a $500 brokerage contribution is excluded by default and counted when the policy says so', async () => {
     const checking = await addAccount({ type: 'checking' });
     const brokerage = await addAccount({ type: 'brokerage' });
-    await addTxn(checking, { date: '2026-11-05', amount: -50_000, rawName: 'TRANSFER TO BROKERAGE' });
+    await addTxn(checking, {
+      date: '2026-11-05',
+      amount: -50_000,
+      rawName: 'TRANSFER TO BROKERAGE',
+    });
     await addTxn(brokerage, { date: '2026-11-06', amount: 50_000, rawName: 'DEPOSIT' });
     await runTransferMatcher(db);
     const [link] = await links();
@@ -570,14 +716,21 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
     const byDefault = await spending('2026-11-01', '2026-11-30');
     expect(byDefault.spending).toBe(0);
     expect(byDefault.income).toBe(0);
-    const counted = await spending('2026-11-01', '2026-11-30', { ...DEFAULT_MONEY_POLICIES, investmentContributions: 'count' });
+    const counted = await spending('2026-11-01', '2026-11-30', {
+      ...DEFAULT_MONEY_POLICIES,
+      investmentContributions: 'count',
+    });
     expect(counted.spending).toBe(50_000);
     expect(counted.income).toBe(0);
   });
 
   it('5.4 loan principal is excluded and loan interest counts as spending', async () => {
     const checking = await addAccount({ type: 'checking' });
-    const t = await addTxn(checking, { date: '2026-11-01', amount: -45_218, rawName: 'AUTO LOAN PMT' });
+    const t = await addTxn(checking, {
+      date: '2026-11-01',
+      amount: -45_218,
+      rawName: 'AUTO LOAN PMT',
+    });
     await splitTransaction(db, {
       parentTransactionId: t.id,
       idempotencyKey: 'loan-1',
@@ -589,7 +742,10 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
     const s = await spending('2026-11-01', '2026-11-30');
     expect(s.spending).toBe(6_278);
     expect(s.byCategory).toEqual({ cat_loan_interest: 6_278 });
-    const counted = await spending('2026-11-01', '2026-11-30', { ...DEFAULT_MONEY_POLICIES, loanPrincipal: 'count' });
+    const counted = await spending('2026-11-01', '2026-11-30', {
+      ...DEFAULT_MONEY_POLICIES,
+      loanPrincipal: 'count',
+    });
     expect(counted.spending).toBe(45_218);
   });
 
@@ -601,10 +757,20 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
     await addTxn(checking, { date: '2026-11-20', amount: -10_000, rawName: 'CARD PAYMENT' });
     await addTxn(card, { date: '2026-11-20', amount: 10_000, rawName: 'PAYMENT - THANK YOU' });
     await addTxn(checking, { date: '2026-11-10', amount: -30_000, rawName: 'TRANSFER TO SAVINGS' });
-    await addTxn(savings, { date: '2026-11-10', amount: 30_000, rawName: 'TRANSFER FROM CHECKING' });
-    await addTxn(checking, { date: '2026-11-25', amount: -2_000, categoryId: 'cat_dining', pending: true });
+    await addTxn(savings, {
+      date: '2026-11-10',
+      amount: 30_000,
+      rawName: 'TRANSFER FROM CHECKING',
+    });
+    await addTxn(checking, {
+      date: '2026-11-25',
+      amount: -2_000,
+      categoryId: 'cat_dining',
+      pending: true,
+    });
     await runTransferMatcher(db);
-    const run = (p: Partial<MoneyPolicies>) => spending('2026-11-01', '2026-11-30', { ...DEFAULT_MONEY_POLICIES, ...p });
+    const run = (p: Partial<MoneyPolicies>) =>
+      spending('2026-11-01', '2026-11-30', { ...DEFAULT_MONEY_POLICIES, ...p });
     expect((await run({})).spending).toBe(12_000);
     expect((await run({ cardPayments: 'count' })).spending).toBe(22_000);
     expect((await run({ transfers: 'count' })).spending).toBe(42_000);

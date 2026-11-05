@@ -1,4 +1,9 @@
-import { normalizeAiStatement, type AiStatementJson, type CurrencyCode, type ParsedStatement } from '@manaclaude/shared';
+import {
+  normalizeAiStatement,
+  type AiStatementJson,
+  type CurrencyCode,
+  type ParsedStatement,
+} from '@manaclaude/shared';
 import { completeJson, type AiClient, type JsonSchema } from '../ai/provider';
 
 export const STATEMENT_SCHEMA: JsonSchema = {

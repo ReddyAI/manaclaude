@@ -28,7 +28,9 @@ export function parseActualCsv(text: string, options: { currency: CurrencyCode }
       format: 'actual_csv',
       rows: [],
       accounts: [],
-      errors: [{ line: 1, message: 'This is not an Actual Budget export (no Date or Amount column).' }],
+      errors: [
+        { line: 1, message: 'This is not an Actual Budget export (no Date or Amount column).' },
+      ],
       warnings: [],
       dateFormat: null,
       dateFormatAmbiguous: false,
@@ -103,7 +105,9 @@ export function parseActualCsv(text: string, options: { currency: CurrencyCode }
     rows,
     accounts,
     errors,
-    warnings: detection.ambiguous ? ['Dates fit more than one format; check them in the preview.'] : [],
+    warnings: detection.ambiguous
+      ? ['Dates fit more than one format; check them in the preview.']
+      : [],
     dateFormat: format,
     dateFormatAmbiguous: detection.ambiguous,
   };

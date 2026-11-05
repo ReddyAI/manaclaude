@@ -10,14 +10,21 @@ export function getLink(db: D1Database, id: Id): Promise<TransferLink | null> {
   return selectOne(db, transferLinksTable, 'id = ?', [id]);
 }
 
-export function listLinks(db: D1Database, status?: TransferLink['status']): Promise<TransferLink[]> {
+export function listLinks(
+  db: D1Database,
+  status?: TransferLink['status'],
+): Promise<TransferLink[]> {
   return status
     ? selectAll(db, transferLinksTable, 'status = ?', [status], 'created_at DESC')
     : selectAll(db, transferLinksTable, '', [], 'created_at DESC');
 }
 
 /** Activates a link: both transactions point at it and other suggestions for them go away. */
-async function activate(db: D1Database, link: TransferLink, status: 'confirmed'): Promise<TransferLink> {
+async function activate(
+  db: D1Database,
+  link: TransferLink,
+  status: 'confirmed',
+): Promise<TransferLink> {
   const now = nowIso();
   try {
     const res = await db.batch([
@@ -25,13 +32,21 @@ async function activate(db: D1Database, link: TransferLink, status: 'confirmed')
         .prepare('UPDATE transfer_links SET status = ?, updated_at = ? WHERE id = ?')
         .bind(status, now, link.id),
       db
-        .prepare('UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL')
+        .prepare(
+          'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL',
+        )
         .bind(link.id, now, link.outTransactionId, link.inTransactionId),
       db
         .prepare(
           "DELETE FROM transfer_links WHERE status = 'suggested' AND id != ? AND (out_transaction_id IN (?, ?) OR in_transaction_id IN (?, ?))",
         )
-        .bind(link.id, link.outTransactionId, link.inTransactionId, link.outTransactionId, link.inTransactionId),
+        .bind(
+          link.id,
+          link.outTransactionId,
+          link.inTransactionId,
+          link.outTransactionId,
+          link.inTransactionId,
+        ),
     ]);
     if ((res[1]?.meta.changes ?? 0) !== 2) {
       throw conflict('One side of this transfer is already linked to something else.');
@@ -50,7 +65,10 @@ export async function confirmLink(db: D1Database, id: Id): Promise<TransferLink>
   if (link.status === 'confirmed') return link;
   if (link.status === 'auto') {
     const now = nowIso();
-    await db.prepare('UPDATE transfer_links SET status = ?, updated_at = ? WHERE id = ?').bind('confirmed', now, id).run();
+    await db
+      .prepare('UPDATE transfer_links SET status = ?, updated_at = ? WHERE id = ?')
+      .bind('confirmed', now, id)
+      .run();
     return { ...link, status: 'confirmed', updatedAt: now };
   }
   if (link.status === 'rejected') throw conflict('This pair was unlinked; link it again by hand.');
@@ -66,9 +84,13 @@ export async function rejectLink(db: D1Database, id: Id): Promise<TransferLink> 
   if (!link) throw notFound('No such transfer link.');
   const now = nowIso();
   await db.batch([
-    db.prepare('UPDATE transfer_links SET status = ?, updated_at = ? WHERE id = ?').bind('rejected', now, id),
     db
-      .prepare('UPDATE transactions SET transfer_link_id = NULL, updated_at = ? WHERE transfer_link_id = ?')
+      .prepare('UPDATE transfer_links SET status = ?, updated_at = ? WHERE id = ?')
+      .bind('rejected', now, id),
+    db
+      .prepare(
+        'UPDATE transactions SET transfer_link_id = NULL, updated_at = ? WHERE transfer_link_id = ?',
+      )
       .bind(now, id),
   ]);
   return { ...link, status: 'rejected', updatedAt: now };
@@ -85,7 +107,10 @@ export async function linkManually(db: D1Database, aId: Id, bId: Id): Promise<Tr
   if (a.transferLinkId || b.transferLinkId) throw conflict('One side is already linked.');
   const out = a.amount < 0 ? a : b;
   const into = a.amount < 0 ? b : a;
-  const accounts = await selectAll(db, accountsTable, 'id IN (?, ?)', [out.accountId, into.accountId]);
+  const accounts = await selectAll(db, accountsTable, 'id IN (?, ?)', [
+    out.accountId,
+    into.accountId,
+  ]);
   const inAcc = accounts.find((x) => x.id === into.accountId);
   const kind =
     inAcc?.type === 'credit_card'
@@ -97,7 +122,12 @@ export async function linkManually(db: D1Database, aId: Id, bId: Id): Promise<Tr
           : inAcc?.type === 'cash'
             ? 'atm_withdrawal'
             : 'transfer';
-  const existing = await selectOne(db, transferLinksTable, 'out_transaction_id = ? AND in_transaction_id = ?', [out.id, into.id]);
+  const existing = await selectOne(
+    db,
+    transferLinksTable,
+    'out_transaction_id = ? AND in_transaction_id = ?',
+    [out.id, into.id],
+  );
   const link =
     existing ??
     linkFromCandidate(
@@ -135,7 +165,10 @@ export async function linkManually(db: D1Database, aId: Id, bId: Id): Promise<Tr
       )
       .run();
   } else {
-    await db.prepare("UPDATE transfer_links SET matched_by = 'user' WHERE id = ?").bind(link.id).run();
+    await db
+      .prepare("UPDATE transfer_links SET matched_by = 'user' WHERE id = ?")
+      .bind(link.id)
+      .run();
   }
   return activate(db, { ...link, matchedBy: 'user' }, 'confirmed');
 }

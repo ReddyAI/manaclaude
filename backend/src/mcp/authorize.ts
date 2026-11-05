@@ -5,10 +5,19 @@ const FAIL_LIMIT = 10;
 const FAIL_WINDOW_SECONDS = 3600;
 
 function escape(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
+  );
 }
 
-function page(opts: { handle: string; clientName: string; redirectHost: string; scopes: string[]; error?: string }): string {
+function page(opts: {
+  handle: string;
+  clientName: string;
+  redirectHost: string;
+  scopes: string[];
+  error?: string;
+}): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Connect to Mana</title>
@@ -24,7 +33,9 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}.e
 </style></head><body><main>
 <h1>Connect ${escape(opts.clientName)} to Mana</h1>
 <p>${escape(opts.clientName)} wants to read your accounts, transactions, budgets, investments and receipts. It will send you back to <strong>${escape(opts.redirectHost)}</strong>.${
-    opts.scopes.includes('write') ? ' Write tools stay off unless you turn them on in Mana\'s settings.' : ''
+    opts.scopes.includes('write')
+      ? " Write tools stay off unless you turn them on in Mana's settings."
+      : ''
   }</p>
 ${opts.error ? `<p class="error">${escape(opts.error)}</p>` : ''}
 <form method="post">
@@ -52,14 +63,23 @@ const SUPPORTED_SCOPES = ['read', 'write'];
 export async function handleAuthorize(request: Request, env: Env): Promise<Response> {
   const oauth = env.OAUTH_PROVIDER;
   if (!oauth || !env.OAUTH_KV) return new Response('OAuth is not configured.', { status: 500 });
-  if (!env.MCP_OWNER_PASSWORD) return new Response('Set the MCP_OWNER_PASSWORD secret first.', { status: 503 });
+  if (!env.MCP_OWNER_PASSWORD)
+    return new Response('Set the MCP_OWNER_PASSWORD secret first.', { status: 503 });
   const authReq = await oauth.parseAuthRequest(request);
   const consent = await oauth.describeConsent(authReq);
   const scopes = authReq.scope.filter((s) => SUPPORTED_SCOPES.includes(s));
   const granted = scopes.length > 0 ? scopes : SUPPORTED_SCOPES;
   if (request.method === 'GET') {
     const { handle, headers } = await oauth.beginConsent(authReq);
-    return html(page({ handle, clientName: consent.clientName, redirectHost: consent.redirectHost, scopes: granted }), headers);
+    return html(
+      page({
+        handle,
+        clientName: consent.clientName,
+        redirectHost: consent.redirectHost,
+        scopes: granted,
+      }),
+      headers,
+    );
   }
   if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
   const form = await request.formData();
@@ -71,12 +91,19 @@ export async function handleAuthorize(request: Request, env: Env): Promise<Respo
   const ip = request.headers.get('cf-connecting-ip') ?? 'local';
   const failKey = `authfail:${ip}`;
   const fails = Number((await env.OAUTH_KV.get(failKey)) ?? '0');
-  if (fails >= FAIL_LIMIT) return new Response('Too many wrong passwords. Try again in an hour.', { status: 429 });
+  if (fails >= FAIL_LIMIT)
+    return new Response('Too many wrong passwords. Try again in an hour.', { status: 429 });
   if (!safeEqual(String(form.get('password') ?? ''), env.MCP_OWNER_PASSWORD)) {
     await env.OAUTH_KV.put(failKey, String(fails + 1), { expirationTtl: FAIL_WINDOW_SECONDS });
     // The handle is still valid (not consumed), so the same form can be retried.
     return html(
-      page({ handle, clientName: consent.clientName, redirectHost: consent.redirectHost, scopes: granted, error: 'Wrong password.' }),
+      page({
+        handle,
+        clientName: consent.clientName,
+        redirectHost: consent.redirectHost,
+        scopes: granted,
+        error: 'Wrong password.',
+      }),
       new Headers(),
       401,
     );

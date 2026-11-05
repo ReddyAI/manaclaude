@@ -7,7 +7,12 @@ import {
 } from '@manaclaude/shared';
 import type { Env } from '../../env';
 import { batchInChunks, selectAll, updateStatement } from '../../db/table';
-import { categoriesTable, merchantsTable, transactionsTable, transferLinksTable } from '../../db/tables';
+import {
+  categoriesTable,
+  merchantsTable,
+  transactionsTable,
+  transferLinksTable,
+} from '../../db/tables';
 import { nowIso } from '../../util/ids';
 import { getSettings } from '../../services/settings';
 import { merchantKey } from '../merchant';
@@ -53,7 +58,11 @@ export interface CategorizeOptions {
  * Every change goes through mergeRespectingUserEdits, so a category the user
  * set is never touched. With AI off, steps 1 and 2 still run.
  */
-export async function runCategorization(env: Env, options: CategorizeOptions = {}, deps: AiDeps = {}): Promise<AiJobResponse> {
+export async function runCategorization(
+  env: Env,
+  options: CategorizeOptions = {},
+  deps: AiDeps = {},
+): Promise<AiJobResponse> {
   const db = env.DB;
   const settings = await getSettings(db);
   let candidates: Transaction[];
@@ -61,7 +70,14 @@ export async function runCategorization(env: Env, options: CategorizeOptions = {
     candidates = [];
     for (let i = 0; i < options.ids.length; i += 90) {
       const chunk = options.ids.slice(i, i + 90);
-      candidates.push(...(await selectAll(db, transactionsTable, `id IN (${chunk.map(() => '?').join(',')})`, chunk)));
+      candidates.push(
+        ...(await selectAll(
+          db,
+          transactionsTable,
+          `id IN (${chunk.map(() => '?').join(',')})`,
+          chunk,
+        )),
+      );
     }
   } else if (options.all) {
     candidates = await selectAll(db, transactionsTable, 'is_split_parent = 0');
@@ -77,19 +93,29 @@ export async function runCategorization(env: Env, options: CategorizeOptions = {
       .filter((l) => ACTIVE_TRANSFER_LINK_STATUSES.includes(l.status))
       .map((l) => l.id),
   );
-  candidates = candidates.filter((t) => t.amount !== 0 && !t.isSplitParent && !(t.transferLinkId && activeLinks.has(t.transferLinkId)));
+  candidates = candidates.filter(
+    (t) =>
+      t.amount !== 0 &&
+      !t.isSplitParent &&
+      !(t.transferLinkId && activeLinks.has(t.transferLinkId)),
+  );
   if (candidates.length === 0) return { job: 'categorize', changed: 0, usedAi: false, note: null };
 
   const [categories, merchants, examples] = await Promise.all([
     selectAll(db, categoriesTable, 'archived = 0'),
     selectAll(db, merchantsTable),
     db
-      .prepare('SELECT normalized_name, raw_name, category_id, amount FROM ai_examples ORDER BY created_at DESC LIMIT 500')
+      .prepare(
+        'SELECT normalized_name, raw_name, category_id, amount FROM ai_examples ORDER BY created_at DESC LIMIT 500',
+      )
       .all<{ normalized_name: string; raw_name: string; category_id: string; amount: number }>(),
   ]);
   const learned = new Map<string, string>();
-  for (const e of examples.results) if (!learned.has(e.normalized_name)) learned.set(e.normalized_name, e.category_id);
-  const merchantDefault = new Map(merchants.filter((m) => m.defaultCategoryId).map((m) => [m.id, m.defaultCategoryId!]));
+  for (const e of examples.results)
+    if (!learned.has(e.normalized_name)) learned.set(e.normalized_name, e.category_id);
+  const merchantDefault = new Map(
+    merchants.filter((m) => m.defaultCategoryId).map((m) => [m.id, m.defaultCategoryId!]),
+  );
   const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c]));
 
   const proposals = new Map<Id, { categoryId: Id; confidence: number }>();
@@ -107,16 +133,22 @@ export async function runCategorization(env: Env, options: CategorizeOptions = {
 
   const ai = tryGetAi(env, settings, deps);
   let usedAi = false;
-  let note: string | null = ai ? null : 'AI is off; used your corrections and merchant defaults only.';
+  let note: string | null = ai
+    ? null
+    : 'AI is off; used your corrections and merchant defaults only.';
   if (ai && forAi.length > 0) {
     const fewShot = examples.results
       .slice(0, 30)
-      .map((e) => `"${e.raw_name}" -> ${categories.find((c) => c.id === e.category_id)?.name ?? '?'}`)
+      .map(
+        (e) => `"${e.raw_name}" -> ${categories.find((c) => c.id === e.category_id)?.name ?? '?'}`,
+      )
       .join('\n');
     for (let i = 0; i < forAi.length; i += BATCH) {
       const batch = forAi.slice(i, i + BATCH);
       try {
-        const reply = await completeJson<{ results: { id: string; category: string; confidence: number }[] }>(ai, {
+        const reply = await completeJson<{
+          results: { id: string; category: string; confidence: number }[];
+        }>(ai, {
           system:
             'You categorize personal bank and card transactions. Pick exactly one category name from the list for each transaction. Give a confidence from 0 to 1; use below 0.6 when you are guessing. Money in (positive amounts) is usually income or a refund. Return JSON only.',
           prompt: `Categories: ${categories.map((c) => `${c.name} (${c.kind})`).join(', ')}\n\n${
@@ -131,7 +163,10 @@ export async function runCategorization(env: Env, options: CategorizeOptions = {
         for (const r of reply.results ?? []) {
           const cat = categoryByName.get(String(r.category).toLowerCase());
           if (!cat || !batch.some((t) => t.id === r.id)) continue;
-          proposals.set(r.id, { categoryId: cat.id, confidence: Math.max(0, Math.min(1, Number(r.confidence) || 0)) });
+          proposals.set(r.id, {
+            categoryId: cat.id,
+            confidence: Math.max(0, Math.min(1, Number(r.confidence) || 0)),
+          });
         }
       } catch (e) {
         note = e instanceof Error ? e.message : 'The AI call failed.';
@@ -159,12 +194,17 @@ export async function runCategorization(env: Env, options: CategorizeOptions = {
       continue;
     }
     statements.push(
-      updateStatement(db, transactionsTable, { id }, {
-        categoryId: transaction.categoryId,
-        categorySource: transaction.categorySource,
-        aiCategoryConfidence: transaction.aiCategoryConfidence,
-        updatedAt: now,
-      }),
+      updateStatement(
+        db,
+        transactionsTable,
+        { id },
+        {
+          categoryId: transaction.categoryId,
+          categorySource: transaction.categorySource,
+          aiCategoryConfidence: transaction.aiCategoryConfidence,
+          updatedAt: now,
+        },
+      ),
     );
   }
   await batchInChunks(db, statements);

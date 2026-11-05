@@ -35,7 +35,12 @@ export async function runRules(db: D1Database, transactionIds?: Id[]): Promise<n
     for (let i = 0; i < transactionIds.length; i += 90) {
       const chunk = transactionIds.slice(i, i + 90);
       txns.push(
-        ...(await selectAll(db, transactionsTable, `id IN (${chunk.map(() => '?').join(',')})`, chunk)),
+        ...(await selectAll(
+          db,
+          transactionsTable,
+          `id IN (${chunk.map(() => '?').join(',')})`,
+          chunk,
+        )),
       );
     }
   } else {
@@ -47,7 +52,9 @@ export async function runRules(db: D1Database, transactionIds?: Id[]): Promise<n
     const { transaction } = applyRules(t, rules);
     const changes = changedFields(t, transaction);
     if (Object.keys(changes).length === 0) continue;
-    statements.push(updateStatement(db, transactionsTable, { id: t.id }, { ...changes, updatedAt: now }));
+    statements.push(
+      updateStatement(db, transactionsTable, { id: t.id }, { ...changes, updatedAt: now }),
+    );
   }
   await batchInChunks(db, statements);
   return statements.length;

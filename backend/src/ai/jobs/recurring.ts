@@ -1,5 +1,6 @@
 import {
   addDays,
+  addMonths,
   daysBetween,
   type AiJobResponse,
   type RecurringFrequency,
@@ -59,7 +60,8 @@ export function detectRecurringSeries(txns: readonly Transaction[]): RecurringCa
     const gap = median(gaps);
     const freq = FREQUENCIES.find((f) => Math.abs(gap - f.days) <= f.tolerance);
     if (!freq) continue;
-    const steady = gaps.filter((g) => Math.abs(g - freq.days) <= freq.tolerance * 2).length / gaps.length;
+    const steady =
+      gaps.filter((g) => Math.abs(g - freq.days) <= freq.tolerance * 2).length / gaps.length;
     if (steady < 0.75) continue;
     const amounts = sorted.map((t) => Math.abs(t.amount));
     const mid = median(amounts);
@@ -71,15 +73,27 @@ export function detectRecurringSeries(txns: readonly Transaction[]): RecurringCa
       frequency: freq.frequency,
       history: sorted,
       isVariable,
-      confidence: Math.min(0.99, 0.5 + sorted.length * 0.08 + steady * 0.2 - (isVariable ? 0.1 : 0)),
+      confidence: Math.min(
+        0.99,
+        0.5 + sorted.length * 0.08 + steady * 0.2 - (isVariable ? 0.1 : 0),
+      ),
     });
   }
   return out;
 }
 
+const MONTHS_PER: Partial<Record<RecurringFrequency, number>> = {
+  monthly: 1,
+  quarterly: 3,
+  semiannual: 6,
+  annual: 12,
+};
+
+/** Weekly series step by days; monthly and longer step by calendar months (12th stays the 12th). */
 function nextDue(last: string, f: RecurringFrequency): string {
-  const days = FREQUENCIES.find((x) => x.frequency === f)!.days;
-  return addDays(last, Math.round(days));
+  const months = MONTHS_PER[f];
+  if (months) return addMonths(last, months);
+  return addDays(last, f === 'weekly' ? 7 : 14);
 }
 
 /**
@@ -103,7 +117,10 @@ export async function runRecurringDetection(env: Env): Promise<AiJobResponse> {
     const last = s.history[s.history.length - 1]!;
     const prev = s.history[s.history.length - 2]!;
     const current = existing.find(
-      (r) => r.accountId === last.accountId && merchantKey(r.name) === merchantKey(s.name) && Math.sign(r.expectedAmount) === Math.sign(last.amount),
+      (r) =>
+        r.accountId === last.accountId &&
+        merchantKey(r.name) === merchantKey(s.name) &&
+        Math.sign(r.expectedAmount) === Math.sign(last.amount),
     );
     const item: RecurringItem = {
       id: current?.id ?? newId('rec'),
@@ -111,7 +128,13 @@ export async function runRecurringDetection(env: Env): Promise<AiJobResponse> {
       merchantId: last.merchantId,
       categoryId: current?.categoryId ?? last.categoryId,
       accountId: last.accountId,
-      kind: current?.kind ?? (last.amount > 0 ? 'income' : /subscri|netflix|spotify|prime|icloud|youtube|hulu|disney/i.test(s.name) ? 'subscription' : 'bill'),
+      kind:
+        current?.kind ??
+        (last.amount > 0
+          ? 'income'
+          : /subscri|netflix|spotify|prime|icloud|youtube|hulu|disney/i.test(s.name)
+            ? 'subscription'
+            : 'bill'),
       frequency: s.frequency,
       expectedAmount: last.amount,
       currency: last.currency,
@@ -130,7 +153,9 @@ export async function runRecurringDetection(env: Env): Promise<AiJobResponse> {
     }
     statements.push(
       ...s.history.map((t) =>
-        db.prepare('UPDATE transactions SET recurring_id = ? WHERE id = ? AND recurring_id IS NULL').bind(item.id, t.id),
+        db
+          .prepare('UPDATE transactions SET recurring_id = ? WHERE id = ? AND recurring_id IS NULL')
+          .bind(item.id, t.id),
       ),
     );
     const increase = (Math.abs(last.amount) - Math.abs(prev.amount)) / Math.abs(prev.amount);
@@ -142,7 +167,16 @@ export async function runRecurringDetection(env: Env): Promise<AiJobResponse> {
             .prepare(
               'INSERT OR IGNORE INTO alerts (id, type, transaction_id, recurring_id, message, amount, currency, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
             )
-            .bind(newId('alr'), 'price_increase', last.id, item.id, message, Math.abs(last.amount) - Math.abs(prev.amount), last.currency, now),
+            .bind(
+              newId('alr'),
+              'price_increase',
+              last.id,
+              item.id,
+              message,
+              Math.abs(last.amount) - Math.abs(prev.amount),
+              last.currency,
+              now,
+            ),
         );
       }
     }

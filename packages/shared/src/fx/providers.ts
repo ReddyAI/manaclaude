@@ -27,10 +27,7 @@ interface OxrLatest {
  * day is the UTC date of the provider timestamp, so the hourly fetch keeps one
  * row per day per pair: the latest one.
  */
-export function parseOpenExchangeRates(
-  json: unknown,
-  quotes: readonly CurrencyCode[],
-): FxRate[] {
+export function parseOpenExchangeRates(json: unknown, quotes: readonly CurrencyCode[]): FxRate[] {
   const data = json as OxrLatest;
   if (!data || typeof data.timestamp !== 'number' || !data.rates) {
     throw new Error('Open Exchange Rates response has no timestamp or rates.');

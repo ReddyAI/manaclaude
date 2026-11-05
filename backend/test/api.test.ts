@@ -23,9 +23,28 @@ describe('API for the app', () => {
     expect(res.body.settings.moneyPolicies.transfers).toBe('exclude');
     expect(Object.keys(res.body).sort()).toEqual(
       [
-        'accounts', 'activities', 'balanceHistory', 'budgets', 'categories', 'categoryGroups', 'connections',
-        'connectorSlotsUsed', 'fxRates', 'goals', 'holdings', 'merchants', 'prices', 'receipts', 'recurring',
-        'rules', 'securities', 'settings', 'tags', 'taxLots', 'transactions', 'transferLinks',
+        'accounts',
+        'activities',
+        'balanceHistory',
+        'budgets',
+        'categories',
+        'categoryGroups',
+        'connections',
+        'connectorSlotsUsed',
+        'fxRates',
+        'goals',
+        'holdings',
+        'merchants',
+        'prices',
+        'receipts',
+        'recurring',
+        'rules',
+        'securities',
+        'settings',
+        'tags',
+        'taxLots',
+        'transactions',
+        'transferLinks',
       ].sort(),
     );
   });
@@ -33,11 +52,22 @@ describe('API for the app', () => {
   it('PATCH, review, split, undo, link and unlink work over HTTP', async () => {
     const checking = await addAccount({ type: 'checking' });
     const savings = await addAccount({ type: 'savings' });
-    const t = await addTxn(checking, { date: '2026-11-02', amount: -10_000, categoryId: 'cat_shopping' });
+    const t = await addTxn(checking, {
+      date: '2026-11-02',
+      amount: -10_000,
+      categoryId: 'cat_shopping',
+    });
     const { api } = client();
-    const patched = await api<{ transaction: Transaction }>('PATCH', `/v1/transactions/${t.id}`, { categoryId: 'cat_gifts', notes: 'for Asha' });
+    const patched = await api<{ transaction: Transaction }>('PATCH', `/v1/transactions/${t.id}`, {
+      categoryId: 'cat_gifts',
+      notes: 'for Asha',
+    });
     expect(patched.body.transaction.userEditedFields.sort()).toEqual(['categoryId', 'notes']);
-    const reviewed = await api<{ transaction: Transaction }>('POST', `/v1/transactions/${t.id}/review`, { reviewed: true });
+    const reviewed = await api<{ transaction: Transaction }>(
+      'POST',
+      `/v1/transactions/${t.id}/review`,
+      { reviewed: true },
+    );
     expect(reviewed.body.transaction.reviewed).toBe(true);
 
     const bad = await api('POST', `/v1/transactions/${t.id}/split`, {
@@ -69,10 +99,19 @@ describe('API for the app', () => {
 
     const out = await addTxn(checking, { date: '2026-11-03', amount: -25_000, rawName: 'MOVE' });
     const into = await addTxn(savings, { date: '2026-11-20', amount: 25_000, rawName: 'IN' });
-    const link = await api<{ link: TransferLink }>('POST', `/v1/transactions/${out.id}/link`, { otherTransactionId: into.id });
+    const link = await api<{ link: TransferLink }>('POST', `/v1/transactions/${out.id}/link`, {
+      otherTransactionId: into.id,
+    });
     expect(link.status).toBe(201);
-    expect(link.body.link).toMatchObject({ status: 'confirmed', matchedBy: 'user', kind: 'transfer' });
-    const unlinked = await api<{ link: TransferLink }>('POST', `/v1/transactions/${into.id}/unlink`);
+    expect(link.body.link).toMatchObject({
+      status: 'confirmed',
+      matchedBy: 'user',
+      kind: 'transfer',
+    });
+    const unlinked = await api<{ link: TransferLink }>(
+      'POST',
+      `/v1/transactions/${into.id}/unlink`,
+    );
     expect(unlinked.body.link.status).toBe('rejected');
   });
 
@@ -86,15 +125,32 @@ describe('API for the app', () => {
     expect((await api('POST', '/v1/transfer-links/run')).body).toEqual({ linked: 0, suggested: 2 });
     const list = await api<{ links: TransferLink[] }>('GET', '/v1/transfer-links?status=suggested');
     expect(list.body.links).toHaveLength(2);
-    const ok = await api<{ link: TransferLink }>('POST', `/v1/transfer-links/${list.body.links[0]!.id}/confirm`);
+    const ok = await api<{ link: TransferLink }>(
+      'POST',
+      `/v1/transfer-links/${list.body.links[0]!.id}/confirm`,
+    );
     expect(ok.body.link.status).toBe('confirmed');
   });
 
   it('POST /v1/cash adds a cash transaction to the default cash account for that currency', async () => {
     const { api } = client();
-    const res = await api<{ transaction: Transaction }>('POST', '/v1/cash', { amount: -45_000, currency: 'INR', categoryId: 'cat_dining', name: 'Dosa', date: '2026-11-04' });
+    const res = await api<{ transaction: Transaction }>('POST', '/v1/cash', {
+      amount: -45_000,
+      currency: 'INR',
+      categoryId: 'cat_dining',
+      name: 'Dosa',
+      date: '2026-11-04',
+    });
     expect(res.status).toBe(201);
-    const accounts = await api<{ accounts: { id: string; type: string; currency: string; balance: number; isDefaultCash: boolean }[] }>('GET', '/v1/accounts');
+    const accounts = await api<{
+      accounts: {
+        id: string;
+        type: string;
+        currency: string;
+        balance: number;
+        isDefaultCash: boolean;
+      }[];
+    }>('GET', '/v1/accounts');
     const cash = accounts.body.accounts.find((a) => a.type === 'cash')!;
     expect(cash).toMatchObject({ currency: 'INR', balance: -45_000, isDefaultCash: true });
     expect(res.body.transaction.accountId).toBe(cash.id);
@@ -114,35 +170,60 @@ describe('API for the app', () => {
     });
     expect(rule.status).toBe(201);
     expect(rule.body.applied).toBe(1);
-    expect((await api<{ transaction: Transaction }>('GET', `/v1/transactions/${t.id}`)).body.transaction.categoryId).toBe('cat_subscriptions');
+    expect(
+      (await api<{ transaction: Transaction }>('GET', `/v1/transactions/${t.id}`)).body.transaction
+        .categoryId,
+    ).toBe('cat_subscriptions');
 
-    const s = await api<Settings>('PATCH', '/v1/settings', { moneyPolicies: { cardPayments: 'count' }, aiEnabled: false });
+    const s = await api<Settings>('PATCH', '/v1/settings', {
+      moneyPolicies: { cardPayments: 'count' },
+      aiEnabled: false,
+    });
     expect(s.body.moneyPolicies).toMatchObject({ cardPayments: 'count', transfers: 'exclude' });
     expect(s.body.aiEnabled).toBe(false);
-    expect((await api('PATCH', '/v1/settings', { moneyPolicies: { cardPayments: 'sometimes' } })).status).toBe(400);
+    expect(
+      (await api('PATCH', '/v1/settings', { moneyPolicies: { cardPayments: 'sometimes' } })).status,
+    ).toBe(400);
   });
 
   it('imports a bank CSV with a preamble, saves the mapping and reuses it next time', async () => {
     const checking = await addAccount({ type: 'checking' });
     await addRate('2026-10-15', 'INR', 88.0);
     const { api } = client();
-    const first = await api<ImportResponse>('POST', '/v1/imports', upload({ accountId: checking.id, skipRows: '2', commit: 'true' }, lakeshoreCsv, 'lakeshore.csv'));
+    const first = await api<ImportResponse>(
+      'POST',
+      '/v1/imports',
+      upload(
+        { accountId: checking.id, skipRows: '2', commit: 'true' },
+        lakeshoreCsv,
+        'lakeshore.csv',
+      ),
+    );
     expect(first.status).toBe(201);
     // 5 rows; the ATM withdrawal gets its cash-side deposit and link.
     expect(first.body.result).toMatchObject({ added: 5, linked: 1 });
     const mappings = await api<{ mappings: { signature: string }[] }>('GET', '/v1/import-mappings');
     expect(mappings.body.mappings).toHaveLength(1);
-    const second = await api<ImportResponse>('POST', '/v1/imports', upload({ accountId: checking.id, skipRows: '2' }, lakeshoreCsv, 'lakeshore-again.csv'));
+    const second = await api<ImportResponse>(
+      'POST',
+      '/v1/imports',
+      upload({ accountId: checking.id, skipRows: '2' }, lakeshoreCsv, 'lakeshore-again.csv'),
+    );
     expect(second.body.preview.csv?.usedSavedMapping).toBe(true);
     expect(second.body.preview.counts).toMatchObject({ new: 0, alreadyImported: 5 });
     const vault = await api<{ files: { id: string; status: string }[] }>('GET', '/v1/vault');
     expect(vault.body.files).toHaveLength(2);
-    const original = await client().raw(`/v1/vault/${vault.body.files[1]!.id}/file`, { headers: { authorization: 'Bearer test-app-token' } });
+    const original = await client().raw(`/v1/vault/${vault.body.files[1]!.id}/file`, {
+      headers: { authorization: 'Bearer test-app-token' },
+    });
     expect(await original.text()).toBe(lakeshoreCsv);
   });
 
   it('dev seed loads the invented sample dataset', async () => {
-    const res = await client().api<{ accounts: number; transactions: number }>('POST', '/v1/dev/seed');
+    const res = await client().api<{ accounts: number; transactions: number }>(
+      'POST',
+      '/v1/dev/seed',
+    );
     expect(res.status).toBe(201);
     expect(res.body.transactions).toBeGreaterThan(100);
     const ds = await client().api<FinanceDataset>('GET', '/v1/dataset');

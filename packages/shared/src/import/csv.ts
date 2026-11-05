@@ -51,7 +51,10 @@ export function parseCsvTable(text: string, delimiter?: string): string[][] {
 
 /** Picks the delimiter that splits the first lines most consistently. */
 export function detectDelimiter(text: string): string {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim()).slice(0, 10);
+  const lines = text
+    .split(/\r?\n/)
+    .filter((l) => l.trim())
+    .slice(0, 10);
   let best = ',';
   let bestScore = -1;
   for (const d of [',', ';', '\t', '|']) {

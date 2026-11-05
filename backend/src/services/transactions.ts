@@ -97,7 +97,11 @@ export function listTransactions(db: D1Database, q: TransactionQuery = {}): Prom
 }
 
 /** Everything, for reports. Split parents included so reportTreatment can skip them. */
-export function allTransactions(db: D1Database, from?: string, to?: string): Promise<Transaction[]> {
+export function allTransactions(
+  db: D1Database,
+  from?: string,
+  to?: string,
+): Promise<Transaction[]> {
   if (from && to) return selectAll(db, transactionsTable, 'date >= ? AND date <= ?', [from, to]);
   return selectAll(db, transactionsTable);
 }

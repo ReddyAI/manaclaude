@@ -92,8 +92,8 @@ export function parseQif(
   });
   if (current) records.push(current);
 
-  const dateValues = records.map(
-    (r) => normaliseQifDate(r.fields.find(([c]) => c === 'D')?.[1] ?? ''),
+  const dateValues = records.map((r) =>
+    normaliseQifDate(r.fields.find(([c]) => c === 'D')?.[1] ?? ''),
   );
   const detection = detectDateFormat(dateValues, { preferDayFirst: options.preferDayFirst });
   const format = detection.format;
@@ -155,7 +155,9 @@ export function parseQif(
     rows,
     accounts,
     errors,
-    warnings: detection.ambiguous ? ['Dates fit more than one format; check them in the preview.'] : [],
+    warnings: detection.ambiguous
+      ? ['Dates fit more than one format; check them in the preview.']
+      : [],
     dateFormat: format,
     dateFormatAmbiguous: detection.ambiguous,
   };

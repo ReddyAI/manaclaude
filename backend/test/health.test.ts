@@ -6,7 +6,12 @@ describe('worker', () => {
   beforeEach(freshDb);
 
   it('answers /health without a token', async () => {
-    const res = await client().api<{ ok: boolean; policies: { cardPayments: string } }>('GET', '/health', undefined, null);
+    const res = await client().api<{ ok: boolean; policies: { cardPayments: string } }>(
+      'GET',
+      '/health',
+      undefined,
+      null,
+    );
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(res.body.policies.cardPayments).toBe('exclude');
@@ -25,7 +30,10 @@ describe('worker', () => {
 
   it('fails closed when APP_API_TOKEN is not set', async () => {
     const { testEnv } = await import('./helpers');
-    const res = await client({}, { ...testEnv, APP_API_TOKEN: undefined }).api('GET', '/v1/accounts');
+    const res = await client({}, { ...testEnv, APP_API_TOKEN: undefined }).api(
+      'GET',
+      '/v1/accounts',
+    );
     expect(res.status).toBe(503);
   });
 });

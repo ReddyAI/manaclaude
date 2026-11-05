@@ -1,4 +1,8 @@
-import { ConnectorRepairNeededError, type ConnectorContext, type FetchLike } from '@manaclaude/shared';
+import {
+  ConnectorRepairNeededError,
+  type ConnectorContext,
+  type FetchLike,
+} from '@manaclaude/shared';
 import { getAdapter } from '@manaclaude/connectors';
 import type { Env } from '../env';
 import { selectOne } from '../db/table';
@@ -20,7 +24,11 @@ export function connectorSecrets(env: Env, connectorId: string): Record<string, 
   return out;
 }
 
-export async function runConnectionSync(env: Env, connectionId: string, doFetch: typeof fetch = fetch): Promise<SyncSummary> {
+export async function runConnectionSync(
+  env: Env,
+  connectionId: string,
+  doFetch: typeof fetch = fetch,
+): Promise<SyncSummary> {
   const connection = await selectOne(env.DB, connectionsTable, 'id = ?', [connectionId]);
   if (!connection) throw notFound('Connection not found.');
   const adapter = getAdapter(connection.connectorId);
@@ -38,7 +46,12 @@ export async function runConnectionSync(env: Env, connectionId: string, doFetch:
       await markConnectionError(env.DB, connection, 'needs_repair', e.message);
       throw badRequest('This connection needs to be repaired in the app.', 'needs_repair');
     }
-    await markConnectionError(env.DB, connection, 'error', e instanceof Error ? e.message : 'Sync failed.');
+    await markConnectionError(
+      env.DB,
+      connection,
+      'error',
+      e instanceof Error ? e.message : 'Sync failed.',
+    );
     throw e;
   }
 }

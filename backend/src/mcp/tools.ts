@@ -46,15 +46,26 @@ export const READ_TOOLS = [
   'search_receipts',
 ] as const;
 
-export const WRITE_TOOLS = ['categorize_transaction', 'add_cash_transaction', 'tag_transaction', 'link_transfer'] as const;
+export const WRITE_TOOLS = [
+  'categorize_transaction',
+  'add_cash_transaction',
+  'tag_transaction',
+  'link_transfer',
+] as const;
 
 export interface McpAuthProps {
   userId: string;
   scopes: string[];
 }
 
-const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Date as YYYY-MM-DD');
-const month = z.string().regex(/^\d{4}-\d{2}$/).describe('Month as YYYY-MM');
+const ymd = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .describe('Date as YYYY-MM-DD');
+const month = z
+  .string()
+  .regex(/^\d{4}-\d{2}$/)
+  .describe('Month as YYYY-MM');
 
 function result(data: unknown) {
   return {
@@ -72,8 +83,18 @@ function amount(value: number, currency: string) {
   return { minor: value, currency, formatted: formatMoney(value, currency) };
 }
 
-const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+const READ = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+};
+const WRITE = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+};
 
 /**
  * The MCP server for Sankar's own Claude and Perplexity accounts. Read tools
@@ -101,7 +122,13 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
       annotations: READ,
     },
     async ({ includeHidden }) => {
-      const accounts = await selectAll(db, accountsTable, includeHidden ? '' : 'hidden = 0', [], 'name');
+      const accounts = await selectAll(
+        db,
+        accountsTable,
+        includeHidden ? '' : 'hidden = 0',
+        [],
+        'name',
+      );
       return result({
         accounts: accounts.map((a) => ({
           id: a.id,
@@ -135,7 +162,14 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     },
     async (args) => {
       const [txns, categories] = await Promise.all([
-        listTransactions(db, { search: args.query, from: args.from, to: args.to, accountId: args.accountId, categoryId: args.categoryId, limit: args.limit ?? 50 }),
+        listTransactions(db, {
+          search: args.query,
+          from: args.from,
+          to: args.to,
+          accountId: args.accountId,
+          categoryId: args.categoryId,
+          limit: args.limit ?? 50,
+        }),
         selectAll(db, categoriesTable),
       ]);
       const names = new Map(categories.map((c) => [c.id, c.name]));
@@ -189,7 +223,11 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
         net: amount(summary.net, cur),
         byCategory: Object.entries(summary.byCategory)
           .sort((a, b) => b[1] - a[1])
-          .map(([id, v]) => ({ categoryId: id, category: names.get(id) ?? 'Uncategorized', amount: amount(v, cur) })),
+          .map(([id, v]) => ({
+            categoryId: id,
+            category: names.get(id) ?? 'Uncategorized',
+            amount: amount(v, cur),
+          })),
         transactionsCounted: summary.counted,
         transactionsWithoutRate: summary.missingRate,
         policies: settings.moneyPolicies,
@@ -232,13 +270,19 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     'holdings_with_lots',
     {
       title: 'Holdings with tax lots',
-      description: 'Investment positions with quantity, price, value, cost basis and each open lot (acquired date, quantity, cost, short or long term).',
+      description:
+        'Investment positions with quantity, price, value, cost basis and each open lot (acquired date, quantity, cost, short or long term).',
       inputSchema: { accountId: z.string().optional() },
       annotations: READ,
     },
     async ({ accountId }) => {
       const [holdings, securities, lots] = await Promise.all([
-        selectAll(db, holdingsTable, accountId ? 'account_id = ?' : '', accountId ? [accountId] : []),
+        selectAll(
+          db,
+          holdingsTable,
+          accountId ? 'account_id = ?' : '',
+          accountId ? [accountId] : [],
+        ),
         selectAll(db, securitiesTable),
         selectAll(db, taxLotsTable),
       ]);
@@ -255,14 +299,16 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
           priceAsOf: h.priceAsOf,
           marketValue: amount(h.marketValue, h.currency),
           costBasis: h.costBasis === null ? null : amount(h.costBasis, h.currency),
-          unrealizedGain: h.costBasis === null ? null : amount(h.marketValue - h.costBasis, h.currency),
+          unrealizedGain:
+            h.costBasis === null ? null : amount(h.marketValue - h.costBasis, h.currency),
           lots: lots
             .filter((l) => l.holdingId === h.id)
             .map((l) => ({
               acquiredOn: l.acquiredOn,
               quantity: l.quantity,
               costBasis: amount(l.costBasis, l.currency),
-              term: Date.parse(today) - Date.parse(l.acquiredOn) > 365 * 86_400_000 ? 'long' : 'short',
+              term:
+                Date.parse(today) - Date.parse(l.acquiredOn) > 365 * 86_400_000 ? 'long' : 'short',
               source: l.source,
             })),
         })),
@@ -274,8 +320,13 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     'net_worth_history',
     {
       title: 'Net worth history',
-      description: 'Net worth (assets minus liabilities) by date, converted to one currency with the rate of each date.',
-      inputSchema: { from: ymd.optional(), to: ymd.optional(), currency: z.string().length(3).optional() },
+      description:
+        'Net worth (assets minus liabilities) by date, converted to one currency with the rate of each date.',
+      inputSchema: {
+        from: ymd.optional(),
+        to: ymd.optional(),
+        currency: z.string().length(3).optional(),
+      },
       annotations: READ,
     },
     async (args) => {
@@ -304,7 +355,9 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
       return result({
         currency: cur,
         current: amount(current, cur),
-        history: [...totals.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date, netWorth: amount(v, cur) })),
+        history: [...totals.entries()]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([date, v]) => ({ date, netWorth: amount(v, cur) })),
       });
     },
   );
@@ -313,12 +366,18 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     'list_recurring',
     {
       title: 'Recurring bills and subscriptions',
-      description: 'Recurring charges and income with frequency, expected amount, next due date and price history.',
+      description:
+        'Recurring charges and income with frequency, expected amount, next due date and price history.',
       inputSchema: { status: z.enum(['active', 'paused', 'cancelled']).optional() },
       annotations: READ,
     },
     async ({ status }) => {
-      const items = await selectAll(db, recurringTable, status ? 'status = ?' : '', status ? [status] : []);
+      const items = await selectAll(
+        db,
+        recurringTable,
+        status ? 'status = ?' : '',
+        status ? [status] : [],
+      );
       return result({
         recurring: items.map((r) => ({
           id: r.id,
@@ -329,7 +388,10 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
           nextDueDate: r.nextDueDate,
           status: r.status,
           decision: r.decision,
-          priceHistory: r.priceHistory.map((p) => ({ date: p.date, amount: amount(p.amount, r.currency) })),
+          priceHistory: r.priceHistory.map((p) => ({
+            date: p.date,
+            amount: amount(p.amount, r.currency),
+          })),
         })),
       });
     },
@@ -339,8 +401,13 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     'search_receipts',
     {
       title: 'Search receipts',
-      description: 'Receipts by merchant or line-item text and date, with totals, line items and the matched transaction.',
-      inputSchema: { query: z.string().max(100).optional(), from: ymd.optional(), to: ymd.optional() },
+      description:
+        'Receipts by merchant or line-item text and date, with totals, line items and the matched transaction.',
+      inputSchema: {
+        query: z.string().max(100).optional(),
+        from: ymd.optional(),
+        to: ymd.optional(),
+      },
       annotations: READ,
     },
     async (args) => {
@@ -351,7 +418,11 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
           merchant: r.merchant,
           date: r.date,
           total: r.total === null || !r.currency ? null : amount(r.total, r.currency),
-          lineItems: r.lineItems.map((l) => ({ description: l.description, quantity: l.quantity, amount: r.currency ? amount(l.amount, r.currency) : l.amount })),
+          lineItems: r.lineItems.map((l) => ({
+            description: l.description,
+            quantity: l.quantity,
+            amount: r.currency ? amount(l.amount, r.currency) : l.amount,
+          })),
           matchedTransactionId: r.matchedTransactionId,
           status: r.status,
         })),
@@ -367,13 +438,15 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     'categorize_transaction',
     {
       title: 'Set a transaction category',
-      description: 'Set the category of one transaction. Counts as the user\'s own edit and teaches the categorizer.',
+      description:
+        "Set the category of one transaction. Counts as the user's own edit and teaches the categorizer.",
       inputSchema: { transactionId: z.string(), categoryId: z.string() },
       annotations: WRITE,
     },
     async ({ transactionId, categoryId }) => {
       const category = await selectOne(db, categoriesTable, 'id = ?', [categoryId]);
-      if (!category) return error('No such category. Use spending_summary or list categories first.');
+      if (!category)
+        return error('No such category. Use spending_summary or list categories first.');
       const t = await editTransaction(db, transactionId, { categoryId });
       return result({ transactionId: t.id, categoryId: t.categoryId });
     },
@@ -383,7 +456,8 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     'add_cash_transaction',
     {
       title: 'Add a cash transaction',
-      description: 'Record cash spending (negative amount in minor units, e.g. -1250 for 12.50) in the default cash account for that currency.',
+      description:
+        'Record cash spending (negative amount in minor units, e.g. -1250 for 12.50) in the default cash account for that currency.',
       inputSchema: {
         amount: z.number().int().describe('Minor units; negative for spending'),
         currency: z.string().length(3),
@@ -395,8 +469,16 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     },
     async (args) => {
       if (args.amount === 0) return error('Amount cannot be zero.');
-      const t = await addCashTransaction(db, { ...args, currency: args.currency.toUpperCase(), date: args.date ?? todayLocal() });
-      return result({ transactionId: t.id, accountId: t.accountId, amount: amount(t.amount, t.currency) });
+      const t = await addCashTransaction(db, {
+        ...args,
+        currency: args.currency.toUpperCase(),
+        date: args.date ?? todayLocal(),
+      });
+      return result({
+        transactionId: t.id,
+        accountId: t.accountId,
+        amount: amount(t.amount, t.currency),
+      });
     },
   );
 
@@ -424,7 +506,8 @@ export async function buildMcpServer(env: Env, props: McpAuthProps): Promise<Mcp
     'link_transfer',
     {
       title: 'Link two transactions as a transfer',
-      description: 'Link money out of one of the user\'s accounts with money into another, so the pair is left out of spending and income.',
+      description:
+        "Link money out of one of the user's accounts with money into another, so the pair is left out of spending and income.",
       inputSchema: { transactionId: z.string(), otherTransactionId: z.string() },
       annotations: WRITE,
     },

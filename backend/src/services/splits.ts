@@ -1,4 +1,10 @@
-import { buildSplitChildren, validateSplit, type Id, type SplitRequest, type Transaction } from '@manaclaude/shared';
+import {
+  buildSplitChildren,
+  validateSplit,
+  type Id,
+  type SplitRequest,
+  type Transaction,
+} from '@manaclaude/shared';
 import { insertStatement, selectAll } from '../db/table';
 import { transactionsTable } from '../db/tables';
 import { ApiError, badRequest, notFound } from '../util/errors';
@@ -15,7 +21,13 @@ export interface SplitResult {
 async function currentSplit(db: D1Database, parentId: Id): Promise<SplitResult | null> {
   const parent = await getTransaction(db, parentId);
   if (!parent || !parent.isSplitParent) return null;
-  const children = await selectAll(db, transactionsTable, 'split_parent_id = ?', [parentId], 'created_at, id');
+  const children = await selectAll(
+    db,
+    transactionsTable,
+    'split_parent_id = ?',
+    [parentId],
+    'created_at, id',
+  );
   return { parent, children, replayed: true };
 }
 
@@ -41,15 +53,26 @@ export async function splitTransaction(db: D1Database, req: SplitRequest): Promi
   const check = validateSplit(parent, req.lines);
   if (!check.ok) throw badRequest(check.error, 'invalid_split');
   const now = nowIso();
-  const { parent: updated, children } = buildSplitChildren(parent, req.lines, () => newId('txn'), now);
+  const { parent: updated, children } = buildSplitChildren(
+    parent,
+    req.lines,
+    () => newId('txn'),
+    now,
+  );
   try {
     await db.batch([
       db
-        .prepare('INSERT INTO idempotency_keys (key, scope, subject_id, created_at) VALUES (?, ?, ?, ?)')
+        .prepare(
+          'INSERT INTO idempotency_keys (key, scope, subject_id, created_at) VALUES (?, ?, ?, ?)',
+        )
         .bind(req.idempotencyKey, 'split', parent.id, now),
-      db.prepare('INSERT INTO split_locks (parent_id, created_at) VALUES (?, ?)').bind(parent.id, now),
       db
-        .prepare('UPDATE transactions SET is_split_parent = 1, updated_at = ? WHERE id = ? AND is_split_parent = 0')
+        .prepare('INSERT INTO split_locks (parent_id, created_at) VALUES (?, ?)')
+        .bind(parent.id, now),
+      db
+        .prepare(
+          'UPDATE transactions SET is_split_parent = 1, updated_at = ? WHERE id = ? AND is_split_parent = 0',
+        )
         .bind(now, parent.id),
       ...children.map((c) => insertStatement(db, transactionsTable, c)),
     ]);
@@ -57,7 +80,11 @@ export async function splitTransaction(db: D1Database, req: SplitRequest): Promi
     // Another request with this key (or another split of this parent) won the race.
     const existing = await currentSplit(db, parent.id);
     if (existing) return existing;
-    throw new ApiError(409, 'split_conflict', 'This transaction is being split by another request.');
+    throw new ApiError(
+      409,
+      'split_conflict',
+      'This transaction is being split by another request.',
+    );
   }
   return { parent: updated, children, replayed: false };
 }
@@ -68,16 +95,22 @@ export async function undoSplit(db: D1Database, parentId: Id): Promise<Transacti
   if (!parent) throw notFound('Transaction not found.');
   if (!parent.isSplitParent) throw badRequest('This transaction is not split.');
   const linked = await db
-    .prepare('SELECT count(*) AS n FROM transactions WHERE split_parent_id = ? AND transfer_link_id IS NOT NULL')
+    .prepare(
+      'SELECT count(*) AS n FROM transactions WHERE split_parent_id = ? AND transfer_link_id IS NOT NULL',
+    )
     .bind(parentId)
     .first<{ n: number }>();
   if ((linked?.n ?? 0) > 0) throw badRequest('Unlink the split lines from their transfers first.');
   const now = nowIso();
   await db.batch([
     db.prepare('DELETE FROM transactions WHERE split_parent_id = ?').bind(parentId),
-    db.prepare('UPDATE transactions SET is_split_parent = 0, updated_at = ? WHERE id = ?').bind(now, parentId),
+    db
+      .prepare('UPDATE transactions SET is_split_parent = 0, updated_at = ? WHERE id = ?')
+      .bind(now, parentId),
     db.prepare('DELETE FROM split_locks WHERE parent_id = ?').bind(parentId),
-    db.prepare("DELETE FROM idempotency_keys WHERE scope = 'split' AND subject_id = ?").bind(parentId),
+    db
+      .prepare("DELETE FROM idempotency_keys WHERE scope = 'split' AND subject_id = ?")
+      .bind(parentId),
   ]);
   return { ...parent, isSplitParent: false, updatedAt: now };
 }

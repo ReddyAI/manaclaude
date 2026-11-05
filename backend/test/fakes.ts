@@ -13,7 +13,11 @@ export interface FakeAiReplies {
  * A stand-in AI client for tests. It answers by looking at the JSON schema of
  * the request, the same way each job asks, and records every call.
  */
-export function fakeAi(replies: FakeAiReplies = {}): { client: AiClient; deps: AiDeps; calls: AiRequest[] } {
+export function fakeAi(replies: FakeAiReplies = {}): {
+  client: AiClient;
+  deps: AiDeps;
+  calls: AiRequest[];
+} {
   const calls: AiRequest[] = [];
   const client: AiClient = {
     provider: 'workers_ai',
@@ -23,7 +27,8 @@ export function fakeAi(replies: FakeAiReplies = {}): { client: AiClient; deps: A
       if ('lineItems' in props) return JSON.stringify(replies.receipt ?? {});
       if ('transactions' in props) return JSON.stringify(replies.statement ?? { transactions: [] });
       if ('results' in props) {
-        const item = (props.results as { items: { properties: Record<string, unknown> } }).items.properties;
+        const item = (props.results as { items: { properties: Record<string, unknown> } }).items
+          .properties;
         if ('category' in item) {
           const results = Object.entries(replies.categorize ?? {})
             .filter(([id]) => req.prompt.includes(id))

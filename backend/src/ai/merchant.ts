@@ -18,7 +18,11 @@ function titleCase(s: string): string {
   return s
     .toLowerCase()
     .split(/\s+/)
-    .map((w) => (w.length <= 2 && /^(of|at|in|on|by|to|and|&)$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .map((w) =>
+      w.length <= 2 && /^(of|at|in|on|by|to|and|&)$/.test(w)
+        ? w
+        : w.charAt(0).toUpperCase() + w.slice(1),
+    )
     .join(' ');
 }
 

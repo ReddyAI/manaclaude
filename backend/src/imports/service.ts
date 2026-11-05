@@ -20,12 +20,10 @@ import {
   type ParsedAccount,
   type ParsedImportRow,
   type Transaction,
-} from '@manaclaude/shared';
-import type {
-  ImportCommitResult,
-  ImportPreview,
-  ImportPreviewRow,
-  ImportRecord,
+  type ImportCommitResult,
+  type ImportPreview,
+  type ImportPreviewRow,
+  type ImportRecord,
 } from '@manaclaude/shared';
 import type { Env } from '../env';
 import { getAi, type AiDeps } from '../ai/provider';
@@ -38,6 +36,7 @@ import { runTransferMatcher } from '../services/matcher';
 import { runRules } from '../services/rules';
 import { getSettings } from '../services/settings';
 import { makeTransaction } from '../services/transactions';
+import { categoryMatcher } from './categories';
 import { extractStatement } from './pdf';
 
 export interface ImportFileInput {
@@ -60,12 +59,16 @@ export function detectFormat(fileName: string, text: string): ImportFormat {
   const name = fileName.toLowerCase();
   if (name.endsWith('.pdf') || text.startsWith('%PDF')) return 'pdf';
   if (name.endsWith('.qif') || /^!(type|account|option)/im.test(text.slice(0, 200))) return 'qif';
-  if (name.endsWith('.ofx') || name.endsWith('.qfx') || /<OFX>/i.test(text.slice(0, 2000))) return 'ofx';
+  if (name.endsWith('.ofx') || name.endsWith('.qfx') || /<OFX>/i.test(text.slice(0, 2000)))
+    return 'ofx';
   if (name.endsWith('.ndjson') || name.endsWith('.jsonl')) return 'sure_ndjson';
-  const header = (parseCsvTable(text.split(/\r?\n/).slice(0, 3).join('\n'), detectDelimiter(text))[0] ?? []).map((h) =>
-    h.trim().toLowerCase(),
-  );
-  if (['account', 'date', 'payee', 'category', 'amount'].every((h) => header.includes(h)) && header.includes('split_amount')) {
+  const header = (
+    parseCsvTable(text.split(/\r?\n/).slice(0, 3).join('\n'), detectDelimiter(text))[0] ?? []
+  ).map((h) => h.trim().toLowerCase());
+  if (
+    ['account', 'date', 'payee', 'category', 'amount'].every((h) => header.includes(h)) &&
+    header.includes('split_amount')
+  ) {
     return 'actual_csv';
   }
   return 'csv';
@@ -76,7 +79,10 @@ function vaultKey(importId: Id, fileName: string, now: string): string {
   return `vault/${now.slice(0, 7)}/${importId}/${safe}`;
 }
 
-function matchAccount(accounts: readonly Account[], parsed: { name?: string | null; mask?: string | null }): Account | null {
+function matchAccount(
+  accounts: readonly Account[],
+  parsed: { name?: string | null; mask?: string | null },
+): Account | null {
   if (parsed.mask) {
     const byMask = accounts.filter((a) => a.mask === parsed.mask);
     if (byMask.length === 1) return byMask[0]!;
@@ -89,8 +95,14 @@ function matchAccount(accounts: readonly Account[], parsed: { name?: string | nu
   return null;
 }
 
-async function loadRecord(db: D1Database, id: Id): Promise<ImportRecord & { preview: ImportPreview | null }> {
-  const row = await db.prepare('SELECT * FROM imports WHERE id = ?').bind(id).first<Record<string, unknown>>();
+async function loadRecord(
+  db: D1Database,
+  id: Id,
+): Promise<ImportRecord & { preview: ImportPreview | null }> {
+  const row = await db
+    .prepare('SELECT * FROM imports WHERE id = ?')
+    .bind(id)
+    .first<Record<string, unknown>>();
   if (!row) throw notFound('Import not found.');
   return {
     id: String(row.id),
@@ -117,7 +129,9 @@ async function loadRecord(db: D1Database, id: Id): Promise<ImportRecord & { prev
 }
 
 export async function listImports(db: D1Database): Promise<ImportRecord[]> {
-  const res = await db.prepare('SELECT id FROM imports ORDER BY created_at DESC LIMIT 200').all<{ id: string }>();
+  const res = await db
+    .prepare('SELECT id FROM imports ORDER BY created_at DESC LIMIT 200')
+    .all<{ id: string }>();
   const out: ImportRecord[] = [];
   for (const r of res.results) {
     const { preview: _preview, ...rec } = await loadRecord(db, r.id);
@@ -153,7 +167,9 @@ async function parseFile(
       const signature = csvHeaderSignature(suggestion.headers);
       let mapping = input.mapping ?? null;
       if (!mapping) {
-        const saved = await env.DB.prepare('SELECT mapping FROM import_mappings WHERE signature = ?')
+        const saved = await env.DB.prepare(
+          'SELECT mapping FROM import_mappings WHERE signature = ?',
+        )
           .bind(signature)
           .first<{ mapping: string }>();
         mapping = saved ? (JSON.parse(saved.mapping) as CsvMapping) : null;
@@ -170,7 +186,15 @@ async function parseFile(
       if (!mapping) {
         if (suggestion.missing.length > 0) {
           return {
-            parsed: { format, rows: [], accounts: [], errors: [], warnings: [], dateFormat: null, dateFormatAmbiguous: false },
+            parsed: {
+              format,
+              rows: [],
+              accounts: [],
+              errors: [],
+              warnings: [],
+              dateFormat: null,
+              dateFormatAmbiguous: false,
+            },
             mapping: null,
             needsMapping: csvInfo,
             period: none,
@@ -189,13 +213,37 @@ async function parseFile(
       return { parsed, mapping, needsMapping: csvInfo, period: none, statementCheck: null };
     }
     case 'qif':
-      return { parsed: parseQif(text, { currency, preferDayFirst }), mapping: null, needsMapping: null, period: none, statementCheck: null };
+      return {
+        parsed: parseQif(text, { currency, preferDayFirst }),
+        mapping: null,
+        needsMapping: null,
+        period: none,
+        statementCheck: null,
+      };
     case 'ofx':
-      return { parsed: parseOfx(text), mapping: null, needsMapping: null, period: none, statementCheck: null };
+      return {
+        parsed: parseOfx(text),
+        mapping: null,
+        needsMapping: null,
+        period: none,
+        statementCheck: null,
+      };
     case 'sure_ndjson':
-      return { parsed: parseSureNdjson(text), mapping: null, needsMapping: null, period: none, statementCheck: null };
+      return {
+        parsed: parseSureNdjson(text),
+        mapping: null,
+        needsMapping: null,
+        period: none,
+        statementCheck: null,
+      };
     case 'actual_csv':
-      return { parsed: parseActualCsv(text, { currency }), mapping: null, needsMapping: null, period: none, statementCheck: null };
+      return {
+        parsed: parseActualCsv(text, { currency }),
+        mapping: null,
+        needsMapping: null,
+        period: none,
+        statementCheck: null,
+      };
     case 'pdf': {
       const settings = await getSettings(env.DB);
       const ai = getAi(env, settings, aiDeps);
@@ -217,14 +265,21 @@ async function parseFile(
  * (same provider id or fingerprint) or already in the account from a sync
  * (reconciled). Nothing is written to transactions until commitImport.
  */
-export async function previewImport(env: Env, input: ImportFileInput, aiDeps: AiDeps = {}): Promise<ImportPreview> {
+export async function previewImport(
+  env: Env,
+  input: ImportFileInput,
+  aiDeps: AiDeps = {},
+): Promise<ImportPreview> {
   const db = env.DB;
   if (input.bytes.byteLength === 0) throw badRequest('The file is empty.');
-  if (input.bytes.byteLength > 20 * 1024 * 1024) throw badRequest('Files up to 20 MB can be imported.');
+  if (input.bytes.byteLength > 20 * 1024 * 1024)
+    throw badRequest('Files up to 20 MB can be imported.');
   const now = nowIso();
   const id = newId('imp');
   const sha256 = await sha256Hex(input.bytes);
-  const text = new TextDecoder().decode(input.bytes.slice(0, input.format === 'pdf' ? 8 : undefined));
+  const text = new TextDecoder().decode(
+    input.bytes.slice(0, input.format === 'pdf' ? 8 : undefined),
+  );
   const format = input.format ?? detectFormat(input.fileName, text);
   const contentType = input.contentType || (format === 'pdf' ? 'application/pdf' : 'text/plain');
   const r2Key = vaultKey(id, input.fileName, now);
@@ -236,22 +291,47 @@ export async function previewImport(env: Env, input: ImportFileInput, aiDeps: Ai
   const chosen = input.accountId ? (accounts.find((a) => a.id === input.accountId) ?? null) : null;
   if (input.accountId && !chosen) throw badRequest('No such account.');
   const earlier = await db
-    .prepare("SELECT id, committed_at FROM imports WHERE sha256 = ? AND status = 'committed' ORDER BY committed_at LIMIT 1")
+    .prepare(
+      "SELECT id, committed_at FROM imports WHERE sha256 = ? AND status = 'committed' ORDER BY committed_at LIMIT 1",
+    )
     .bind(sha256)
     .first<{ id: string; committed_at: string }>();
 
   let parsedResult;
   try {
-    parsedResult = await parseFile(env, input, format, format === 'pdf' ? '' : new TextDecoder().decode(input.bytes), chosen, aiDeps);
+    parsedResult = await parseFile(
+      env,
+      input,
+      format,
+      format === 'pdf' ? '' : new TextDecoder().decode(input.bytes),
+      chosen,
+      aiDeps,
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Could not read this file.';
     await db
       .prepare(
         'INSERT INTO imports (id, format, status, account_id, file_name, content_type, size, sha256, r2_key, error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .bind(id, format, 'failed', chosen?.id ?? null, input.fileName, contentType, input.bytes.byteLength, sha256, r2Key, message, now, now)
+      .bind(
+        id,
+        format,
+        'failed',
+        chosen?.id ?? null,
+        input.fileName,
+        contentType,
+        input.bytes.byteLength,
+        sha256,
+        r2Key,
+        message,
+        now,
+        now,
+      )
       .run();
-    throw badRequest(message, e instanceof Error && e.name === 'AiDisabledError' ? 'ai_disabled' : 'unreadable_file');
+    throw badRequest(
+      message,
+      e instanceof Error && e.name === 'AiDisabledError' ? 'ai_disabled' : 'unreadable_file',
+    );
   }
   const { parsed, mapping, needsMapping, period, statementCheck } = parsedResult;
 
@@ -262,32 +342,45 @@ export async function previewImport(env: Env, input: ImportFileInput, aiDeps: Ai
     if (!name) return chosen;
     if (accountFor.has(name)) return accountFor.get(name)!;
     const info = parsed.accounts.find((a) => a.name === name);
-    const found = matchAccount(accounts, { name, mask: info?.mask }) ?? (parsed.accounts.length <= 1 ? chosen : null);
+    const found =
+      matchAccount(accounts, { name, mask: info?.mask }) ??
+      (parsed.accounts.length <= 1 ? chosen : null);
     accountFor.set(name, found);
     if (!found && info && !toCreate.includes(info)) toCreate.push(info);
     return found;
   };
   const rowAccounts = parsed.rows.map((r) => resolve(r.accountName));
   const occ = assignOccurrences(
-    parsed.rows.map((r, i) => ({ ...r, accountId: rowAccounts[i]?.id ?? `new:${r.accountName ?? ''}` })),
+    parsed.rows.map((r, i) => ({
+      ...r,
+      accountId: rowAccounts[i]?.id ?? `new:${r.accountName ?? ''}`,
+    })),
   );
-  const accountIds = [...new Set(rowAccounts.filter((a): a is Account => a !== null).map((a) => a.id))];
+  const accountIds = [
+    ...new Set(rowAccounts.filter((a): a is Account => a !== null).map((a) => a.id)),
+  ];
   const existing: Transaction[] = [];
   for (const accId of accountIds) {
     const dates = parsed.rows.map((r) => r.date).sort();
     existing.push(
-      ...(await selectAll(db, transactionsTable, 'account_id = ? AND date >= date(?, \'-5 days\') AND date <= date(?, \'+5 days\')', [
-        accId,
-        dates[0] ?? '1900-01-01',
-        dates[dates.length - 1] ?? '2200-01-01',
-      ])),
+      ...(await selectAll(
+        db,
+        transactionsTable,
+        "account_id = ? AND date >= date(?, '-5 days') AND date <= date(?, '+5 days')",
+        [accId, dates[0] ?? '1900-01-01', dates[dates.length - 1] ?? '2200-01-01'],
+      )),
     );
   }
-  const byFingerprint = new Map(existing.filter((t) => t.importFingerprint).map((t) => [`${t.accountId}|${t.importFingerprint}`, t]));
-  const byExternal = new Map(existing.filter((t) => t.externalId).map((t) => [`${t.accountId}|${t.externalId}`, t]));
+  const byFingerprint = new Map(
+    existing
+      .filter((t) => t.importFingerprint)
+      .map((t) => [`${t.accountId}|${t.importFingerprint}`, t]),
+  );
+  const byExternal = new Map(
+    existing.filter((t) => t.externalId).map((t) => [`${t.accountId}|${t.externalId}`, t]),
+  );
   const claimed = new Set<Id>();
-  const categories = await selectAll(db, categoriesTable);
-  const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
+  const categoryFor = categoryMatcher(await selectAll(db, categoriesTable));
 
   const rows: ImportPreviewRow[] = parsed.rows.map((r, i) => {
     const account = rowAccounts[i] ?? null;
@@ -297,7 +390,7 @@ export async function previewImport(env: Env, input: ImportFileInput, aiDeps: Ai
       accountId: account?.id ?? null,
       fingerprint,
       occurrence: occ[i]!,
-      categoryId: r.categoryName ? (categoryByName.get(r.categoryName.toLowerCase()) ?? null) : null,
+      categoryId: categoryFor(r.categoryName),
       decision: 'new',
       matchedTransactionId: null,
     };
@@ -325,7 +418,11 @@ export async function previewImport(env: Env, input: ImportFileInput, aiDeps: Ai
           !t.splitParentId &&
           Math.abs(daysBetween(t.date, row.date)) <= 3,
       )
-      .sort((a, b) => Math.abs(daysBetween(a.date, row.date)) - Math.abs(daysBetween(b.date, row.date)) || a.createdAt.localeCompare(b.createdAt))[0];
+      .sort(
+        (a, b) =>
+          Math.abs(daysBetween(a.date, row.date)) - Math.abs(daysBetween(b.date, row.date)) ||
+          a.createdAt.localeCompare(b.createdAt),
+      )[0];
     if (match) {
       claimed.add(match.id);
       row.decision = 'existing';
@@ -336,7 +433,8 @@ export async function previewImport(env: Env, input: ImportFileInput, aiDeps: Ai
   const preview: ImportPreview = {
     importId: id,
     format,
-    status: needsMapping && needsMapping.missing.length > 0 && !mapping ? 'needs_mapping' : 'preview',
+    status:
+      needsMapping && needsMapping.missing.length > 0 && !mapping ? 'needs_mapping' : 'preview',
     fileName: input.fileName,
     accountId: chosen?.id ?? null,
     rows,
@@ -344,7 +442,11 @@ export async function previewImport(env: Env, input: ImportFileInput, aiDeps: Ai
     errors: parsed.errors,
     warnings: [
       ...parsed.warnings,
-      ...(earlier ? [`This exact file was imported before (${earlier.committed_at.slice(0, 10)}); matching rows will be skipped.`] : []),
+      ...(earlier
+        ? [
+            `This exact file was imported before (${earlier.committed_at.slice(0, 10)}); matching rows will be skipped.`,
+          ]
+        : []),
     ],
     counts: {
       total: rows.length,
@@ -421,22 +523,34 @@ function newAccount(info: ParsedAccount, fallbackCurrency: string, now: string):
  * (account, provider id) and (account, fingerprint) make a double commit or
  * a repeat import add nothing (check 2).
  */
-export async function commitImport(env: Env, importId: Id, options: CommitOptions = {}): Promise<ImportCommitResult> {
+export async function commitImport(
+  env: Env,
+  importId: Id,
+  options: CommitOptions = {},
+): Promise<ImportCommitResult> {
   const db = env.DB;
   const record = await loadRecord(db, importId);
   if (record.status === 'committed') throw conflict('This import was already saved.');
-  if (record.status !== 'preview' || !record.preview) throw badRequest('This import has no preview to save.');
+  if (record.status !== 'preview' || !record.preview)
+    throw badRequest('This import has no preview to save.');
   const now = nowIso();
   // Lock: only one commit of an import can run.
   const lock = await db
-    .prepare("UPDATE imports SET status = 'committing', updated_at = ? WHERE id = ? AND status = 'preview'")
+    .prepare(
+      "UPDATE imports SET status = 'committing', updated_at = ? WHERE id = ? AND status = 'preview'",
+    )
     .bind(now, importId)
     .run();
   if ((lock.meta.changes ?? 0) !== 1) throw conflict('This import is already being saved.');
   try {
     return await commitLocked(env, importId, record.preview, options, now);
   } catch (e) {
-    await db.prepare("UPDATE imports SET status = 'preview', updated_at = ? WHERE id = ? AND status = 'committing'").bind(now, importId).run();
+    await db
+      .prepare(
+        "UPDATE imports SET status = 'preview', updated_at = ? WHERE id = ? AND status = 'committing'",
+      )
+      .bind(now, importId)
+      .run();
     throw e;
   }
 }
@@ -461,14 +575,20 @@ async function commitLocked(
       created.push(acc);
     }
     for (const row of preview.rows) {
-      const acc = row.decision === 'needs_account' && row.accountName ? byName.get(row.accountName) : undefined;
+      const acc =
+        row.decision === 'needs_account' && row.accountName
+          ? byName.get(row.accountName)
+          : undefined;
       if (!acc) continue;
       row.accountId = acc.id;
       row.decision = 'new';
     }
-    const occ = assignOccurrences(preview.rows.map((r) => ({ ...r, accountId: r.accountId ?? '' })));
+    const occ = assignOccurrences(
+      preview.rows.map((r) => ({ ...r, accountId: r.accountId ?? '' })),
+    );
     preview.rows.forEach((r, i) => {
-      if (r.accountId && !r.externalId && !r.fingerprint) r.fingerprint = importFingerprint(r.accountId, r, occ[i]!);
+      if (r.accountId && !r.externalId && !r.fingerprint)
+        r.fingerprint = importFingerprint(r.accountId, r, occ[i]!);
     });
   }
   const [tags, existingAccounts, categories] = await Promise.all([
@@ -478,9 +598,13 @@ async function commitLocked(
   ]);
   const tagByName = new Map(tags.map((t) => [t.name.toLowerCase(), t.id]));
   const accounts = new Map([...existingAccounts, ...created].map((a) => [a.id, a]));
-  const categoryByName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
+  const categoryFor = categoryMatcher(categories);
 
-  if (created.length > 0) await batchInChunks(db, created.map((a) => insertStatement(db, accountsTable, a)));
+  if (created.length > 0)
+    await batchInChunks(
+      db,
+      created.map((a) => insertStatement(db, accountsTable, a)),
+    );
 
   // One group per row: the row itself, then its split children. Children are
   // inserted only if the parent row was (its id is new, so it exists only then).
@@ -504,7 +628,7 @@ async function commitLocked(
         txn,
         row.splits.map((s) => ({
           amount: s.amount,
-          categoryId: s.categoryName ? (categoryByName.get(s.categoryName.toLowerCase()) ?? null) : null,
+          categoryId: categoryFor(s.categoryName),
           notes: s.memo ?? undefined,
         })),
         () => newId('txn'),
@@ -521,7 +645,12 @@ async function commitLocked(
           .prepare(
             `INSERT INTO transactions (${cols.join(', ')}) SELECT ${cols.map(() => '?').join(', ')} WHERE EXISTS (SELECT 1 FROM transactions WHERE id = ?)`,
           )
-          .bind(...Object.entries(transactionsTable.columns).map(([f, type]) => toSqlValue(type, (c as unknown as Record<string, unknown>)[f])), txn.id),
+          .bind(
+            ...Object.entries(transactionsTable.columns).map(([f, type]) =>
+              toSqlValue(type, (c as unknown as Record<string, unknown>)[f]),
+            ),
+            txn.id,
+          ),
       );
     }
     groups.push({ txn, statements });
@@ -550,7 +679,9 @@ async function commitLocked(
 
   const added = addedTxns.length;
   const matched =
-    preview.rows.filter((r) => r.decision === 'already_imported' || r.decision === 'existing').length + (groups.length - added);
+    preview.rows.filter((r) => r.decision === 'already_imported' || r.decision === 'existing')
+      .length +
+    (groups.length - added);
   await db
     .prepare(
       "UPDATE imports SET status = 'committed', rows_added = ?, rows_matched = ?, rows_skipped = ?, preview = ?, updated_at = ?, committed_at = ? WHERE id = ?",
@@ -562,7 +693,14 @@ async function commitLocked(
       .prepare(
         'INSERT INTO import_mappings (signature, name, account_id, mapping, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (signature) DO UPDATE SET mapping = excluded.mapping, account_id = excluded.account_id, updated_at = excluded.updated_at',
       )
-      .bind(preview.csv.signature, preview.fileName, preview.accountId, JSON.stringify(preview.mapping), now, now)
+      .bind(
+        preview.csv.signature,
+        preview.fileName,
+        preview.accountId,
+        JSON.stringify(preview.mapping),
+        now,
+        now,
+      )
       .run();
   }
   const ids = addedTxns.map((t) => t.id);
@@ -602,7 +740,9 @@ function toTransaction(
       categorySource: row.categoryId ? 'import' : null,
       kind: row.kindHint ?? 'regular',
       pending: row.pending,
-      tagIds: row.tags.map((t) => tagByName.get(t.toLowerCase())).filter((t): t is Id => Boolean(t)),
+      tagIds: row.tags
+        .map((t) => tagByName.get(t.toLowerCase()))
+        .filter((t): t is Id => Boolean(t)),
       source: 'import',
       importId,
       externalId: row.externalId,
@@ -614,8 +754,12 @@ function toTransaction(
 
 export async function discardImport(db: D1Database, importId: Id): Promise<void> {
   const record = await loadRecord(db, importId);
-  if (record.status === 'committed') throw conflict('Saved imports can be undone with DELETE /v1/imports/:id/transactions.');
-  await db.prepare("UPDATE imports SET status = 'discarded', updated_at = ? WHERE id = ?").bind(nowIso(), importId).run();
+  if (record.status === 'committed')
+    throw conflict('Saved imports can be undone with DELETE /v1/imports/:id/transactions.');
+  await db
+    .prepare("UPDATE imports SET status = 'discarded', updated_at = ? WHERE id = ?")
+    .bind(nowIso(), importId)
+    .run();
 }
 
 /** Removes the transactions an import added (the original file stays in the vault). */
@@ -629,10 +773,14 @@ export async function undoImport(db: D1Database, importId: Id): Promise<number> 
       )
       .bind(now, importId, importId),
     db
-      .prepare('UPDATE transactions SET transfer_link_id = NULL WHERE transfer_link_id IN (SELECT id FROM transfer_links WHERE status = \'rejected\' AND (out_transaction_id IN (SELECT id FROM transactions WHERE import_id = ?) OR in_transaction_id IN (SELECT id FROM transactions WHERE import_id = ?)))')
+      .prepare(
+        "UPDATE transactions SET transfer_link_id = NULL WHERE transfer_link_id IN (SELECT id FROM transfer_links WHERE status = 'rejected' AND (out_transaction_id IN (SELECT id FROM transactions WHERE import_id = ?) OR in_transaction_id IN (SELECT id FROM transactions WHERE import_id = ?)))",
+      )
       .bind(importId, importId),
     db.prepare('DELETE FROM transactions WHERE import_id = ?').bind(importId),
-    db.prepare("UPDATE imports SET status = 'undone', updated_at = ? WHERE id = ?").bind(now, importId),
+    db
+      .prepare("UPDATE imports SET status = 'undone', updated_at = ? WHERE id = ?")
+      .bind(now, importId),
   ]);
   return res[2]?.meta.changes ?? 0;
 }

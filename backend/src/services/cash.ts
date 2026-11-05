@@ -9,8 +9,9 @@ import { makeTransaction } from './transactions';
 /** The quick-add target for a currency, created on first use ("Cash (INR)"). */
 export async function defaultCashAccount(db: D1Database, currency: CurrencyCode): Promise<Account> {
   const existing =
-    (await selectOne(db, accountsTable, "type = 'cash' AND currency = ? AND is_default_cash = 1", [currency])) ??
-    (await selectOne(db, accountsTable, "type = 'cash' AND currency = ?", [currency]));
+    (await selectOne(db, accountsTable, "type = 'cash' AND currency = ? AND is_default_cash = 1", [
+      currency,
+    ])) ?? (await selectOne(db, accountsTable, "type = 'cash' AND currency = ?", [currency]));
   if (existing) return existing;
   return createCashAccount(db, { currency, name: `Cash (${currency})`, isDefault: true });
 }
@@ -67,7 +68,8 @@ export async function addCashTransaction(db: D1Database, entry: CashEntry): Prom
     ? await selectOne(db, accountsTable, "id = ? AND type = 'cash'", [entry.accountId])
     : await defaultCashAccount(db, entry.currency);
   if (!account) throw badRequest('That is not a cash account.');
-  if (account.currency !== entry.currency) throw badRequest('The cash account uses another currency.');
+  if (account.currency !== entry.currency)
+    throw badRequest('The cash account uses another currency.');
   const now = nowIso();
   const txn = makeTransaction(
     {
@@ -89,7 +91,9 @@ export async function addCashTransaction(db: D1Database, entry: CashEntry): Prom
   await db.batch([
     insertStatement(db, transactionsTable, txn),
     db
-      .prepare('UPDATE accounts SET balance = balance + ?, balance_as_of = ?, updated_at = ? WHERE id = ?')
+      .prepare(
+        'UPDATE accounts SET balance = balance + ?, balance_as_of = ?, updated_at = ? WHERE id = ?',
+      )
       .bind(entry.amount, now, now, account.id),
   ]);
   return txn;
@@ -102,11 +106,21 @@ const ATM = /\b(atm|cash withdrawal|cash wdl|atw|nwd)\b/i;
  * outside a cash account, add the matching deposit to the default cash account
  * in that currency (once; keyed by the withdrawal id) and link the pair.
  */
-export async function recordAtmWithdrawals(db: D1Database, transactions?: Transaction[]): Promise<number> {
+export async function recordAtmWithdrawals(
+  db: D1Database,
+  transactions?: Transaction[],
+): Promise<number> {
   const candidates = (
     transactions ??
-    (await selectAll(db, transactionsTable, 'amount < 0 AND transfer_link_id IS NULL AND is_split_parent = 0 AND pending = 0'))
-  ).filter((t) => t.amount < 0 && !t.transferLinkId && !t.pending && !t.isSplitParent && ATM.test(t.rawName));
+    (await selectAll(
+      db,
+      transactionsTable,
+      'amount < 0 AND transfer_link_id IS NULL AND is_split_parent = 0 AND pending = 0',
+    ))
+  ).filter(
+    (t) =>
+      t.amount < 0 && !t.transferLinkId && !t.pending && !t.isSplitParent && ATM.test(t.rawName),
+  );
   if (candidates.length === 0) return 0;
   const accounts = new Map((await selectAll(db, accountsTable)).map((a) => [a.id, a]));
   let created = 0;
@@ -152,7 +166,9 @@ export async function recordAtmWithdrawals(db: D1Database, transactions?: Transa
         .bind(-out.amount, now, cash.id),
       insertStatement(db, transferLinksTable, link),
       db
-        .prepare('UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL')
+        .prepare(
+          'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL',
+        )
         .bind(link.id, now, out.id, deposit.id),
     ]);
     created += 1;

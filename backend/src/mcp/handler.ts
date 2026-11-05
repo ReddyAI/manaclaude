@@ -8,7 +8,11 @@ import { buildMcpServer, type McpAuthProps } from './tools';
  * provider has already checked the access token and put the grant's props on
  * ctx.props.
  */
-export async function handleMcp(request: Request, env: Env, props: McpAuthProps): Promise<Response> {
+export async function handleMcp(
+  request: Request,
+  env: Env,
+  props: McpAuthProps,
+): Promise<Response> {
   if (request.method === 'GET') {
     // No server-initiated stream in stateless mode.
     return new Response(null, { status: 405, headers: { allow: 'POST' } });

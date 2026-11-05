@@ -65,7 +65,8 @@ export function normalizeAiStatement(
   json: AiStatementJson,
   fallbackCurrency: CurrencyCode,
 ): ParsedStatement {
-  const currency = (json.currency ?? fallbackCurrency).toUpperCase().slice(0, 3) || fallbackCurrency;
+  const currency =
+    (json.currency ?? fallbackCurrency).toUpperCase().slice(0, 3) || fallbackCurrency;
   // Indian statements (INR) are day-first.
   const dayFirst = currency === 'INR';
   const rows: ParsedImportRow[] = [];
@@ -97,7 +98,16 @@ export function normalizeAiStatement(
     format: 'pdf',
     rows,
     accounts: json.accountName
-      ? [{ name: json.accountName, type: null, currency, mask, balance: closing, balanceDate: anyDate(json.periodEnd, dayFirst) }]
+      ? [
+          {
+            name: json.accountName,
+            type: null,
+            currency,
+            mask,
+            balance: closing,
+            balanceDate: anyDate(json.periodEnd, dayFirst),
+          },
+        ]
       : [],
     errors,
     warnings: balances

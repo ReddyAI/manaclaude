@@ -18,12 +18,19 @@ type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** Currencies to store: the defaults plus every account currency. */
 export async function quoteCurrencies(db: D1Database): Promise<CurrencyCode[]> {
-  const res = await db.prepare('SELECT DISTINCT currency FROM accounts').all<{ currency: string }>();
-  return [...new Set([...DEFAULT_FX_QUOTES, ...res.results.map((r) => r.currency)])].filter((c) => c !== 'USD');
+  const res = await db
+    .prepare('SELECT DISTINCT currency FROM accounts')
+    .all<{ currency: string }>();
+  return [...new Set([...DEFAULT_FX_QUOTES, ...res.results.map((r) => r.currency)])].filter(
+    (c) => c !== 'USD',
+  );
 }
 
 export async function storeRates(db: D1Database, rates: readonly FxRate[]): Promise<number> {
-  await batchInChunks(db, rates.map((r) => insertStatement(db, fxRatesTable, r, 'upsert')));
+  await batchInChunks(
+    db,
+    rates.map((r) => insertStatement(db, fxRatesTable, r, 'upsert')),
+  );
   return rates.length;
 }
 
@@ -54,15 +61,21 @@ export async function backfillFrankfurter(
   doFetch: FetchFn = fetch,
 ): Promise<number> {
   const quotes = await quoteCurrencies(env.DB);
-  const res = await doFetch(`${FRANKFURTER_URL}/${from}..${to}?base=USD&symbols=${quotes.join(',')}`);
+  const res = await doFetch(
+    `${FRANKFURTER_URL}/${from}..${to}?base=USD&symbols=${quotes.join(',')}`,
+  );
   if (!res.ok) throw new Error(`Frankfurter returned HTTP ${res.status}`);
   return storeRates(env.DB, parseFrankfurter(await res.json(), quotes));
 }
 
 /** Backfills from the oldest transaction date that has no ECB rate yet. */
 export async function backfillMissingHistory(env: Env, doFetch: FetchFn = fetch): Promise<number> {
-  const oldestTxn = await env.DB.prepare('SELECT min(date) AS d FROM transactions').first<{ d: string | null }>();
-  const oldestRate = await env.DB.prepare("SELECT min(date) AS d FROM fx_rates WHERE source = 'frankfurter_ecb'").first<{
+  const oldestTxn = await env.DB.prepare('SELECT min(date) AS d FROM transactions').first<{
+    d: string | null;
+  }>();
+  const oldestRate = await env.DB.prepare(
+    "SELECT min(date) AS d FROM fx_rates WHERE source = 'frankfurter_ecb'",
+  ).first<{
     d: string | null;
   }>();
   if (!oldestTxn?.d) return 0;
@@ -82,5 +95,8 @@ export function loadRates(db: D1Database): Promise<FxRate[]> {
 export async function latestRate(db: D1Database, base: CurrencyCode, quote: CurrencyCode) {
   const rates = await loadRates(db);
   const oxr = rates.filter((r) => r.source === 'openexchangerates');
-  return findRate(oxr.length > 0 ? oxr : rates, base, quote, { mode: 'latest' }) ?? findRate(rates, base, quote, { mode: 'latest' });
+  return (
+    findRate(oxr.length > 0 ? oxr : rates, base, quote, { mode: 'latest' }) ??
+    findRate(rates, base, quote, { mode: 'latest' })
+  );
 }

@@ -1,4 +1,9 @@
-import { mergeRespectingUserEdits, normalizeDescription, type AiJobResponse, type Merchant } from '@manaclaude/shared';
+import {
+  mergeRespectingUserEdits,
+  normalizeDescription,
+  type AiJobResponse,
+  type Merchant,
+} from '@manaclaude/shared';
 import type { Env } from '../../env';
 import { batchInChunks, insertStatement, selectAll, updateStatement } from '../../db/table';
 import { merchantsTable, transactionsTable } from '../../db/tables';
@@ -26,7 +31,12 @@ const SCHEMA: JsonSchema = {
 
 /** Still looks like a bank code after the rule-based cleanup. */
 function looksRaw(name: string): boolean {
-  return /\d{2,}/.test(name) || (name === name.toUpperCase() && /[A-Z]{4,}/.test(name)) || name.length > 28;
+  return (
+    /\d/.test(name) ||
+    name.split(' ').some((w) => w.length >= 3 && !/[aeiouy]/i.test(w)) ||
+    (name === name.toUpperCase() && /[A-Z]{4,}/.test(name)) ||
+    name.length > 28
+  );
 }
 
 /**
@@ -37,9 +47,9 @@ function looksRaw(name: string): boolean {
 export async function runMerchantCleanup(env: Env, deps: AiDeps = {}): Promise<AiJobResponse> {
   const db = env.DB;
   const settings = await getSettings(db);
-  const txns = (await selectAll(db, transactionsTable, 'merchant_id IS NULL AND is_split_parent = 0')).filter(
-    (t) => t.rawName.trim().length > 0,
-  );
+  const txns = (
+    await selectAll(db, transactionsTable, 'merchant_id IS NULL AND is_split_parent = 0')
+  ).filter((t) => t.rawName.trim().length > 0);
   if (txns.length === 0) return { job: 'merchants', changed: 0, usedAi: false, note: null };
   const raws = [...new Set(txns.map((t) => t.rawName))];
   const cleaned = new Map(raws.map((r) => [r, cleanMerchantName(r)]));
@@ -59,7 +69,8 @@ export async function runMerchantCleanup(env: Env, deps: AiDeps = {}): Promise<A
         });
         usedAi = true;
         for (const r of reply.results ?? []) {
-          if (batch.includes(r.raw) && r.name?.trim()) cleaned.set(r.raw, r.name.trim().slice(0, 60));
+          if (batch.includes(r.raw) && r.name?.trim())
+            cleaned.set(r.raw, r.name.trim().slice(0, 60));
         }
       } catch {
         break;
@@ -81,18 +92,32 @@ export async function runMerchantCleanup(env: Env, deps: AiDeps = {}): Promise<A
       merchant = { id: newId('mer'), name, defaultCategoryId: null, aliases: [] };
       byKey.set(key, merchant);
     }
-    if (!merchant.aliases.includes(t.rawName)) merchant.aliases = [...merchant.aliases, t.rawName].slice(-20);
+    if (!merchant.aliases.includes(t.rawName))
+      merchant.aliases = [...merchant.aliases, t.rawName].slice(-20);
     touched.set(merchant.id, merchant);
     const fields: Record<string, unknown> = { merchantId: merchant.id };
     if (t.name === t.rawName) fields.name = name;
     const { transaction } = mergeRespectingUserEdits(t, fields);
     if (transaction.merchantId !== t.merchantId || transaction.name !== t.name) {
       statements.push(
-        updateStatement(db, transactionsTable, { id: t.id }, { merchantId: transaction.merchantId, name: transaction.name, updatedAt: now }),
+        updateStatement(
+          db,
+          transactionsTable,
+          { id: t.id },
+          { merchantId: transaction.merchantId, name: transaction.name, updatedAt: now },
+        ),
       );
       changed += 1;
     }
   }
-  await batchInChunks(db, [...[...touched.values()].map((m) => insertStatement(db, merchantsTable, m, 'upsert')), ...statements]);
-  return { job: 'merchants', changed, usedAi, note: ai ? null : 'AI is off; used the built-in cleanup rules only.' };
+  await batchInChunks(db, [
+    ...[...touched.values()].map((m) => insertStatement(db, merchantsTable, m, 'upsert')),
+    ...statements,
+  ]);
+  return {
+    job: 'merchants',
+    changed,
+    usedAi,
+    note: ai ? null : 'AI is off; used the built-in cleanup rules only.',
+  };
 }

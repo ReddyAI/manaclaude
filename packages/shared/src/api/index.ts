@@ -10,12 +10,23 @@ import type { FxRate } from '../model/fx';
 import type { Receipt } from '../model/receipt';
 import type { RecurringItem } from '../model/recurring';
 import type { Rule } from '../model/rule';
-import type { SplitLineInput, Transaction, TransactionKind, TransferLink } from '../model/transaction';
+import type {
+  SplitLineInput,
+  Transaction,
+  TransactionKind,
+  TransferLink,
+} from '../model/transaction';
 import type { Account } from '../model/account';
 import type { Category } from '../model/category';
 import type { CsvMapping } from '../import/csv';
 import type { StatementCheck } from '../import/statement';
-import type { DateFormat, ImportFormat, ParseIssue, ParsedAccount, ParsedImportRow } from '../import/types';
+import type {
+  DateFormat,
+  ImportFormat,
+  ParseIssue,
+  ParsedAccount,
+  ParsedImportRow,
+} from '../import/types';
 
 /** Error body for every non-2xx response. */
 export interface ApiErrorBody {
@@ -124,13 +135,7 @@ export interface RuleResponse {
 // ---------------------------------------------------------------------------
 
 export type ImportStatus =
-  | 'needs_mapping'
-  | 'preview'
-  | 'committing'
-  | 'committed'
-  | 'discarded'
-  | 'failed'
-  | 'undone';
+  'needs_mapping' | 'preview' | 'committing' | 'committed' | 'discarded' | 'failed' | 'undone';
 
 /**
  * - new: will be added on confirm
@@ -175,7 +180,13 @@ export interface ImportPreview {
   accountsToCreate: ParsedAccount[];
   errors: ParseIssue[];
   warnings: string[];
-  counts: { total: number; new: number; alreadyImported: number; existing: number; needsAccount: number };
+  counts: {
+    total: number;
+    new: number;
+    alreadyImported: number;
+    existing: number;
+    needsAccount: number;
+  };
   csv: CsvPreviewInfo | null;
   mapping: CsvMapping | null;
   /** PDF statements: opening + rows = closing? */

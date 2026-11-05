@@ -15,13 +15,22 @@ import {
 } from '@manaclaude/shared';
 import type { Env } from '../../env';
 import { selectAll } from '../../db/table';
-import { categoriesTable, recurringTable, transactionsTable, transferLinksTable } from '../../db/tables';
+import {
+  categoriesTable,
+  recurringTable,
+  transactionsTable,
+  transferLinksTable,
+} from '../../db/tables';
 import { loadRates } from '../../fx/service';
 import { newId, nowIso } from '../../util/ids';
 import { getSettings } from '../../services/settings';
 import { tryGetAi, type AiDeps } from '../provider';
 
-export function periodRange(period: RecapPeriod, anchor: LocalDate, weekStartsOn: 0 | 1): { start: LocalDate; end: LocalDate } {
+export function periodRange(
+  period: RecapPeriod,
+  anchor: LocalDate,
+  weekStartsOn: 0 | 1,
+): { start: LocalDate; end: LocalDate } {
   if (period === 'month') {
     const m = monthOf(anchor);
     return { start: firstDayOfMonth(m), end: lastDayOfMonth(m) };
@@ -34,14 +43,22 @@ export function periodRange(period: RecapPeriod, anchor: LocalDate, weekStartsOn
 
 /** The last complete week or month before `today`. */
 export function lastCompletePeriod(period: RecapPeriod, today: LocalDate, weekStartsOn: 0 | 1) {
-  if (period === 'month') return periodRange('month', firstDayOfMonth(addMonthsToMonth(monthOf(today), -1)), weekStartsOn);
+  if (period === 'month')
+    return periodRange(
+      'month',
+      firstDayOfMonth(addMonthsToMonth(monthOf(today), -1)),
+      weekStartsOn,
+    );
   const thisWeek = periodRange('week', today, weekStartsOn);
   return periodRange('week', addDays(thisWeek.start, -7), weekStartsOn);
 }
 
 function templateText(period: RecapPeriod, d: RecapData): string {
   const fmt = (v: number) => formatMoney(v, d.currency);
-  const change = d.previousSpending === 0 ? null : Math.round(((d.spending - d.previousSpending) / Math.abs(d.previousSpending)) * 100);
+  const change =
+    d.previousSpending === 0
+      ? null
+      : Math.round(((d.spending - d.previousSpending) / Math.abs(d.previousSpending)) * 100);
   const parts = [
     `You spent ${fmt(d.spending)} this ${period}${change === null ? '' : `, ${change >= 0 ? `${change}% more` : `${-change}% less`} than the ${period} before`}.`,
   ];
@@ -54,7 +71,10 @@ function templateText(period: RecapPeriod, d: RecapData): string {
         .join(', ')}.`,
     );
   }
-  if (d.largestTransactions[0]) parts.push(`The largest charge was ${d.largestTransactions[0].name} at ${fmt(d.largestTransactions[0].amount)}.`);
+  if (d.largestTransactions[0])
+    parts.push(
+      `The largest charge was ${d.largestTransactions[0].name} at ${fmt(d.largestTransactions[0].amount)}.`,
+    );
   return parts.join(' ');
 }
 
@@ -73,7 +93,10 @@ export async function generateRecap(
   const settings = await getSettings(db);
   const currency = settings.primaryCurrency;
   const days = Math.round((Date.parse(range.end) - Date.parse(range.start)) / 86_400_000) + 1;
-  const prevStart = period === 'month' ? firstDayOfMonth(addMonthsToMonth(monthOf(range.start), -1)) : addDays(range.start, -days);
+  const prevStart =
+    period === 'month'
+      ? firstDayOfMonth(addMonthsToMonth(monthOf(range.start), -1))
+      : addDays(range.start, -days);
   const prevEnd = addDays(range.start, -1);
   const [txns, categories, links, rates, recurring] = await Promise.all([
     selectAll(db, transactionsTable, 'date >= ? AND date <= ?', [prevStart, range.end]),
@@ -87,7 +110,14 @@ export async function generateRecap(
   const prev = summarizeSpending(txns, ctx, { from: prevStart, to: prevEnd, currency, rates });
   const names = new Map(categories.map((c) => [c.id, c.name]));
   const largest = txns
-    .filter((t) => t.date >= range.start && t.date <= range.end && reportTreatment(t, ctx).kind === 'spending' && t.amount < 0 && t.currency === currency)
+    .filter(
+      (t) =>
+        t.date >= range.start &&
+        t.date <= range.end &&
+        reportTreatment(t, ctx).kind === 'spending' &&
+        t.amount < 0 &&
+        t.currency === currency,
+    )
     .sort((a, b) => a.amount - b.amount)
     .slice(0, 3);
   const data: RecapData = {
@@ -99,8 +129,16 @@ export async function generateRecap(
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([categoryId, amount]) => ({ categoryId, name: names.get(categoryId) ?? 'Uncategorized', amount })),
-    largestTransactions: largest.map((t) => ({ transactionId: t.id, name: t.name || t.rawName, amount: -t.amount })),
+      .map(([categoryId, amount]) => ({
+        categoryId,
+        name: names.get(categoryId) ?? 'Uncategorized',
+        amount,
+      })),
+    largestTransactions: largest.map((t) => ({
+      transactionId: t.id,
+      name: t.name || t.rawName,
+      amount: -t.amount,
+    })),
     newRecurring: recurring.filter((r) => (r.priceHistory[0]?.date ?? '') >= range.start).length,
     transactionsCounted: now.counted,
   };
@@ -139,15 +177,29 @@ export async function generateRecap(
     .prepare(
       'INSERT INTO recaps (id, period, period_start, period_end, text, data, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (period, period_start) DO UPDATE SET text = excluded.text, data = excluded.data, provider = excluded.provider, period_end = excluded.period_end, created_at = excluded.created_at',
     )
-    .bind(recap.id, period, range.start, range.end, text, JSON.stringify(data), provider, recap.createdAt)
+    .bind(
+      recap.id,
+      period,
+      range.start,
+      range.end,
+      text,
+      JSON.stringify(data),
+      provider,
+      recap.createdAt,
+    )
     .run();
-  const stored = await db.prepare('SELECT id FROM recaps WHERE period = ? AND period_start = ?').bind(period, range.start).first<{ id: string }>();
+  const stored = await db
+    .prepare('SELECT id FROM recaps WHERE period = ? AND period_start = ?')
+    .bind(period, range.start)
+    .first<{ id: string }>();
   return { ...recap, id: stored?.id ?? recap.id };
 }
 
 export async function listRecaps(db: D1Database, period?: RecapPeriod): Promise<Recap[]> {
   const res = await db
-    .prepare(`SELECT * FROM recaps ${period ? 'WHERE period = ?' : ''} ORDER BY period_start DESC LIMIT 60`)
+    .prepare(
+      `SELECT * FROM recaps ${period ? 'WHERE period = ?' : ''} ORDER BY period_start DESC LIMIT 60`,
+    )
     .bind(...(period ? [period] : []))
     .all<Record<string, string>>();
   return res.results.map((r) => ({

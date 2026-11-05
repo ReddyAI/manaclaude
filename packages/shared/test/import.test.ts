@@ -70,9 +70,7 @@ describe('csv', () => {
     expect(s.mapping.dateFormat).toBe('MM/DD/YYYY');
     const parsed = parseCsvWithMapping(text, s.mapping, 'USD');
     expect(parsed.errors).toEqual([]);
-    expect(parsed.rows.map((r) => r.amount)).toEqual([
-      -8_412, -200_000, 325_000, -20_000, -20_000,
-    ]);
+    expect(parsed.rows.map((r) => r.amount)).toEqual([-8_412, -200_000, 325_000, -20_000, -20_000]);
     expect(parsed.rows[1]?.rawName).toBe('WISE US INC');
   });
 
@@ -180,7 +178,11 @@ describe('ai statement normalisation', () => {
     ]);
     expect(s.check.balances).toBe(true);
     const bad = normalizeAiStatement(
-      { openingBalance: '10.00', closingBalance: '99.00', transactions: [{ date: '2026-11-01', amount: '-1.00' }] },
+      {
+        openingBalance: '10.00',
+        closingBalance: '99.00',
+        transactions: [{ date: '2026-11-01', amount: '-1.00' }],
+      },
       'USD',
     );
     expect(bad.check.balances).toBe(false);

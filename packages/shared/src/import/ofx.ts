@@ -59,7 +59,9 @@ export function parseOfx(text: string): ParseResult {
   for (const { b, card } of statements) {
     const currency = (tag(b, 'CURDEF') ?? 'USD').toUpperCase();
     const acctId = tag(b, 'ACCTID');
-    const type = card ? 'credit_card' : (OFX_ACCOUNT_TYPES[(tag(b, 'ACCTTYPE') ?? '').toUpperCase()] ?? 'checking');
+    const type = card
+      ? 'credit_card'
+      : (OFX_ACCOUNT_TYPES[(tag(b, 'ACCTTYPE') ?? '').toUpperCase()] ?? 'checking');
     const mask = maskOf(acctId);
     const name = `${card ? 'Card' : type === 'savings' ? 'Savings' : 'Checking'}${mask ? ` ••${mask}` : ''}`;
     const ledger = blocks(b, 'LEDGERBAL')[0];
@@ -98,7 +100,8 @@ export function parseOfx(text: string): ParseResult {
       rows.push(row);
     }
   }
-  if (statements.length === 0) errors.push({ line: 0, message: 'No bank or card statement found in this OFX file.' });
+  if (statements.length === 0)
+    errors.push({ line: 0, message: 'No bank or card statement found in this OFX file.' });
   return {
     format: 'ofx',
     rows,

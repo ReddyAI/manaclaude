@@ -8,7 +8,12 @@
   "total": "41.37",
   "confidence": 0.91,
   "lineItems": [
-    { "description": "Mushroom risotto", "quantity": "1", "amount": "22.00", "category": "Restaurants" },
+    {
+      "description": "Mushroom risotto",
+      "quantity": "1",
+      "amount": "22.00",
+      "category": "Restaurants"
+    },
     { "description": "Lemonade", "quantity": "2", "amount": "8.00", "category": "Restaurants" },
     { "description": "Gift card", "quantity": "1", "amount": "8.00", "category": "Gifts & family" }
   ]
