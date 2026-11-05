@@ -1,0 +1,30 @@
+[
+  {
+    "id": "txn_demo_c6",
+    "account_id": "acc_demo_chk_01",
+    "date": "2026-11-04",
+    "description": "CORNER COFFEE 0412",
+    "status": "posted",
+    "amount": "-4.50",
+    "type": "card_payment",
+    "details": {
+      "category": "dining",
+      "processing_status": "complete",
+      "counterparty": { "name": "Corner Coffee", "type": "organization" }
+    }
+  },
+  {
+    "id": "txn_demo_c2",
+    "account_id": "acc_demo_chk_01",
+    "date": "2026-11-01",
+    "description": "ACME PAYROLL DIRECT DEP",
+    "status": "posted",
+    "amount": "2850.00",
+    "type": "ach",
+    "details": {
+      "category": "income",
+      "processing_status": "complete",
+      "counterparty": { "name": "Acme Payroll", "type": "organization" }
+    }
+  }
+]

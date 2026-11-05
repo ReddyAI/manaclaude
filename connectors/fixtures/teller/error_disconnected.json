@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "enrollment.disconnected.user_action.credentials_invalid",
+    "message": "The user must reconnect the enrollment."
+  }
+}

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "txn_demo_c3",
+    "account_id": "acc_demo_chk_01",
+    "date": "2026-10-30",
+    "description": "CORNER COFFEE 0412",
+    "status": "posted",
+    "amount": "-4.50",
+    "type": "card_payment",
+    "details": {
+      "category": "dining",
+      "processing_status": "complete",
+      "counterparty": { "name": "Corner Coffee", "type": "organization" }
+    }
+  },
+  {
+    "id": "txn_demo_c4",
+    "account_id": "acc_demo_chk_01",
+    "date": "2026-10-30",
+    "description": "CORNER COFFEE 0412",
+    "status": "posted",
+    "amount": "-4.50",
+    "type": "card_payment",
+    "details": {
+      "category": "dining",
+      "processing_status": "complete",
+      "counterparty": { "name": "Corner Coffee", "type": "organization" }
+    }
+  }
+]

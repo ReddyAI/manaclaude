@@ -1,0 +1,26 @@
+[
+  {
+    "id": "txn_demo_k1",
+    "account_id": "acc_demo_cc_01",
+    "date": "2026-11-02",
+    "description": "NORTHSIDE GROCERY",
+    "status": "posted",
+    "amount": "-86.42",
+    "type": "card_payment",
+    "details": {
+      "category": "groceries",
+      "processing_status": "complete",
+      "counterparty": { "name": "Northside Grocery", "type": "organization" }
+    }
+  },
+  {
+    "id": "txn_demo_k2",
+    "account_id": "acc_demo_cc_01",
+    "date": "2026-10-28",
+    "description": "PAYMENT RECEIVED THANK YOU",
+    "status": "posted",
+    "amount": "500.00",
+    "type": "payment",
+    "details": { "category": "general", "processing_status": "complete", "counterparty": null }
+  }
+]
