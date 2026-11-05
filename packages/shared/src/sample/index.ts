@@ -36,7 +36,12 @@ function balanceHistory(accounts: readonly Account[], today: LocalDate): Balance
               : acc.type === 'loan'
                 ? -0.0055
                 : 0;
-    const vol = acc.type === 'crypto' ? 0.06 : acc.type === 'checking' || acc.type === 'credit_card' ? 0.08 : 0.015;
+    const vol =
+      acc.type === 'crypto'
+        ? 0.06
+        : acc.type === 'checking' || acc.type === 'credit_card'
+          ? 0.08
+          : 0.015;
     let value = acc.balance;
     const weekly: number[] = [value];
     for (let w = 1; w <= 52; w += 1) {
@@ -44,7 +49,12 @@ function balanceHistory(accounts: readonly Account[], today: LocalDate): Balance
       weekly.push(Math.round(value));
     }
     weekly.reverse().forEach((balance, w) => {
-      out.push({ accountId: acc.id, date: addDays(today, (w - 52) * 7), balance, currency: acc.currency });
+      out.push({
+        accountId: acc.id,
+        date: addDays(today, (w - 52) * 7),
+        balance,
+        currency: acc.currency,
+      });
     });
   }
   return out;
@@ -61,7 +71,8 @@ export function createSampleData(options: SampleOptions = {}): FinanceDataset {
   for (const acc of accounts) {
     const held = investments.holdings.filter((h) => h.accountId === acc.id);
     if (held.length > 0) {
-      acc.balance = held.reduce((s, h) => s + h.marketValue, 0) + (investments.cashByAccount[acc.id] ?? 0);
+      acc.balance =
+        held.reduce((s, h) => s + h.marketValue, 0) + (investments.cashByAccount[acc.id] ?? 0);
     }
   }
   const txData = sampleTransactionData(today, now);

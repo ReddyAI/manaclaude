@@ -1,33 +1,11 @@
-import type {
-  CurrencyCode,
-  DecimalString,
-  Id,
-  IsoDateTime,
-  LocalDate,
-  MinorUnits,
-} from './common';
+import type { CurrencyCode, DecimalString, Id, IsoDateTime, LocalDate, MinorUnits } from './common';
 
 export type SecurityType =
-  | 'equity'
-  | 'etf'
-  | 'mutual_fund'
-  | 'bond'
-  | 'crypto'
-  | 'cash'
-  | 'option'
-  | 'other';
+  'equity' | 'etf' | 'mutual_fund' | 'bond' | 'crypto' | 'cash' | 'option' | 'other';
 
 /** Exchange code. NSE and BSE cover Indian securities. */
 export type ExchangeCode =
-  | 'NASDAQ'
-  | 'NYSE'
-  | 'ARCA'
-  | 'BATS'
-  | 'NSE'
-  | 'BSE'
-  | 'CRYPTO'
-  | 'OTC'
-  | (string & {});
+  'NASDAQ' | 'NYSE' | 'ARCA' | 'BATS' | 'NSE' | 'BSE' | 'CRYPTO' | 'OTC' | (string & {});
 
 export interface Security {
   id: Id;

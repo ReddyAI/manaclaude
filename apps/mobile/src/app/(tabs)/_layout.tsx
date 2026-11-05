@@ -11,7 +11,9 @@ export default function TabsLayout() {
   const wide = width >= breakpoints.md;
   return (
     <Tabs
-      tabBar={(props) => <TabBar state={props.state} navigateToTab={props.navigateToTab} wide={wide} />}
+      tabBar={(props) => (
+        <TabBar state={props.state} navigateToTab={props.navigateToTab} wide={wide} />
+      )}
       screenOptions={{
         headerShown: false,
         tabBarPosition: wide ? 'left' : 'bottom',

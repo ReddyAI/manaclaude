@@ -11,12 +11,7 @@ export interface ReceiptLineItem {
 }
 
 export type ReceiptStatus =
-  | 'uploaded'
-  | 'processing'
-  | 'parsed'
-  | 'matched'
-  | 'needs_review'
-  | 'failed';
+  'uploaded' | 'processing' | 'parsed' | 'matched' | 'needs_review' | 'failed';
 
 export interface Receipt extends Timestamps {
   id: Id;

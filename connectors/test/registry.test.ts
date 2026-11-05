@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { CONNECTOR_REGISTRY, LINK_ORDER, freeSlotsLeft, getConnector, withSlotUsage } from '../src/registry';
+import {
+  CONNECTOR_REGISTRY,
+  LINK_ORDER,
+  freeSlotsLeft,
+  getConnector,
+  withSlotUsage,
+} from '../src/registry';
 
 describe('connector registry', () => {
   it('has unique ids', () => {
@@ -20,7 +26,16 @@ describe('connector registry', () => {
   });
 
   it('marks business-only connectors unavailable', () => {
-    for (const id of ['mercury', 'brex', 'mx', 'finicity', 'akoya', 'apple_financekit', 'zillow', 'vinaudit']) {
+    for (const id of [
+      'mercury',
+      'brex',
+      'mx',
+      'finicity',
+      'akoya',
+      'apple_financekit',
+      'zillow',
+      'vinaudit',
+    ]) {
       expect(getConnector(id)?.availability, id).toBe('unavailable');
     }
   });

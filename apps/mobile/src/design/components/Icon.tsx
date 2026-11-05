@@ -186,6 +186,11 @@ export interface IconProps {
 export function Icon({ name, size = 'md', tone = 'default', color, strokeWidth = 2 }: IconProps) {
   const { theme } = useUnistyles();
   const Component = ALL[name] ?? Circle;
-  const px = { xs: theme.size.iconXs, sm: theme.size.iconSm, md: theme.size.iconMd, lg: theme.size.iconLg }[size];
+  const px = {
+    xs: theme.size.iconXs,
+    sm: theme.size.iconSm,
+    md: theme.size.iconMd,
+    lg: theme.size.iconLg,
+  }[size];
   return <Component size={px} color={color ?? toneColor(theme, tone)} strokeWidth={strokeWidth} />;
 }

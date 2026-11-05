@@ -13,11 +13,7 @@ import type { CurrencyCode, Id, IsoDateTime, LocalDate, MinorUnits, Timestamps }
  * - investment_contribution: money moved into a brokerage or retirement account
  */
 export type TransactionKind =
-  | 'regular'
-  | 'transfer'
-  | 'card_payment'
-  | 'loan_payment'
-  | 'investment_contribution';
+  'regular' | 'transfer' | 'card_payment' | 'loan_payment' | 'investment_contribution';
 
 export type TransactionSource = 'manual' | 'connector' | 'import';
 
@@ -113,11 +109,7 @@ export interface Transaction extends Timestamps {
 export type TransferLinkStatus = 'auto' | 'suggested' | 'confirmed' | 'rejected';
 
 export type TransferLinkKind =
-  | 'transfer'
-  | 'card_payment'
-  | 'loan_payment'
-  | 'investment_contribution'
-  | 'atm_withdrawal';
+  'transfer' | 'card_payment' | 'loan_payment' | 'investment_contribution' | 'atm_withdrawal';
 
 /** Statuses that make a pair count as one linked item (left out of spending and income). */
 export const ACTIVE_TRANSFER_LINK_STATUSES: readonly TransferLinkStatus[] = ['auto', 'confirmed'];

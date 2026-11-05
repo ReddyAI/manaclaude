@@ -75,7 +75,20 @@ export function isBetween(date: LocalDate, from: LocalDate, to: LocalDate): bool
   return date >= from && date <= to;
 }
 
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 const MONTHS_LONG = [
   'January',
   'February',
@@ -96,7 +109,8 @@ const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export function formatShortDate(date: LocalDate, relativeTo?: LocalDate): string {
   const d = parse(date);
   const base = `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;
-  if (relativeTo && relativeTo.slice(0, 4) !== date.slice(0, 4)) return `${base}, ${d.getUTCFullYear()}`;
+  if (relativeTo && relativeTo.slice(0, 4) !== date.slice(0, 4))
+    return `${base}, ${d.getUTCFullYear()}`;
   return base;
 }
 

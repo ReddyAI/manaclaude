@@ -106,7 +106,11 @@ export function valueInMinor(
  * The share of `total` that `part / whole` represents, rounded to an integer.
  * Used to pro-rate cost basis and proceeds when a sell consumes part of a lot.
  */
-export function proRateMinor(total: MinorUnits, part: DecimalString, whole: DecimalString): MinorUnits {
+export function proRateMinor(
+  total: MinorUnits,
+  part: DecimalString,
+  whole: DecimalString,
+): MinorUnits {
   const w = toScaled(whole);
   if (w === 0n) throw new DecimalError('whole must not be zero');
   return Number(divRound(BigInt(total) * toScaled(part), w));

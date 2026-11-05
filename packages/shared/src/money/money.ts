@@ -73,7 +73,9 @@ export function parseMoneyInput(input: string, currency: CurrencyCode): MinorUni
   const [whole = '0', frac = ''] = unsigned.split('.');
   const digits = minorDigits(currency);
   if (frac.length > digits) return null;
-  const minor = Number(whole || '0') * 10 ** digits + Number((frac + '0'.repeat(digits)).slice(0, digits) || '0');
+  const minor =
+    Number(whole || '0') * 10 ** digits +
+    Number((frac + '0'.repeat(digits)).slice(0, digits) || '0');
   if (!Number.isSafeInteger(minor)) return null;
   return negative ? -minor : minor;
 }

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  ACTIVE_TRANSFER_LINK_STATUSES,
-  buildTreatmentContext,
-  summarizeSpending,
-} from '../src';
+import { ACTIVE_TRANSFER_LINK_STATUSES, buildTreatmentContext, summarizeSpending } from '../src';
 import { createSampleData } from '../src/sample';
 
 const data = createSampleData({ today: '2026-11-04', now: new Date('2026-11-04T18:00:00.000Z') });
@@ -12,7 +8,10 @@ const txById = new Map(data.transactions.map((t) => [t.id, t]));
 
 describe('sample data', () => {
   it('is deterministic for a given date', () => {
-    const again = createSampleData({ today: '2026-11-04', now: new Date('2026-11-04T18:00:00.000Z') });
+    const again = createSampleData({
+      today: '2026-11-04',
+      now: new Date('2026-11-04T18:00:00.000Z'),
+    });
     expect(again.transactions.length).toBe(data.transactions.length);
     expect(again.transactions.map((t) => t.amount)).toEqual(data.transactions.map((t) => t.amount));
   });
@@ -85,7 +84,11 @@ describe('sample data', () => {
   });
 
   it('produces believable monthly spending in USD', () => {
-    const ctx = buildTreatmentContext(data.settings.moneyPolicies, data.categories, data.transferLinks);
+    const ctx = buildTreatmentContext(
+      data.settings.moneyPolicies,
+      data.categories,
+      data.transferLinks,
+    );
     const october = summarizeSpending(data.transactions, ctx, {
       from: '2026-10-01',
       to: '2026-10-31',

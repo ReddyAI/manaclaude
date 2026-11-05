@@ -1,12 +1,7 @@
 import type { CurrencyCode, Id, LocalDate, MinorUnits } from './common';
 
 export type RecurringFrequency =
-  | 'weekly'
-  | 'biweekly'
-  | 'monthly'
-  | 'quarterly'
-  | 'semiannual'
-  | 'annual';
+  'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'semiannual' | 'annual';
 
 /** Rocket Money-style decision on a subscription. */
 export type SubscriptionDecision = 'keep' | 'cancel' | 'review';

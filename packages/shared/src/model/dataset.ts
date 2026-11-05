@@ -3,13 +3,7 @@ import type { CategoryBudget, Goal } from './budget';
 import type { Category, CategoryGroup, Tag } from './category';
 import type { Connection } from './connector';
 import type { FxRate } from './fx';
-import type {
-  Holding,
-  InvestmentActivity,
-  PricePoint,
-  Security,
-  TaxLot,
-} from './investment';
+import type { Holding, InvestmentActivity, PricePoint, Security, TaxLot } from './investment';
 import type { Receipt } from './receipt';
 import type { RecurringItem } from './recurring';
 import type { Rule } from './rule';

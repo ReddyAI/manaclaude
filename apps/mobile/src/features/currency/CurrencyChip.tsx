@@ -8,7 +8,12 @@ import { Text } from '../../design/components/Text';
 import { updateSettings } from '../../data/settingsStore';
 import { useMoneyDisplay } from './useMoneyDisplay';
 
-const LABEL: Record<DisplayCurrencyMode, string> = { USD: 'USD', INR: 'INR', BOTH: 'USD + INR', NATIVE: 'Native' };
+const LABEL: Record<DisplayCurrencyMode, string> = {
+  USD: 'USD',
+  INR: 'INR',
+  BOTH: 'USD + INR',
+  NATIVE: 'Native',
+};
 
 function timeAgo(iso: string): string {
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
@@ -28,7 +33,9 @@ export function CurrencyChip() {
   const [open, setOpen] = useState(false);
   const next = () => {
     const i = DISPLAY_CURRENCY_MODES.indexOf(display.mode);
-    updateSettings({ displayCurrencyMode: DISPLAY_CURRENCY_MODES[(i + 1) % DISPLAY_CURRENCY_MODES.length] });
+    updateSettings({
+      displayCurrencyMode: DISPLAY_CURRENCY_MODES[(i + 1) % DISPLAY_CURRENCY_MODES.length],
+    });
   };
   const rate = display.latestRate;
   return (
@@ -50,7 +57,11 @@ export function CurrencyChip() {
               </Text>
               <Text variant="caption" tone="muted" align="center">
                 {`Fetched ${timeAgo(rate.asOf)} (${new Date(rate.asOf).toLocaleString()}) from ${
-                  rate.source === 'openexchangerates' ? 'Open Exchange Rates' : rate.source === 'frankfurter_ecb' ? 'ECB via Frankfurter' : rate.source
+                  rate.source === 'openexchangerates'
+                    ? 'Open Exchange Rates'
+                    : rate.source === 'frankfurter_ecb'
+                      ? 'ECB via Frankfurter'
+                      : rate.source
                 }`}
               </Text>
             </>
@@ -60,7 +71,8 @@ export function CurrencyChip() {
             </Text>
           )}
           <Text variant="caption" tone="faint" align="center">
-            Balances use the latest rate. Spending uses the rate on each transaction's date. Linked transfers keep the rate you actually got.
+            Balances use the latest rate. Spending uses the rate on the date of each transaction.
+            Linked transfers keep the rate you actually got.
           </Text>
         </View>
       </BottomSheet>

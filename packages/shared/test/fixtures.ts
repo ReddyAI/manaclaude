@@ -43,7 +43,12 @@ export function txn(overrides: Partial<Transaction> & Pick<Transaction, 'amount'
   };
 }
 
-export function linkOf(out: Transaction, into: Transaction, kind: TransferLink['kind'], status: TransferLink['status'] = 'auto'): TransferLink {
+export function linkOf(
+  out: Transaction,
+  into: Transaction,
+  kind: TransferLink['kind'],
+  status: TransferLink['status'] = 'auto',
+): TransferLink {
   const id = `tl_${out.id}_${into.id}`;
   out.transferLinkId = id;
   into.transferLinkId = id;
@@ -66,9 +71,59 @@ export function linkOf(out: Transaction, into: Transaction, kind: TransferLink['
 }
 
 export const CATEGORIES: Category[] = [
-  { id: 'cat_shopping', name: 'Shopping', groupId: 'g', kind: 'expense', icon: 'shopping-bag', color: 'c1', excludeFromBudget: false, archived: false, order: 0 },
-  { id: 'cat_dining', name: 'Restaurants', groupId: 'g', kind: 'expense', icon: 'utensils', color: 'c2', excludeFromBudget: false, archived: false, order: 1 },
-  { id: 'cat_paycheck', name: 'Paycheck', groupId: 'i', kind: 'income', icon: 'briefcase', color: 'c3', excludeFromBudget: false, archived: false, order: 2 },
-  { id: 'cat_loan_interest', name: 'Loan interest', groupId: 'g', kind: 'expense', icon: 'percent', color: 'c4', excludeFromBudget: false, archived: false, order: 3 },
-  { id: 'cat_transfer', name: 'Transfer', groupId: 't', kind: 'transfer', icon: 'repeat', color: 'c5', excludeFromBudget: true, archived: false, order: 4 },
+  {
+    id: 'cat_shopping',
+    name: 'Shopping',
+    groupId: 'g',
+    kind: 'expense',
+    icon: 'shopping-bag',
+    color: 'c1',
+    excludeFromBudget: false,
+    archived: false,
+    order: 0,
+  },
+  {
+    id: 'cat_dining',
+    name: 'Restaurants',
+    groupId: 'g',
+    kind: 'expense',
+    icon: 'utensils',
+    color: 'c2',
+    excludeFromBudget: false,
+    archived: false,
+    order: 1,
+  },
+  {
+    id: 'cat_paycheck',
+    name: 'Paycheck',
+    groupId: 'i',
+    kind: 'income',
+    icon: 'briefcase',
+    color: 'c3',
+    excludeFromBudget: false,
+    archived: false,
+    order: 2,
+  },
+  {
+    id: 'cat_loan_interest',
+    name: 'Loan interest',
+    groupId: 'g',
+    kind: 'expense',
+    icon: 'percent',
+    color: 'c4',
+    excludeFromBudget: false,
+    archived: false,
+    order: 3,
+  },
+  {
+    id: 'cat_transfer',
+    name: 'Transfer',
+    groupId: 't',
+    kind: 'transfer',
+    icon: 'repeat',
+    color: 'c5',
+    excludeFromBudget: true,
+    archived: false,
+    order: 4,
+  },
 ];

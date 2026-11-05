@@ -1,11 +1,7 @@
 import type { CurrencyCode, IsoDateTime, LocalDate } from './common';
 
 export type FxRateSource =
-  | 'openexchangerates'
-  | 'frankfurter_ecb'
-  | 'transfer_implied'
-  | 'manual'
-  | 'sample';
+  'openexchangerates' | 'frankfurter_ecb' | 'transfer_implied' | 'manual' | 'sample';
 
 /**
  * 1 unit of `base` = `rate` units of `quote` (major units).

@@ -4,5 +4,5 @@
  */
 export const ADAPTERS = {};
 export function getAdapter(connectorId) {
-    return ADAPTERS[connectorId];
+  return ADAPTERS[connectorId];
 }

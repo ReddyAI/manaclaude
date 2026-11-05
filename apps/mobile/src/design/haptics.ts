@@ -12,14 +12,7 @@ import { UnistylesRuntime } from 'react-native-unistyles';
  * Web has no haptics.
  */
 export type HapticEvent =
-  | 'confirm'
-  | 'reject'
-  | 'tick'
-  | 'toggleOn'
-  | 'toggleOff'
-  | 'tap'
-  | 'longPress'
-  | 'selection';
+  'confirm' | 'reject' | 'tick' | 'toggleOn' | 'toggleOff' | 'tap' | 'longPress' | 'selection';
 
 let enabled = true;
 
@@ -70,7 +63,9 @@ export function haptic(event: HapticEvent): void {
   const { haptics } = UnistylesRuntime.getTheme();
   if (event === 'tick' && !haptics.scrubTicks) return;
   const run =
-    Platform.OS === 'android' ? Haptics.performAndroidHapticsAsync(ANDROID[event]) : ios(event, haptics.impact);
+    Platform.OS === 'android'
+      ? Haptics.performAndroidHapticsAsync(ANDROID[event])
+      : ios(event, haptics.impact);
   run.catch(() => {
     // Some devices have no vibrator; haptics are a nicety, never an error.
   });

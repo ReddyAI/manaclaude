@@ -27,7 +27,7 @@ export function PressableScale({
 }: PressableScaleProps) {
   const { theme } = useUnistyles();
   const scale = useSharedValue(1);
-  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   return (
     <Animated.View style={[containerStyle, animated]}>
       <Pressable
@@ -35,11 +35,11 @@ export function PressableScale({
         disabled={disabled}
         accessibilityRole={rest.accessibilityRole ?? 'button'}
         onPressIn={(e) => {
-          scale.value = withTiming(theme.motion.pressScale, { duration: theme.motion.fast });
+          scale.set(withTiming(theme.motion.pressScale, { duration: theme.motion.fast }));
           onPressIn?.(e);
         }}
         onPressOut={(e) => {
-          scale.value = withTiming(1, { duration: theme.motion.fast });
+          scale.set(withTiming(1, { duration: theme.motion.fast }));
           onPressOut?.(e);
         }}
         onPress={(e) => {

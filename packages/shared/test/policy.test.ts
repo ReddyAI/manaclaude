@@ -14,12 +14,28 @@ import {
 import { CATEGORIES, linkOf, txn } from './fixtures';
 
 const RATES: FxRate[] = [
-  { base: 'USD', quote: 'INR', rate: 88, asOf: '2026-10-01T00:00:00.000Z', date: '2026-10-01', source: 'sample' },
+  {
+    base: 'USD',
+    quote: 'INR',
+    rate: 88,
+    asOf: '2026-10-01T00:00:00.000Z',
+    date: '2026-10-01',
+    source: 'sample',
+  },
 ];
 
-function summarize(txns: Transaction[], links: TransferLink[] = [], policies: MoneyPolicies = DEFAULT_MONEY_POLICIES) {
+function summarize(
+  txns: Transaction[],
+  links: TransferLink[] = [],
+  policies: MoneyPolicies = DEFAULT_MONEY_POLICIES,
+) {
   const ctx = buildTreatmentContext(policies, CATEGORIES, links);
-  return summarizeSpending(txns, ctx, { from: '2026-10-01', to: '2026-10-31', currency: 'USD', rates: RATES });
+  return summarizeSpending(txns, ctx, {
+    from: '2026-10-01',
+    to: '2026-10-31',
+    currency: 'USD',
+    rates: RATES,
+  });
 }
 
 // research/sure/rea.md build check 1.
@@ -70,7 +86,12 @@ describe('check 1: no double counting of transfers and card payments', () => {
 
   it('a cross-currency transfer (USD to NRE) never shows up as spending or income', () => {
     const out = txn({ amount: -200_000, kind: 'transfer' });
-    const into = txn({ accountId: 'acc_nre', currency: 'INR', amount: 17_600_000, kind: 'transfer' });
+    const into = txn({
+      accountId: 'acc_nre',
+      currency: 'INR',
+      amount: 17_600_000,
+      kind: 'transfer',
+    });
     const link = linkOf(out, into, 'transfer');
     expect(summarize([out, into], [link])).toMatchObject({ spending: 0, income: 0 });
   });
@@ -105,15 +126,25 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
   it('brokerage and retirement contributions are not spending by default', () => {
     const contribution = txn({ amount: -50_000, kind: 'investment_contribution' });
     const ctx = buildTreatmentContext(DEFAULT_MONEY_POLICIES, CATEGORIES, []);
-    expect(reportTreatment(contribution, ctx)).toEqual({ kind: 'excluded', reason: 'investment_contribution' });
-    const counted = summarize([contribution], [], { ...DEFAULT_MONEY_POLICIES, investmentContributions: 'count' });
+    expect(reportTreatment(contribution, ctx)).toEqual({
+      kind: 'excluded',
+      reason: 'investment_contribution',
+    });
+    const counted = summarize([contribution], [], {
+      ...DEFAULT_MONEY_POLICIES,
+      investmentContributions: 'count',
+    });
     expect(counted.spending).toBe(50_000);
   });
 
   it('loan principal is a transfer and interest is spending', () => {
     const parent = txn({ amount: -45_218, isSplitParent: true });
     const principal = txn({ amount: -38_940, kind: 'loan_payment', splitParentId: parent.id });
-    const interest = txn({ amount: -6_278, categoryId: 'cat_loan_interest', splitParentId: parent.id });
+    const interest = txn({
+      amount: -6_278,
+      categoryId: 'cat_loan_interest',
+      splitParentId: parent.id,
+    });
     const s = summarize([parent, principal, interest]);
     expect(s.spending).toBe(6_278);
     expect(s.byCategory).toEqual({ cat_loan_interest: 6_278 });
@@ -128,11 +159,19 @@ describe('check 5: refund and investment-contribution policies are explicit', ()
   it('pending rows count unless the policy excludes them', () => {
     const pending = txn({ amount: -2_000, categoryId: 'cat_dining', pending: true });
     expect(summarize([pending]).spending).toBe(2_000);
-    expect(summarize([pending], [], { ...DEFAULT_MONEY_POLICIES, pendingTransactions: 'exclude' }).spending).toBe(0);
+    expect(
+      summarize([pending], [], { ...DEFAULT_MONEY_POLICIES, pendingTransactions: 'exclude' })
+        .spending,
+    ).toBe(0);
   });
 
   it('converts foreign-currency spending with the rate on its date', () => {
-    const inrCash = txn({ accountId: 'acc_cash_inr', currency: 'INR', amount: -880_000, categoryId: 'cat_dining' });
+    const inrCash = txn({
+      accountId: 'acc_cash_inr',
+      currency: 'INR',
+      amount: -880_000,
+      categoryId: 'cat_dining',
+    });
     expect(summarize([inrCash]).spending).toBe(10_000);
   });
 });
@@ -142,21 +181,41 @@ describe('check 3: splits balance exactly', () => {
   const parent = txn({ amount: -10_000, categoryId: 'cat_shopping' });
 
   it('accepts $60 + $40 for a $100 transaction', () => {
-    expect(validateSplit(parent, [
-      { amount: -6_000, categoryId: 'cat_shopping' },
-      { amount: -4_000, categoryId: 'cat_dining' },
-    ])).toEqual({ ok: true });
+    expect(
+      validateSplit(parent, [
+        { amount: -6_000, categoryId: 'cat_shopping' },
+        { amount: -4_000, categoryId: 'cat_dining' },
+      ]),
+    ).toEqual({ ok: true });
   });
 
   it('rejects $60 + $50, wrong signs, a single line and non-integers', () => {
-    expect(validateSplit(parent, [{ amount: -6_000, categoryId: null }, { amount: -5_000, categoryId: null }]).ok).toBe(false);
-    expect(validateSplit(parent, [{ amount: -11_000, categoryId: null }, { amount: 1_000, categoryId: null }]).ok).toBe(false);
+    expect(
+      validateSplit(parent, [
+        { amount: -6_000, categoryId: null },
+        { amount: -5_000, categoryId: null },
+      ]).ok,
+    ).toBe(false);
+    expect(
+      validateSplit(parent, [
+        { amount: -11_000, categoryId: null },
+        { amount: 1_000, categoryId: null },
+      ]).ok,
+    ).toBe(false);
     expect(validateSplit(parent, [{ amount: -10_000, categoryId: null }]).ok).toBe(false);
-    expect(validateSplit(parent, [{ amount: -5_000.5, categoryId: null }, { amount: -4_999.5, categoryId: null }]).ok).toBe(false);
+    expect(
+      validateSplit(parent, [
+        { amount: -5_000.5, categoryId: null },
+        { amount: -4_999.5, categoryId: null },
+      ]).ok,
+    ).toBe(false);
   });
 
   it('refuses to split pending rows, transfers and existing splits', () => {
-    const lines = [{ amount: -6_000, categoryId: null }, { amount: -4_000, categoryId: null }];
+    const lines = [
+      { amount: -6_000, categoryId: null },
+      { amount: -4_000, categoryId: null },
+    ];
     expect(validateSplit({ ...parent, pending: true }, lines).ok).toBe(false);
     expect(validateSplit({ ...parent, transferLinkId: 'tl_1' }, lines).ok).toBe(false);
     expect(validateSplit({ ...parent, isSplitParent: true }, lines).ok).toBe(false);
@@ -166,7 +225,10 @@ describe('check 3: splits balance exactly', () => {
   it('builds children that keep the total and point at the parent', () => {
     const { parent: p, children } = buildSplitChildren(
       parent,
-      [{ amount: -6_000, categoryId: 'cat_shopping' }, { amount: -4_000, categoryId: 'cat_dining' }],
+      [
+        { amount: -6_000, categoryId: 'cat_shopping' },
+        { amount: -4_000, categoryId: 'cat_dining' },
+      ],
       (i) => `${parent.id}_s${i}`,
       '2026-10-16T00:00:00.000Z',
     );

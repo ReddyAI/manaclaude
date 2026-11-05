@@ -17,12 +17,26 @@ interface StackProps {
 
 /** Vertical stack with theme spacing. */
 export function VStack({ children, gap = 'none', align, justify, flex, style }: StackProps) {
-  return <View style={[styles.stack('column', gap, align, justify, false, flex), style]}>{children}</View>;
+  return (
+    <View style={[styles.stack('column', gap, align, justify, false, flex), style]}>
+      {children}
+    </View>
+  );
 }
 
 /** Horizontal stack with theme spacing. */
-export function HStack({ children, gap = 'sm', align = 'center', justify, wrap = false, flex, style }: StackProps) {
-  return <View style={[styles.stack('row', gap, align, justify, wrap, flex), style]}>{children}</View>;
+export function HStack({
+  children,
+  gap = 'sm',
+  align = 'center',
+  justify,
+  wrap = false,
+  flex,
+  style,
+}: StackProps) {
+  return (
+    <View style={[styles.stack('row', gap, align, justify, wrap, flex), style]}>{children}</View>
+  );
 }
 
 /** Flexible empty space. */

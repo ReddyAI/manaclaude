@@ -43,11 +43,16 @@ export function useFinance(): FinanceDataset {
 }
 
 /**
- * Derived data, recomputed only when the dataset or `deps` change.
- * `useFinanceSelector((d) => d.accounts.filter(...), [])`
+ * Derived data, recomputed only when the dataset or `dep` changes.
+ * `useFinanceSelector((d) => d.accounts.filter(...))`
+ * `useFinanceSelector((d, policies) => buildLookups(d, policies), moneyPolicies)`
  */
-export function useFinanceSelector<T>(selector: (data: FinanceDataset) => T, deps: readonly unknown[] = []): T {
+export function useFinanceSelector<T, D = undefined>(
+  selector: (data: FinanceDataset, dep: D) => T,
+  dep?: D,
+): T {
   const data = useFinance();
+  // The selector is usually an inline function; only the data and `dep` decide when to recompute.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => selector(data), [data, ...deps]);
+  return useMemo(() => selector(data, dep as D), [data, dep]);
 }

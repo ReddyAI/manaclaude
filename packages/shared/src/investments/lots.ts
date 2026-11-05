@@ -66,7 +66,9 @@ export function deriveLotsFifo(input: DeriveLotsInput): DeriveLotsResult {
 
   const sorted = input.activities
     .map((a, i) => ({ a, i }))
-    .sort((x, y) => x.a.date.localeCompare(y.a.date) || ORDER[x.a.type] - ORDER[y.a.type] || x.i - y.i)
+    .sort(
+      (x, y) => x.a.date.localeCompare(y.a.date) || ORDER[x.a.type] - ORDER[y.a.type] || x.i - y.i,
+    )
     .map((x) => x.a);
 
   for (const act of sorted) {
@@ -99,7 +101,9 @@ export function deriveLotsFifo(input: DeriveLotsInput): DeriveLotsResult {
           const lot = open[0]!;
           const take = minDec(remaining, lot.quantity);
           const lotCost =
-            cmpDec(take, lot.quantity) === 0 ? lot.costBasis : proRateMinor(lot.costBasis, take, lot.quantity);
+            cmpDec(take, lot.quantity) === 0
+              ? lot.costBasis
+              : proRateMinor(lot.costBasis, take, lot.quantity);
           const afterTake = subDec(remaining, take);
           // Last piece of the sell gets whatever proceeds are left, so the pieces add up exactly.
           const proceeds =
@@ -170,7 +174,11 @@ export interface LotPerformance {
 }
 
 /** Unrealized gain of one lot at a price. */
-export function lotPerformance(lot: TaxLot, price: DecimalString, today: LocalDate): LotPerformance {
+export function lotPerformance(
+  lot: TaxLot,
+  price: DecimalString,
+  today: LocalDate,
+): LotPerformance {
   const marketValue = valueInMinor(lot.quantity, price, lot.currency);
   const gain = marketValue - lot.costBasis;
   return {

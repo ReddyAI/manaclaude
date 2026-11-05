@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Pressable, TextInput, View, type TextInputProps } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { haptic } from '../haptics';
 import { Icon, type IconName } from './Icon';
@@ -19,14 +24,20 @@ export interface SwitchProps {
   testID?: string;
 }
 
-export function Switch({ value, onValueChange, accessibilityLabel, disabled = false, testID }: SwitchProps) {
+export function Switch({
+  value,
+  onValueChange,
+  accessibilityLabel,
+  disabled = false,
+  testID,
+}: SwitchProps) {
   const { theme } = useUnistyles();
   const travel = theme.size.switchWidth - theme.size.switchHeight;
   const x = useSharedValue(value ? travel : 0);
   useEffect(() => {
-    x.value = withSpring(value ? travel : 0, theme.motion.spring);
+    x.set(withSpring(value ? travel : 0, theme.motion.spring));
   }, [value, travel, theme.motion.spring, x]);
-  const knob = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+  const knob = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }));
   return (
     <Pressable
       accessibilityRole="switch"
@@ -66,9 +77,18 @@ export interface SegmentedControlProps<T extends string> {
   accessibilityLabel: string;
 }
 
-export function SegmentedControl<T extends string>({ options, value, onChange, accessibilityLabel }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  accessibilityLabel,
+}: SegmentedControlProps<T>) {
   return (
-    <View style={styles.segmented} accessibilityRole="radiogroup" accessibilityLabel={accessibilityLabel}>
+    <View
+      style={styles.segmented}
+      accessibilityRole="radiogroup"
+      accessibilityLabel={accessibilityLabel}
+    >
       {options.map((o) => {
         const selected = o.value === value;
         return (
@@ -110,7 +130,15 @@ export interface ChipProps {
   testID?: string;
 }
 
-export function Chip({ label, selected = false, onPress, onLongPress, icon, accessibilityLabel, testID }: ChipProps) {
+export function Chip({
+  label,
+  selected = false,
+  onPress,
+  onLongPress,
+  icon,
+  accessibilityLabel,
+  testID,
+}: ChipProps) {
   return (
     <PressableScale
       onPress={onPress}
@@ -130,9 +158,18 @@ export function Chip({ label, selected = false, onPress, onLongPress, icon, acce
   );
 }
 
-export type BadgeTone = 'neutral' | 'accent' | 'income' | 'spending' | 'pending' | 'danger' | 'netWorth';
+export type BadgeTone =
+  'neutral' | 'accent' | 'income' | 'spending' | 'pending' | 'danger' | 'netWorth';
 
-export function Badge({ label, tone = 'neutral', icon }: { label: string; tone?: BadgeTone; icon?: IconName }) {
+export function Badge({
+  label,
+  tone = 'neutral',
+  icon,
+}: {
+  label: string;
+  tone?: BadgeTone;
+  icon?: IconName;
+}) {
   const textTone = tone === 'neutral' ? 'muted' : tone;
   return (
     <View style={styles.badge(tone)}>
@@ -168,9 +205,9 @@ export function ProgressBar({ value, color, marker, accessibilityLabel }: Progre
   const clamped = Math.max(0, Math.min(1, value));
   const width = useSharedValue(0);
   useEffect(() => {
-    width.value = withTiming(clamped, { duration: theme.motion.slow });
+    width.set(withTiming(clamped, { duration: theme.motion.slow }));
   }, [clamped, theme.motion.slow, width]);
-  const fill = useAnimatedStyle(() => ({ width: `${width.value * 100}%` }));
+  const fill = useAnimatedStyle(() => ({ width: `${width.get() * 100}%` }));
   const fillColor = value > 1 ? theme.colors.danger : (color ?? theme.colors.accent);
   return (
     <View
@@ -182,7 +219,9 @@ export function ProgressBar({ value, color, marker, accessibilityLabel }: Progre
       <Animated.View style={[styles.progressFillBase, fill]}>
         <View style={styles.progressFill(fillColor)} />
       </Animated.View>
-      {marker !== undefined ? <View style={styles.progressMarker(Math.max(0, Math.min(1, marker)))} /> : null}
+      {marker !== undefined ? (
+        <View style={styles.progressMarker(Math.max(0, Math.min(1, marker)))} />
+      ) : null}
     </View>
   );
 }
@@ -268,7 +307,8 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: 'center',
     gap: theme.space.xs,
     backgroundColor: selected ? theme.colors.surfaceRaised : 'transparent',
-    boxShadow: selected && theme.scheme === 'light' ? `0px 1px 3px ${theme.colors.border}` : undefined,
+    boxShadow:
+      selected && theme.scheme === 'light' ? `0px 1px 3px ${theme.colors.border}` : undefined,
   }),
   chip: (selected: boolean) => ({
     height: theme.size.chipHeight,

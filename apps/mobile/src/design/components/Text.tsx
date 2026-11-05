@@ -62,7 +62,9 @@ export function Text({
   style,
   ...rest
 }: TextProps) {
-  return <RNText {...rest} style={[styles.text(variant, tone, numeric, align, uppercase), style]} />;
+  return (
+    <RNText {...rest} style={[styles.text(variant, tone, numeric, align, uppercase), style]} />
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({

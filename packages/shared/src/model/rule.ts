@@ -12,7 +12,11 @@ export type RuleCondition =
     }
   | { field: 'amount'; op: 'equals' | 'gt' | 'lt'; value: MinorUnits }
   | { field: 'amount'; op: 'between'; value: [MinorUnits, MinorUnits] }
-  | { field: 'accountId' | 'categoryId' | 'currency'; op: 'equals' | 'in'; value: string | string[] };
+  | {
+      field: 'accountId' | 'categoryId' | 'currency';
+      op: 'equals' | 'in';
+      value: string | string[];
+    };
 
 export type RuleAction =
   | { type: 'set_category'; categoryId: Id }

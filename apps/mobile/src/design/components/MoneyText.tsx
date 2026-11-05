@@ -1,5 +1,9 @@
-import type { CurrencyCode, MinorUnits } from '@manaclaude/shared';
-import { formatMoney, type FormatMoneyOptions } from '@manaclaude/shared';
+import {
+  formatMoney,
+  type CurrencyCode,
+  type FormatMoneyOptions,
+  type MinorUnits,
+} from '@manaclaude/shared';
 import { Text, type TextProps, type TextTone } from './Text';
 
 export type MoneySize = 'hero' | 'large' | 'medium' | 'small';

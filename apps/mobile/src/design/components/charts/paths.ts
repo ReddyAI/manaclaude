@@ -69,7 +69,12 @@ export function linePath(points: readonly Point[]): string {
   for (let i = 1; i < n - 1; i += 1) {
     const s0 = slope[i - 1] ?? 0;
     const s1 = slope[i] ?? 0;
-    tangent.push(s0 * s1 <= 0 ? 0 : (3 * (dx[i - 1]! + dx[i]!)) / ((2 * dx[i]! + dx[i - 1]!) / s0 + (dx[i]! + 2 * dx[i - 1]!) / s1));
+    tangent.push(
+      s0 * s1 <= 0
+        ? 0
+        : (3 * (dx[i - 1]! + dx[i]!)) /
+            ((2 * dx[i]! + dx[i - 1]!) / s0 + (dx[i]! + 2 * dx[i - 1]!) / s1),
+    );
   }
   tangent.push(slope[n - 2] ?? 0);
   let d = `M${first.x},${first.y}`;

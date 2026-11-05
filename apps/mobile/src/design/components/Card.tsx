@@ -15,7 +15,14 @@ export interface CardProps {
 }
 
 /** Surface container. Raised, flat or outlined depending on the look. */
-export function Card({ children, padding = 'lg', onPress, accessibilityLabel, style, tone = 'surface' }: CardProps) {
+export function Card({
+  children,
+  padding = 'lg',
+  onPress,
+  accessibilityLabel,
+  style,
+  tone = 'surface',
+}: CardProps) {
   const body = <View style={[styles.card(padding, tone), style]}>{children}</View>;
   if (!onPress) return body;
   return (
@@ -28,10 +35,15 @@ export function Card({ children, padding = 'lg', onPress, accessibilityLabel, st
 const styles = StyleSheet.create((theme) => ({
   card: (padding: keyof SpaceTokens, tone: 'surface' | 'sunken' | 'accent') => ({
     backgroundColor:
-      tone === 'sunken' ? theme.colors.surfaceSunken : tone === 'accent' ? theme.colors.accentMuted : theme.colors.surface,
+      tone === 'sunken'
+        ? theme.colors.surfaceSunken
+        : tone === 'accent'
+          ? theme.colors.accentMuted
+          : theme.colors.surface,
     borderRadius: theme.radius.lg,
     padding: theme.space[padding],
-    borderWidth: theme.layout.card === 'outlined' && tone === 'surface' ? theme.size.borderWidth : 0,
+    borderWidth:
+      theme.layout.card === 'outlined' && tone === 'surface' ? theme.size.borderWidth : 0,
     borderColor: theme.colors.border,
     boxShadow:
       theme.layout.card === 'raised' && tone === 'surface'

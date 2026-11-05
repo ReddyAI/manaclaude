@@ -21,7 +21,16 @@ export interface ScreenProps {
  * Top-level screen: safe-area padding, large title header, centred content
  * with a max width on big screens.
  */
-export function Screen({ title, subtitle, actions, children, scroll = true, refreshControl, overlay, testID }: ScreenProps) {
+export function Screen({
+  title,
+  subtitle,
+  actions,
+  children,
+  scroll = true,
+  refreshControl,
+  overlay,
+  testID,
+}: ScreenProps) {
   const header = (
     <View style={styles.header}>
       <View style={styles.titleBlock}>

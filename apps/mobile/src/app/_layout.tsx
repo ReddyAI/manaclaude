@@ -29,7 +29,12 @@ function useAppearance(ready: boolean) {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const ready = (fontsLoaded || fontError !== null) && settingsLoaded;
   const { theme } = useUnistyles();
@@ -68,7 +73,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.canvas }}>
       <ThemeProvider value={navTheme}>
         <StatusBar style={theme.scheme === 'dark' ? 'light' : 'dark'} />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.canvas } }} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.colors.canvas },
+          }}
+        />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

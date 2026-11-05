@@ -3,10 +3,16 @@ import type { CurrencyCode } from './common';
 /** Header currency chip: USD only, INR only, both, or each account's own currency. */
 export type DisplayCurrencyMode = 'USD' | 'INR' | 'BOTH' | 'NATIVE';
 
-export const DISPLAY_CURRENCY_MODES: readonly DisplayCurrencyMode[] = ['USD', 'INR', 'BOTH', 'NATIVE'];
+export const DISPLAY_CURRENCY_MODES: readonly DisplayCurrencyMode[] = [
+  'USD',
+  'INR',
+  'BOTH',
+  'NATIVE',
+];
 
 /** Never a free tier whose terms allow training on or human review of inputs. */
-export type AiProvider = 'workers_ai' | 'anthropic' | 'openai' | 'openai_compatible' | 'gemini_paid';
+export type AiProvider =
+  'workers_ai' | 'anthropic' | 'openai' | 'openai_compatible' | 'gemini_paid';
 
 export type Look = 'midnight' | 'warm' | 'compact';
 

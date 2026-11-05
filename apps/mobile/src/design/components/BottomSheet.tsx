@@ -1,7 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, View } from 'react-native';
-import { GestureDetector, GestureHandlerRootView, usePanGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import {
+  GestureDetector,
+  GestureHandlerRootView,
+  usePanGesture,
+} from 'react-native-gesture-handler';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Text } from './Text';
 
@@ -21,46 +30,60 @@ const OFFSCREEN = 800;
  * Sheet that slides up from the bottom; drag down or tap outside to close.
  * Centred dialog-style on wide screens.
  */
-export function BottomSheet({ visible, onClose, title, children, scrollable = false, testID }: BottomSheetProps) {
+export function BottomSheet({
+  visible,
+  onClose,
+  title,
+  children,
+  scrollable = false,
+  testID,
+}: BottomSheetProps) {
   const { theme } = useUnistyles();
   const [mounted, setMounted] = useState(visible);
+  // Mount as soon as it should show (derived state, set during render).
+  if (visible && !mounted) setMounted(true);
   const translateY = useSharedValue(OFFSCREEN);
   const backdrop = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
-      setMounted(true);
-      translateY.value = withSpring(0, theme.motion.spring);
-      backdrop.value = withTiming(1, { duration: theme.motion.normal });
-    } else if (mounted) {
-      backdrop.value = withTiming(0, { duration: theme.motion.fast });
-      translateY.value = withTiming(OFFSCREEN, { duration: theme.motion.normal });
-      const t = setTimeout(() => setMounted(false), theme.motion.normal);
-      return () => clearTimeout(t);
+      translateY.set(withSpring(0, theme.motion.spring));
+      backdrop.set(withTiming(1, { duration: theme.motion.normal }));
+      return undefined;
     }
-    return undefined;
-  }, [visible, mounted, theme.motion, translateY, backdrop]);
+    backdrop.set(withTiming(0, { duration: theme.motion.fast }));
+    translateY.set(withTiming(OFFSCREEN, { duration: theme.motion.normal }));
+    const t = setTimeout(() => setMounted(false), theme.motion.normal);
+    return () => clearTimeout(t);
+  }, [visible, theme.motion, translateY, backdrop]);
 
   const pan = usePanGesture({
     runOnJS: true,
     activeOffsetY: 8,
     onUpdate: (e) => {
-      translateY.value = Math.max(0, e.translationY);
+      translateY.set(Math.max(0, e.translationY));
     },
     onDeactivate: (e) => {
       if (e.translationY > 120 || e.velocityY > 900) onClose();
-      else translateY.value = withSpring(0, theme.motion.spring);
+      else translateY.set(withSpring(0, theme.motion.spring));
     },
   });
 
-  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
-  const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.value }));
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.get() }] }));
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: backdrop.get() }));
 
   if (!mounted) return null;
   const body = scrollable ? <ScrollView style={styles.scroll}>{children}</ScrollView> : children;
 
   return (
-    <Modal transparent visible animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+    <Modal
+      transparent
+      visible
+      animationType="none"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
       <GestureHandlerRootView style={styles.fill}>
         <Animated.View style={[styles.backdropWrap, backdropStyle]}>
           <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
@@ -96,7 +119,11 @@ const styles = StyleSheet.create((theme, rt) => ({
     justifyContent: { xs: 'flex-end', md: 'center' },
     alignItems: 'center',
   },
-  sheetWrap: { width: '100%', maxWidth: { xs: undefined, md: theme.size.sheetMaxWidth }, maxHeight: '90%' },
+  sheetWrap: {
+    width: '100%',
+    maxWidth: { xs: undefined, md: theme.size.sheetMaxWidth },
+    maxHeight: '90%',
+  },
   sheet: {
     backgroundColor: theme.colors.surfaceRaised,
     borderTopLeftRadius: theme.radius.xl,

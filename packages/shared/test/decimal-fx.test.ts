@@ -45,10 +45,38 @@ describe('decimal helpers', () => {
 });
 
 const rates: FxRate[] = [
-  { base: 'USD', quote: 'INR', rate: 87.5, asOf: '2026-10-01T14:00:00.000Z', date: '2026-10-01', source: 'frankfurter_ecb' },
-  { base: 'USD', quote: 'INR', rate: 88.0, asOf: '2026-10-15T14:00:00.000Z', date: '2026-10-15', source: 'frankfurter_ecb' },
-  { base: 'USD', quote: 'INR', rate: 88.4, asOf: '2026-11-04T10:00:00.000Z', date: '2026-11-04', source: 'openexchangerates' },
-  { base: 'USD', quote: 'EUR', rate: 0.9, asOf: '2026-11-04T10:00:00.000Z', date: '2026-11-04', source: 'openexchangerates' },
+  {
+    base: 'USD',
+    quote: 'INR',
+    rate: 87.5,
+    asOf: '2026-10-01T14:00:00.000Z',
+    date: '2026-10-01',
+    source: 'frankfurter_ecb',
+  },
+  {
+    base: 'USD',
+    quote: 'INR',
+    rate: 88.0,
+    asOf: '2026-10-15T14:00:00.000Z',
+    date: '2026-10-15',
+    source: 'frankfurter_ecb',
+  },
+  {
+    base: 'USD',
+    quote: 'INR',
+    rate: 88.4,
+    asOf: '2026-11-04T10:00:00.000Z',
+    date: '2026-11-04',
+    source: 'openexchangerates',
+  },
+  {
+    base: 'USD',
+    quote: 'EUR',
+    rate: 0.9,
+    asOf: '2026-11-04T10:00:00.000Z',
+    date: '2026-11-04',
+    source: 'openexchangerates',
+  },
 ];
 
 describe('FX conversion', () => {

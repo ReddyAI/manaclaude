@@ -40,7 +40,8 @@ export type DecimalString = string;
 export type Id = string;
 
 /** Colour slot for categories, tags and goals. The active theme maps each slot to a real colour. */
-export type ColorSlot = 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'c6' | 'c7' | 'c8' | 'c9' | 'c10' | 'c11' | 'c12';
+export type ColorSlot =
+  'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'c6' | 'c7' | 'c8' | 'c9' | 'c10' | 'c11' | 'c12';
 
 export const COLOR_SLOTS: readonly ColorSlot[] = [
   'c1',

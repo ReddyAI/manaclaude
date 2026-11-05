@@ -171,7 +171,12 @@ export const FONT = {
   bold: 'Inter_700Bold',
 } as const;
 
-function t(fontFamily: string, fontSize: number, lineHeight: number, letterSpacing = 0): TextStyleToken {
+function t(
+  fontFamily: string,
+  fontSize: number,
+  lineHeight: number,
+  letterSpacing = 0,
+): TextStyleToken {
   return { fontFamily, fontSize, lineHeight, letterSpacing };
 }
 
@@ -350,11 +355,33 @@ const midnight: LookTokens = {
   space: { none: 0, xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 },
   radius: { none: 0, sm: 8, md: 14, lg: 20, xl: 28, pill: 999 },
   size: { ...baseSize, rowHeight: 64, chartHeight: 220 },
-  motion: { fast: 140, normal: 240, slow: 420, spring: { damping: 22, stiffness: 220, mass: 1 }, pressScale: 0.97 },
+  motion: {
+    fast: 140,
+    normal: 240,
+    slow: 420,
+    spring: { damping: 22, stiffness: 220, mass: 1 },
+    pressScale: 0.97,
+  },
   haptics: { scrubTicks: true, impact: 'light' },
   layout: {
-    dark: { card: 'flat', denseTables: false, chartFirst: true, shadowOpacity: 0, shadowRadius: 0, shadowOffsetY: 0, elevation: 0 },
-    light: { card: 'raised', denseTables: false, chartFirst: true, shadowOpacity: 0.06, shadowRadius: 16, shadowOffsetY: 4, elevation: 2 },
+    dark: {
+      card: 'flat',
+      denseTables: false,
+      chartFirst: true,
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffsetY: 0,
+      elevation: 0,
+    },
+    light: {
+      card: 'raised',
+      denseTables: false,
+      chartFirst: true,
+      shadowOpacity: 0.06,
+      shadowRadius: 16,
+      shadowOffsetY: 4,
+      elevation: 2,
+    },
   },
 };
 
@@ -450,11 +477,33 @@ const warm: LookTokens = {
   space: { none: 0, xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, xxxl: 48 },
   radius: { none: 0, sm: 6, md: 10, lg: 16, xl: 22, pill: 999 },
   size: { ...baseSize, rowHeight: 60 },
-  motion: { fast: 120, normal: 220, slow: 360, spring: { damping: 24, stiffness: 240, mass: 1 }, pressScale: 0.98 },
+  motion: {
+    fast: 120,
+    normal: 220,
+    slow: 360,
+    spring: { damping: 24, stiffness: 240, mass: 1 },
+    pressScale: 0.98,
+  },
   haptics: { scrubTicks: true, impact: 'light' },
   layout: {
-    light: { card: 'raised', denseTables: false, chartFirst: false, shadowOpacity: 0.07, shadowRadius: 12, shadowOffsetY: 3, elevation: 2 },
-    dark: { card: 'raised', denseTables: false, chartFirst: false, shadowOpacity: 0.3, shadowRadius: 10, shadowOffsetY: 3, elevation: 3 },
+    light: {
+      card: 'raised',
+      denseTables: false,
+      chartFirst: false,
+      shadowOpacity: 0.07,
+      shadowRadius: 12,
+      shadowOffsetY: 3,
+      elevation: 2,
+    },
+    dark: {
+      card: 'raised',
+      denseTables: false,
+      chartFirst: false,
+      shadowOpacity: 0.3,
+      shadowRadius: 10,
+      shadowOffsetY: 3,
+      elevation: 3,
+    },
   },
 };
 
@@ -573,11 +622,33 @@ const compact: LookTokens = {
     switchHeight: 24,
     dot: 6,
   },
-  motion: { fast: 90, normal: 160, slow: 240, spring: { damping: 28, stiffness: 320, mass: 1 }, pressScale: 0.99 },
+  motion: {
+    fast: 90,
+    normal: 160,
+    slow: 240,
+    spring: { damping: 28, stiffness: 320, mass: 1 },
+    pressScale: 0.99,
+  },
   haptics: { scrubTicks: false, impact: 'light' },
   layout: {
-    light: { card: 'outlined', denseTables: true, chartFirst: false, shadowOpacity: 0, shadowRadius: 0, shadowOffsetY: 0, elevation: 0 },
-    dark: { card: 'outlined', denseTables: true, chartFirst: false, shadowOpacity: 0, shadowRadius: 0, shadowOffsetY: 0, elevation: 0 },
+    light: {
+      card: 'outlined',
+      denseTables: true,
+      chartFirst: false,
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffsetY: 0,
+      elevation: 0,
+    },
+    dark: {
+      card: 'outlined',
+      denseTables: true,
+      chartFirst: false,
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffsetY: 0,
+      elevation: 0,
+    },
   },
 };
 

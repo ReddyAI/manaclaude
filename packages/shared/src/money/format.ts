@@ -85,7 +85,12 @@ export function formatMoney(
     }
   }
 
-  const prefix = negative && sign !== 'never' ? MINUS : !negative && amount !== 0 && sign === 'always' ? '+' : '';
+  const prefix =
+    negative && sign !== 'never'
+      ? MINUS
+      : !negative && amount !== 0 && sign === 'always'
+        ? '+'
+        : '';
   return code ? `${prefix}${body} ${info.code}` : `${prefix}${info.symbol}${body}`;
 }
 

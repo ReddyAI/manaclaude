@@ -44,7 +44,12 @@ export interface MoneyDisplay {
   present(amount: MinorUnits, currency: CurrencyCode, date?: LocalDate): DisplayAmount;
   /** Sum mixed-currency amounts into one currency (report currency by default). */
   total(items: readonly MoneyItem[], into?: CurrencyCode): Money;
-  convert(amount: MinorUnits, from: CurrencyCode, to: CurrencyCode, date?: LocalDate): MinorUnits | null;
+  convert(
+    amount: MinorUnits,
+    from: CurrencyCode,
+    to: CurrencyCode,
+    date?: LocalDate,
+  ): MinorUnits | null;
   /** Latest primary-to-secondary rate, for the chip's long-press. */
   latestRate: ResolvedRate | null;
 }
@@ -58,7 +63,11 @@ export function useMoneyDisplay(): MoneyDisplay {
     const convert = (amount: MinorUnits, from: CurrencyCode, to: CurrencyCode, date?: LocalDate) =>
       convertAmount(amount, from, to, rates, date ? { mode: 'on', date } : { mode: 'latest' });
 
-    const present = (amount: MinorUnits, currency: CurrencyCode, date?: LocalDate): DisplayAmount => {
+    const present = (
+      amount: MinorUnits,
+      currency: CurrencyCode,
+      date?: LocalDate,
+    ): DisplayAmount => {
       if (mode === 'NATIVE') return { main: { amount, currency }, sub: null, unconverted: false };
       if (mode === 'BOTH') {
         const main = convert(amount, currency, primaryCurrency, date);

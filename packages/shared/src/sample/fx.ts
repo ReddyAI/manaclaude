@@ -17,11 +17,39 @@ export function sampleFxRates(today: LocalDate, now: Date): FxRate[] {
     inr = Math.max(85, Math.min(91, inr + (rnd.next() - 0.47) * 0.18));
     eur = Math.max(0.86, Math.min(0.96, eur + (rnd.next() - 0.5) * 0.004));
     const asOf = `${date}T14:00:00.000Z`;
-    out.push({ base: 'USD', quote: 'INR', rate: Math.round(inr * 10_000) / 10_000, asOf, date, source: 'frankfurter_ecb' });
-    out.push({ base: 'USD', quote: 'EUR', rate: Math.round(eur * 100_000) / 100_000, asOf, date, source: 'frankfurter_ecb' });
+    out.push({
+      base: 'USD',
+      quote: 'INR',
+      rate: Math.round(inr * 10_000) / 10_000,
+      asOf,
+      date,
+      source: 'frankfurter_ecb',
+    });
+    out.push({
+      base: 'USD',
+      quote: 'EUR',
+      rate: Math.round(eur * 100_000) / 100_000,
+      asOf,
+      date,
+      source: 'frankfurter_ecb',
+    });
   }
   const asOf = new Date(now.getTime() - 23 * 60_000).toISOString();
-  out.push({ base: 'USD', quote: 'INR', rate: Math.round((inr + 0.06) * 10_000) / 10_000, asOf, date: today, source: 'openexchangerates' });
-  out.push({ base: 'USD', quote: 'EUR', rate: Math.round(eur * 100_000) / 100_000, asOf, date: today, source: 'openexchangerates' });
+  out.push({
+    base: 'USD',
+    quote: 'INR',
+    rate: Math.round((inr + 0.06) * 10_000) / 10_000,
+    asOf,
+    date: today,
+    source: 'openexchangerates',
+  });
+  out.push({
+    base: 'USD',
+    quote: 'EUR',
+    rate: Math.round(eur * 100_000) / 100_000,
+    asOf,
+    date: today,
+    source: 'openexchangerates',
+  });
   return out;
 }

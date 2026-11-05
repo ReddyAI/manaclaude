@@ -44,7 +44,9 @@ function indexRates(rates: readonly FxRate[]): PairIndex {
     byPair.set(key, list);
   }
   for (const list of byPair.values()) {
-    list.sort((a, b) => (a.date === b.date ? b.asOf.localeCompare(a.asOf) : b.date.localeCompare(a.date)));
+    list.sort((a, b) =>
+      a.date === b.date ? b.asOf.localeCompare(a.asOf) : b.date.localeCompare(a.date),
+    );
   }
   const index = { byPair };
   indexCache.set(rates, index);
@@ -117,7 +119,11 @@ export function convertAmount(
 }
 
 /** The rate a linked transfer actually got, for converting between its two currencies. */
-export function transferRate(link: TransferLink, from: CurrencyCode, to: CurrencyCode): number | null {
+export function transferRate(
+  link: TransferLink,
+  from: CurrencyCode,
+  to: CurrencyCode,
+): number | null {
   if (from === link.outCurrency && to === link.inCurrency) return link.impliedRate;
   if (from === link.inCurrency && to === link.outCurrency && link.impliedRate !== 0) {
     return 1 / link.impliedRate;

@@ -9,7 +9,10 @@ export type SplitValidation = { ok: true } | { ok: false; error: string };
  * to the parent amount exactly. Transfers, pending rows, existing parents and
  * children, and excluded rows can't be split.
  */
-export function validateSplit(parent: Transaction, lines: readonly SplitLineInput[]): SplitValidation {
+export function validateSplit(
+  parent: Transaction,
+  lines: readonly SplitLineInput[],
+): SplitValidation {
   if (parent.isSplitParent) return { ok: false, error: 'This transaction is already split.' };
   if (parent.splitParentId) return { ok: false, error: 'A split line cannot be split again.' };
   if (parent.pending) return { ok: false, error: 'Wait until the transaction posts to split it.' };
@@ -48,32 +51,30 @@ export function buildSplitChildren(
 ): { parent: Transaction; children: Transaction[] } {
   const check = validateSplit(parent, lines);
   if (!check.ok) throw new Error(check.error);
-  const children = lines.map(
-    (line, i): Transaction => ({
-      ...parent,
-      id: makeId(i),
-      amount: line.amount,
-      originalAmount:
-        parent.originalCurrency === parent.currency
-          ? line.amount
-          : Math.round((parent.originalAmount * line.amount) / parent.amount),
-      name: line.name ?? parent.name,
-      categoryId: line.categoryId,
-      categorySource: 'user',
-      aiCategoryConfidence: null,
-      kind: line.kind ?? parent.kind,
-      notes: line.notes ?? null,
-      tagIds: line.tagIds ?? parent.tagIds,
-      splitParentId: parent.id,
-      isSplitParent: false,
-      externalId: null,
-      pendingExternalId: null,
-      importFingerprint: null,
-      receiptId: null,
-      transferLinkId: null,
-      createdAt: now,
-      updatedAt: now,
-    }),
-  );
+  const children = lines.map((line, i): Transaction => ({
+    ...parent,
+    id: makeId(i),
+    amount: line.amount,
+    originalAmount:
+      parent.originalCurrency === parent.currency
+        ? line.amount
+        : Math.round((parent.originalAmount * line.amount) / parent.amount),
+    name: line.name ?? parent.name,
+    categoryId: line.categoryId,
+    categorySource: 'user',
+    aiCategoryConfidence: null,
+    kind: line.kind ?? parent.kind,
+    notes: line.notes ?? null,
+    tagIds: line.tagIds ?? parent.tagIds,
+    splitParentId: parent.id,
+    isSplitParent: false,
+    externalId: null,
+    pendingExternalId: null,
+    importFingerprint: null,
+    receiptId: null,
+    transferLinkId: null,
+    createdAt: now,
+    updatedAt: now,
+  }));
   return { parent: { ...parent, isSplitParent: true, updatedAt: now }, children };
 }

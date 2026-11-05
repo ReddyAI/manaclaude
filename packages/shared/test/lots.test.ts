@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { deriveLotsFifo, holdingTerm, lotPerformance, type InvestmentActivity } from '../src';
 
 let n = 0;
-function act(type: InvestmentActivity['type'], date: string, quantity: string | null, amount: number, extra: Partial<InvestmentActivity> = {}): InvestmentActivity {
+function act(
+  type: InvestmentActivity['type'],
+  date: string,
+  quantity: string | null,
+  amount: number,
+  extra: Partial<InvestmentActivity> = {},
+): InvestmentActivity {
   n += 1;
   return {
     id: `a${n}`,
@@ -36,8 +42,18 @@ describe('deriveLotsFifo', () => {
     });
     expect(result.realized).toHaveLength(2);
     const [first, second] = result.realized;
-    expect(first).toMatchObject({ acquiredOn: '2024-01-10', quantity: '10', costBasis: 100_000, term: 'long' });
-    expect(second).toMatchObject({ acquiredOn: '2025-06-01', quantity: '5', costBasis: 75_000, term: 'short' });
+    expect(first).toMatchObject({
+      acquiredOn: '2024-01-10',
+      quantity: '10',
+      costBasis: 100_000,
+      term: 'long',
+    });
+    expect(second).toMatchObject({
+      acquiredOn: '2025-06-01',
+      quantity: '5',
+      costBasis: 75_000,
+      term: 'short',
+    });
     expect((first?.proceeds ?? 0) + (second?.proceeds ?? 0)).toBe(240_000);
     expect(result.lots).toHaveLength(1);
     expect(result.lots[0]).toMatchObject({ quantity: '5', costBasis: 75_000, source: 'derived' });
@@ -92,7 +108,16 @@ describe('holdingTerm and lotPerformance', () => {
 
   it('computes unrealized gain at a price', () => {
     const perf = lotPerformance(
-      { id: 'l', holdingId: 'h', acquiredOn: '2024-01-01', quantity: '10', costBasis: 100_000, currency: 'USD', source: 'derived', externalId: null },
+      {
+        id: 'l',
+        holdingId: 'h',
+        acquiredOn: '2024-01-01',
+        quantity: '10',
+        costBasis: 100_000,
+        currency: 'USD',
+        source: 'derived',
+        externalId: null,
+      },
       '120',
       '2026-01-01',
     );

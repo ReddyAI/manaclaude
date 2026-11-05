@@ -53,7 +53,10 @@ export function Button({
     >
       <View style={styles.button(variant, size, disabled)}>
         {loading ? (
-          <ActivityIndicator size="small" color={variant === 'primary' ? theme.colors.onAccent : theme.colors.accent} />
+          <ActivityIndicator
+            size="small"
+            color={variant === 'primary' ? theme.colors.onAccent : theme.colors.accent}
+          />
         ) : icon ? (
           <Icon name={icon} size={size === 'lg' ? 'md' : 'sm'} tone={tone} />
         ) : null}
@@ -75,11 +78,29 @@ export interface IconButtonProps {
   testID?: string;
 }
 
-export function IconButton({ icon, onPress, accessibilityLabel, variant = 'ghost', size = 'md', tone, testID }: IconButtonProps) {
+export function IconButton({
+  icon,
+  onPress,
+  accessibilityLabel,
+  variant = 'ghost',
+  size = 'md',
+  tone,
+  testID,
+}: IconButtonProps) {
   return (
-    <PressableScale onPress={onPress} pressHaptic="tap" accessibilityLabel={accessibilityLabel} testID={testID} hitSlop={8}>
+    <PressableScale
+      onPress={onPress}
+      pressHaptic="tap"
+      accessibilityLabel={accessibilityLabel}
+      testID={testID}
+      hitSlop={8}
+    >
       <View style={styles.iconButton(variant, size)}>
-        <Icon name={icon} size={size === 'sm' ? 'sm' : 'md'} tone={tone ?? (variant === 'primary' ? 'onAccent' : 'default')} />
+        <Icon
+          name={icon}
+          size={size === 'sm' ? 'sm' : 'md'}
+          tone={tone ?? (variant === 'primary' ? 'onAccent' : 'default')}
+        />
       </View>
     </PressableScale>
   );
@@ -104,7 +125,8 @@ const styles = StyleSheet.create((theme) => ({
           : variant === 'danger'
             ? theme.colors.dangerMuted
             : 'transparent',
-    borderWidth: variant === 'secondary' && theme.layout.card === 'outlined' ? theme.size.borderWidth : 0,
+    borderWidth:
+      variant === 'secondary' && theme.layout.card === 'outlined' ? theme.size.borderWidth : 0,
     borderColor: theme.colors.border,
   }),
   iconButton: (variant: 'ghost' | 'secondary' | 'primary', size: ButtonSize) => {
@@ -116,7 +138,11 @@ const styles = StyleSheet.create((theme) => ({
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor:
-        variant === 'primary' ? theme.colors.accent : variant === 'secondary' ? theme.colors.surfaceSunken : 'transparent',
+        variant === 'primary'
+          ? theme.colors.accent
+          : variant === 'secondary'
+            ? theme.colors.surfaceSunken
+            : 'transparent',
     };
   },
 }));

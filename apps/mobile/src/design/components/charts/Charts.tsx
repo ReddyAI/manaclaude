@@ -71,7 +71,13 @@ export function LineChart({
     const domain = extent(compare ? [values, compare] : [values]);
     const pts = toPoints(values, width, h, domain, total, pad, pad);
     const cmp = compare ? toPoints(compare, width, h, domain, total, pad, pad) : null;
-    return { pts, cmp, line: linePath(pts), fill: areaPath(pts, h), cmpLine: cmp ? linePath(cmp) : '' };
+    return {
+      pts,
+      cmp,
+      line: linePath(pts),
+      fill: areaPath(pts, h),
+      cmpLine: cmp ? linePath(cmp) : '',
+    };
   }, [width, h, values, compare, total, pad]);
 
   const update = (x: number) => {
@@ -103,24 +109,60 @@ export function LineChart({
 
   return (
     <GestureDetector gesture={pan}>
-      <View onLayout={onLayout} style={styles.chart(h)} accessibilityRole="image" accessibilityLabel={accessibilityLabel} testID={testID}>
+      <View
+        onLayout={onLayout}
+        style={styles.chart(h)}
+        accessibilityRole="image"
+        accessibilityLabel={accessibilityLabel}
+        testID={testID}
+      >
         {geometry ? (
           <Svg width={width} height={h}>
             <Defs>
               <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={color} stopOpacity={theme.scheme === 'dark' ? 0.32 : 0.2} />
+                <Stop
+                  offset="0"
+                  stopColor={color}
+                  stopOpacity={theme.scheme === 'dark' ? 0.32 : 0.2}
+                />
                 <Stop offset="1" stopColor={color} stopOpacity={0} />
               </LinearGradient>
             </Defs>
             {geometry.cmp ? (
-              <Path d={geometry.cmpLine} stroke={theme.colors.chartComparison} strokeWidth={2} strokeDasharray="4 5" fill="none" />
+              <Path
+                d={geometry.cmpLine}
+                stroke={theme.colors.chartComparison}
+                strokeWidth={2}
+                strokeDasharray="4 5"
+                fill="none"
+              />
             ) : null}
             {area ? <Path d={geometry.fill} fill={`url(#${gradientId})`} /> : null}
-            <Path d={geometry.line} stroke={color} strokeWidth={2.5} fill="none" strokeLinecap="round" />
+            <Path
+              d={geometry.line}
+              stroke={color}
+              strokeWidth={2.5}
+              fill="none"
+              strokeLinecap="round"
+            />
             {activePoint ? (
               <>
-                <Line x1={activePoint.x} x2={activePoint.x} y1={0} y2={h} stroke={theme.colors.borderStrong} strokeWidth={1} />
-                <Circle cx={activePoint.x} cy={activePoint.y} r={5} fill={color} stroke={theme.colors.surface} strokeWidth={2} />
+                <Line
+                  x1={activePoint.x}
+                  x2={activePoint.x}
+                  y1={0}
+                  y2={h}
+                  stroke={theme.colors.borderStrong}
+                  strokeWidth={1}
+                />
+                <Circle
+                  cx={activePoint.x}
+                  cy={activePoint.y}
+                  r={5}
+                  fill={color}
+                  stroke={theme.colors.surface}
+                  strokeWidth={2}
+                />
               </>
             ) : (
               (() => {
@@ -139,14 +181,31 @@ export function LineChart({
 // Sparkline (no interaction)
 // ---------------------------------------------------------------------------
 
-export function Sparkline({ values, role = 'netWorth', accessibilityLabel }: { values: readonly number[]; role?: ChartRole; accessibilityLabel: string }) {
+export function Sparkline({
+  values,
+  role = 'netWorth',
+  accessibilityLabel,
+}: {
+  values: readonly number[];
+  role?: ChartRole;
+  accessibilityLabel: string;
+}) {
   const { theme } = useUnistyles();
   const color = useRoleColor(role);
   const [width, onLayout] = useWidth();
   const h = theme.size.chartHeightSmall / 2;
-  const d = useMemo(() => (width ? linePath(toPoints(values, width, h, extent([values]), values.length, 2, 2)) : ''), [values, width, h]);
+  const d = useMemo(
+    () =>
+      width ? linePath(toPoints(values, width, h, extent([values]), values.length, 2, 2)) : '',
+    [values, width, h],
+  );
   return (
-    <View onLayout={onLayout} style={styles.chart(h)} accessibilityRole="image" accessibilityLabel={accessibilityLabel}>
+    <View
+      onLayout={onLayout}
+      style={styles.chart(h)}
+      accessibilityRole="image"
+      accessibilityLabel={accessibilityLabel}
+    >
       {width ? (
         <Svg width={width} height={h}>
           <Path d={d} stroke={color} strokeWidth={1.75} fill="none" strokeLinecap="round" />
@@ -177,7 +236,14 @@ export interface BarChartProps {
   accessibilityLabel: string;
 }
 
-export function BarChart({ data, role = 'spending', role2 = 'income', highlightIndex, onSelect, accessibilityLabel }: BarChartProps) {
+export function BarChart({
+  data,
+  role = 'spending',
+  role2 = 'income',
+  highlightIndex,
+  onSelect,
+  accessibilityLabel,
+}: BarChartProps) {
   const { theme } = useUnistyles();
   const c1 = useRoleColor(role);
   const c2 = useRoleColor(role2);
@@ -188,7 +254,10 @@ export function BarChart({ data, role = 'spending', role2 = 'income', highlightI
   const groups = data.length;
   const groupW = groups ? width / groups : 0;
   const paired = data.some((d) => d.value2 !== undefined);
-  const barW = Math.max(3, Math.min(theme.space.xl, (groupW - theme.space.sm) / (paired ? 2 : 1) - theme.space.xxs));
+  const barW = Math.max(
+    3,
+    Math.min(theme.space.xl, (groupW - theme.space.sm) / (paired ? 2 : 1) - theme.space.xxs),
+  );
   return (
     <View accessibilityRole="image" accessibilityLabel={accessibilityLabel}>
       <View onLayout={onLayout} style={styles.chart(h)}>
@@ -198,7 +267,8 @@ export function BarChart({ data, role = 'spending', role2 = 'income', highlightI
               const cx = i * groupW + groupW / 2;
               const dim = highlightIndex !== undefined && highlightIndex !== i;
               const bh1 = Math.max(2, (d.value / max) * (h - theme.space.xs));
-              const bh2 = d.value2 !== undefined ? Math.max(2, (d.value2 / max) * (h - theme.space.xs)) : 0;
+              const bh2 =
+                d.value2 !== undefined ? Math.max(2, (d.value2 / max) * (h - theme.space.xs)) : 0;
               const x1 = paired ? cx - barW - theme.space.xxs / 2 : cx - barW / 2;
               return (
                 <G key={d.label}>
@@ -232,7 +302,14 @@ export function BarChart({ data, role = 'spending', role2 = 'income', highlightI
       </View>
       <View style={styles.barLabels(labelH)}>
         {data.map((d, i) => (
-          <Text key={d.label} variant="micro" tone={highlightIndex === i ? 'default' : 'faint'} align="center" style={styles.barLabel} numberOfLines={1}>
+          <Text
+            key={d.label}
+            variant="micro"
+            tone={highlightIndex === i ? 'default' : 'faint'}
+            align="center"
+            style={styles.barLabel}
+            numberOfLines={1}
+          >
             {d.label}
           </Text>
         ))}
@@ -269,19 +346,41 @@ export function DonutChart({
   const r = dim / 2 - stroke / 2;
   const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0) || 1;
   const gap = segments.length > 1 ? 0.025 : 0;
+  const arcs: { key: string; color: string; d: string }[] = [];
   let angle = 0;
+  for (const s of segments) {
+    const sweep = (Math.max(0, s.value) / total) * Math.PI * 2;
+    const start = angle + gap / 2;
+    const end = angle + sweep - gap / 2;
+    angle += sweep;
+    if (end > start)
+      arcs.push({ key: s.key, color: s.color, d: arcPath(dim / 2, dim / 2, r, start, end) });
+  }
   return (
-    <View style={styles.donut(dim)} accessibilityRole="image" accessibilityLabel={accessibilityLabel}>
+    <View
+      style={styles.donut(dim)}
+      accessibilityRole="image"
+      accessibilityLabel={accessibilityLabel}
+    >
       <Svg width={dim} height={dim}>
-        <Circle cx={dim / 2} cy={dim / 2} r={r} stroke={theme.colors.surfaceSunken} strokeWidth={stroke} fill="none" />
-        {segments.map((s) => {
-          const sweep = (Math.max(0, s.value) / total) * Math.PI * 2;
-          const start = angle + gap / 2;
-          const end = angle + sweep - gap / 2;
-          angle += sweep;
-          if (end <= start) return null;
-          return <Path key={s.key} d={arcPath(dim / 2, dim / 2, r, start, end)} stroke={s.color} strokeWidth={stroke} strokeLinecap="butt" fill="none" />;
-        })}
+        <Circle
+          cx={dim / 2}
+          cy={dim / 2}
+          r={r}
+          stroke={theme.colors.surfaceSunken}
+          strokeWidth={stroke}
+          fill="none"
+        />
+        {arcs.map((a) => (
+          <Path
+            key={a.key}
+            d={a.d}
+            stroke={a.color}
+            strokeWidth={stroke}
+            strokeLinecap="butt"
+            fill="none"
+          />
+        ))}
       </Svg>
       {center ? <View style={styles.donutCenter}>{center}</View> : null}
     </View>
@@ -292,6 +391,16 @@ const styles = StyleSheet.create((theme) => ({
   chart: (height: number) => ({ height, width: '100%' }),
   barLabels: (height: number) => ({ flexDirection: 'row', height, alignItems: 'flex-end' }),
   barLabel: { flex: 1 },
-  donut: (dim: number) => ({ width: dim, height: dim, alignItems: 'center', justifyContent: 'center' }),
-  donutCenter: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: theme.space.xxs },
+  donut: (dim: number) => ({
+    width: dim,
+    height: dim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
+  donutCenter: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.space.xxs,
+  },
 }));

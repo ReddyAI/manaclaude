@@ -9,8 +9,17 @@ import { Text } from './Text';
 type AvatarSize = 'sm' | 'md' | 'lg';
 
 /** Initials in a tinted circle. Used for institutions; never a real logo. */
-export function Avatar({ label, color = 'c1', size = 'md' }: { label: string; color?: ColorSlot; size?: AvatarSize }) {
+export function Avatar({
+  label,
+  color = 'c1',
+  size = 'md',
+}: {
+  label: string;
+  color?: ColorSlot;
+  size?: AvatarSize;
+}) {
   const initials = label
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -43,12 +52,24 @@ export function IconBadge({
   );
 }
 
-export function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+export function SectionHeader({
+  title,
+  action,
+  onAction,
+  trailing,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+  /** Right-aligned content such as a group total. */
+  trailing?: ReactNode;
+}) {
   return (
     <View style={styles.section}>
       <Text variant="label" tone="muted" uppercase style={styles.sectionTitle}>
         {title}
       </Text>
+      {trailing}
       {action && onAction ? (
         <Text variant="label" tone="accent" onPress={onAction} accessibilityRole="button">
           {action}
@@ -82,7 +103,9 @@ export function EmptyState({
           {message}
         </Text>
       ) : null}
-      {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} variant="secondary" size="sm" /> : null}
+      {actionLabel && onAction ? (
+        <Button label={actionLabel} onPress={onAction} variant="secondary" size="sm" />
+      ) : null}
     </View>
   );
 }
@@ -114,8 +137,7 @@ const styles = StyleSheet.create((theme) => ({
       borderRadius: theme.look === 'compact' ? theme.radius.md : theme.radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      // 8-digit hex: the category colour at ~16% opacity.
-      backgroundColor: `${theme.colors.category[color]}29`,
+      backgroundColor: theme.colors.categoryMuted[color],
     };
   },
   avatarText: (color: ColorSlot) => ({ color: theme.colors.category[color] }),
@@ -141,7 +163,11 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.space.md,
     borderRadius: theme.radius.md,
     backgroundColor:
-      tone === 'pending' ? theme.colors.pendingMuted : tone === 'danger' ? theme.colors.dangerMuted : theme.colors.accentMuted,
+      tone === 'pending'
+        ? theme.colors.pendingMuted
+        : tone === 'danger'
+          ? theme.colors.dangerMuted
+          : theme.colors.accentMuted,
   }),
   bannerBody: { flex: 1, gap: theme.space.xxs },
 }));
