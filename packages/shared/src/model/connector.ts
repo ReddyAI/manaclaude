@@ -9,6 +9,7 @@ import type {
 } from './common';
 import type { AccountSubtype, AccountType } from './account';
 import type { InvestmentActivityType, SecurityType, ExchangeCode } from './investment';
+import type { TransactionKind } from './transaction';
 
 export type ConnectorKind =
   | 'bank'
@@ -122,6 +123,12 @@ export interface ProviderTransaction {
   pendingExternalId: string | null;
   /** Provider's category label, used as a hint only. */
   categoryHint: string | null;
+  /**
+   * The provider says this moves money between the user's own accounts (Up's
+   * transferAccount, round-ups). Sets the kind of a NEW row only; the transfer
+   * matcher and the user decide afterwards.
+   */
+  kindHint?: TransactionKind | null;
 }
 
 export interface ProviderTaxLot {

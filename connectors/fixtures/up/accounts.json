@@ -1,0 +1,38 @@
+{
+  "data": [
+    {
+      "type": "accounts",
+      "id": "up-acc-spend",
+      "attributes": {
+        "displayName": "Spending",
+        "accountType": "TRANSACTIONAL",
+        "ownershipType": "INDIVIDUAL",
+        "balance": { "currencyCode": "AUD", "value": "2310.45", "valueInBaseUnits": 231045 },
+        "createdAt": "2024-02-01T09:00:00+11:00"
+      }
+    },
+    {
+      "type": "accounts",
+      "id": "up-acc-saver",
+      "attributes": {
+        "displayName": "Holiday Saver",
+        "accountType": "SAVER",
+        "ownershipType": "INDIVIDUAL",
+        "balance": { "currencyCode": "AUD", "value": "1200.00", "valueInBaseUnits": 120000 },
+        "createdAt": "2024-02-01T09:00:00+11:00"
+      }
+    },
+    {
+      "type": "accounts",
+      "id": "up-acc-loan",
+      "attributes": {
+        "displayName": "Home Loan",
+        "accountType": "HOME_LOAN",
+        "ownershipType": "INDIVIDUAL",
+        "balance": { "currencyCode": "AUD", "value": "-250000.00", "valueInBaseUnits": -25000000 },
+        "createdAt": "2024-02-01T09:00:00+11:00"
+      }
+    }
+  ],
+  "links": { "prev": null, "next": null }
+}

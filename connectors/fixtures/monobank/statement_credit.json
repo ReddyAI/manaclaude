@@ -1,0 +1,12 @@
+[
+  {
+    "id": "m-c1",
+    "time": 1793620800,
+    "description": "Pharmacy",
+    "hold": false,
+    "amount": -30000,
+    "operationAmount": -30000,
+    "currencyCode": 980,
+    "balance": 70000
+  }
+]

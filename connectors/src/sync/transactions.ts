@@ -121,7 +121,7 @@ function buildNew(
     categoryId: null,
     categorySource: null,
     aiCategoryConfidence: null,
-    kind: 'regular',
+    kind: p.kindHint ?? 'regular',
     pending: p.pending,
     notes: null,
     tagIds: [],

@@ -44,7 +44,10 @@ export function fakeFetch(routes: Record<string, FakeHandler>): FetchLike & { ca
     const call: FakeCall = { method, url: u, headers: init?.headers ?? {}, body: init?.body };
     calls.push(call);
     const key = `${method} ${u.host}${u.pathname}`;
-    const handler = routes[key];
+    // Exact route first, then a "...*" prefix route (for ids and time windows in the path).
+    const handler =
+      routes[key] ??
+      Object.entries(routes).find(([k]) => k.endsWith('*') && key.startsWith(k.slice(0, -1)))?.[1];
     if (!handler) throw new Error(`fakeFetch: no route for ${key}${u.search}`);
     const n = (counts.get(key) ?? 0) + 1;
     counts.set(key, n);
