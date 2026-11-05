@@ -9,6 +9,7 @@ src/sync/              pure planners: transactions, accounts, holdings, lots, ac
 src/slots.ts           free-slot tracking and "which connector for a new login"
 src/health.ts          health badge text, sync success/failure, the repair plan
 src/overview.ts        describeConnectors(): one call for the Accounts screen
+src/link/              provider calls for linking a login (session E2): Sophtron sign-in and MFA, SimpleFIN claim, SnapTrade portal, Plaid Link, Kite login URL
 src/market/            market-data types and the Yahoo → Twelve Data → Tiingo → EODHD fallback
 src/http.ts, kit.ts    the small HTTP client and helpers every adapter shares
 fixtures/<id>/         saved sample responses (invented, shaped like each provider's documented replies)
@@ -70,7 +71,9 @@ if (outcome.result?.updatedSecrets) {
 
 - `runConnectionSync` never throws. An expired login becomes status `needs_repair` (and the next scheduled run skips it, so a dead token is not called again); anything else becomes `error` with a short message that never contains a provider payload.
 - The planners return plain `inserts`, `updates` (only the changed fields), and `removals`. Removals say whether the row has user edits (`hadUserEdits`), so the backend can mark it excluded instead of deleting the user's work.
-- `ctx.fetch` for Teller must be the fetch of the Worker's mTLS binding that holds the Teller client certificate. Trade Republic also needs `ctx.connectSocket`.
+- Trade Republic needs `ctx.connectSocket`.
+- Teller shut down its API in July 2026. It is `unavailable` in the registry and out of every link order; its adapter stays in `src/adapters/teller/` with its tests but is not registered in `ADAPTERS`.
+- Link order (`LINK_ORDER`, November 2026): banks and cards Sophtron, SimpleFIN, Plaid; brokerages SnapTrade, Zerodha Kite, Sophtron; crypto the exchange's own API (Coinbase, WazirX first). SimpleFIN is paid but planned, so `chooseConnector` does not skip it as paid.
 
 ## Rules every adapter follows
 
@@ -81,7 +84,7 @@ if (outcome.result?.updatedSecrets) {
 - **User edits.** Fields in `userEditedFields` are never overwritten. Category, notes, tags, kind and excluded are never touched by a sync at all (the provider's category label comes back as a hint in `categoryHints`, not as a category).
 - **Lots.** If the broker sends lots (Plaid, IBKR Flex, Indexa), they are stored as `source: 'broker'`. Otherwise `planInvestmentSync` derives them with `deriveLotsFifo` from the buy and sell activities, then adds one "opening balance" lot for any units the history does not explain, at the broker's own cost basis, and keeps that lot's date from moving on later syncs.
 - **Cursors** are small JSON strings in `Connection.syncCursor` (most hold `{"since":"YYYY-MM-DD"}`; Plaid also holds its sync cursor). Each sync re-reads a few days before the cursor, because pending rows change.
-- **Repair, never delete.** An auth failure throws `ConnectorRepairNeededError`. Teller and Plaid Trial count every login for life, so `planRepair()` keeps the connection, its accounts and its cursor and never uses a new slot. `deletionImpact(id)` tells the app what a delete would cost.
+- **Repair, never delete.** An auth failure throws `ConnectorRepairNeededError`. Plaid Trial counts every login for life, so `planRepair()` keeps the connection, its accounts and its cursor and never uses a new slot. `deletionImpact(id)` tells the app what a delete would cost.
 
 ## Secrets each adapter reads
 
@@ -89,8 +92,8 @@ if (outcome.result?.updatedSecrets) {
 
 | Connector      | Worker secrets                                                    | Per login                                                                                                                   | Follows (Sure, `app/models/`)                                                                                                 |
 | -------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| teller         |                                                                   | `TELLER_ACCESS_TOKEN`                                                                                                       | not in Sure; Teller's docs                                                                                                    |
-| sophtron       | `SOPHTRON_USER_ID`, `SOPHTRON_ACCESS_KEY`                         | `SOPHTRON_USER_INSTITUTION_ID`, [`SOPHTRON_CARD_BALANCE_SIGN`]                                                              | `provider/sophtron.rb`, `sophtron_item/importer.rb`, `sophtron_account/processor.rb`, `sophtron_entry/processor.rb`           |
+| teller         | (unavailable: shut down July 2026; adapter not registered)        | `TELLER_ACCESS_TOKEN`                                                                                                       | not in Sure; Teller's docs                                                                                                    |
+| sophtron       | `SOPHTRON_USER_ID`, `SOPHTRON_ACCESS_KEY`                         | `SOPHTRON_USER_INSTITUTION_ID`, [`SOPHTRON_CARD_BALANCE_SIGN`, `SOPHTRON_LIABILITY_SIGNS`]                                  | `provider/sophtron.rb`, `sophtron_item/importer.rb`, `sophtron_account/processor.rb`, `sophtron_entry/processor.rb`           |
 | plaid          | `PLAID_CLIENT_ID`, `PLAID_SECRET`, [`PLAID_ENV`]                  | `PLAID_ACCESS_TOKEN`                                                                                                        | `provider/plaid.rb`, `plaid_item/importer.rb`, `plaid_account/*` (processor, type_mappable, investments, liabilities)         |
 | snaptrade      | `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY`                   | `SNAPTRADE_USER_ID`, `SNAPTRADE_USER_SECRET`, `SNAPTRADE_AUTHORIZATION_ID`                                                  | `provider/snaptrade.rb`, `snaptrade_account/{holdings,activities}_processor.rb`                                               |
 | zerodha_kite   | `KITE_API_KEY`, `KITE_API_SECRET`                                 | `KITE_ACCESS_TOKEN` (new every morning)                                                                                     | not in Sure; Kite Connect v3 docs                                                                                             |
@@ -130,8 +133,7 @@ Not adapters on purpose: manual vehicle values (you type them), Open Exchange Ra
 
 Every adapter is tested against invented responses shaped from each provider's documented replies and from what Sure's code reads. The saved responses are not real ones, so these are the places a real key may need a small fix:
 
-- **Teller**: that card purchases come back negative (the code and fixtures assume Teller signs money out as negative for every account type), the `enrollment.disconnected` error codes, and the mTLS fetch binding.
-- **Sophtron**: the exact field names of the accounts and transaction replies (the adapter accepts the several spellings Sure accepts), and which banks report card balances the other way (`SOPHTRON_CARD_BALANCE_SIGN` flips it). Holdings are not read.
+- **Sophtron**: the exact field names of the accounts and transaction replies (the adapter accepts the several spellings Sure accepts). Card and loan signs differ by bank (Sure issues 3252 and 4350: Sure negates every card and loan amount, which turns purchases into income at banks that report their own ledger). The adapter decides per account with `liabilitySignView()`: `SOPHTRON_LIABILITY_SIGNS` if set, then Debit/Credit types, then a payment row's sign, then which sign most rows have; the answer is kept in the cursor, and with no rows at all the balance is taken as owed. `SOPHTRON_CARD_BALANCE_SIGN` still overrides a card balance. First syncs ask for two years. Holdings are not read.
 - **Plaid**: the `tax_lots` shape on holdings. Plaid's public docs describe holdings, securities and investment transactions; the adapter reads `tax_lots` tolerantly when the institution sends them and otherwise lets the shared sync derive lots.
 - **SnapTrade**: Sure uses SnapTrade's OAuth beta; this adapter uses the documented key-and-signature API that Personal keys get (clientId, timestamp, HMAC signature). Check at sign-up which one your key supports. Stock splits arrive without a ratio, so the position falls back on the opening-balance lot.
 - **Zerodha Kite**: nothing can be proven without a daily login. Kite gives no purchase dates, so each position is one opening lot at Zerodha's average price, dated the first day it was seen.

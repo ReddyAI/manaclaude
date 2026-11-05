@@ -51,7 +51,20 @@ export function ImportScreen() {
   const [result, setResult] = useState<ImportCommitResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const accounts = data.accounts.filter((a) => !a.hidden && a.type !== 'cash');
+  // Accounts that get statements: banks, cards, loans and brokerages (not cash, crypto, property or vehicles).
+  const accounts = data.accounts.filter(
+    (a) =>
+      !a.hidden &&
+      [
+        'checking',
+        'savings',
+        'credit_card',
+        'loan',
+        'mortgage',
+        'brokerage',
+        'retirement',
+      ].includes(a.type),
+  );
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
