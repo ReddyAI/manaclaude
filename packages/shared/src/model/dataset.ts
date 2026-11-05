@@ -5,6 +5,7 @@ import type { Connection } from './connector';
 import type { FxRate } from './fx';
 import type { Holding, InvestmentActivity, PricePoint, Security, TaxLot } from './investment';
 import type { Receipt } from './receipt';
+import type { Recap } from './recap';
 import type { RecurringItem } from './recurring';
 import type { Rule } from './rule';
 import type { Settings } from './settings';
@@ -38,4 +39,6 @@ export interface FinanceDataset {
   /** Free slots used per connector id (lifetime caps keep counting after a delete). */
   connectorSlotsUsed: Record<string, number>;
   settings: Settings;
+  /** Weekly recaps and Month in Review written by the backend's recap job. Optional until it exists. */
+  recaps?: Recap[];
 }

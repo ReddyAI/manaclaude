@@ -16,3 +16,8 @@ export * from './policy/treatment';
 export * from './policy/summary';
 export * from './policy/split';
 export * from './investments/lots';
+export * from './investments/gains';
+export * from './planning/budgets';
+export * from './planning/fire';
+export * from './planning/recap';
+export * from './planning/recurring';
