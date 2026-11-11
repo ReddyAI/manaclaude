@@ -44,6 +44,7 @@ const env: Env = {
   PLAID_ENV: 'sandbox',
 };
 const db = env.DB;
+const NOW = new Date('2026-11-05T12:00:00.000Z');
 
 type Reply = { status?: number; json?: unknown; text?: string };
 type Handler = Reply | ((url: URL, body: string) => Reply);
@@ -106,8 +107,8 @@ afterEach(() => {
   for (const s of spies) s.mockRestore();
 });
 
-function api(fetch?: typeof globalThis.fetch, e: Env = env) {
-  const c = client({ fetch }, e);
+function api(fetch?: typeof globalThis.fetch, e: Env = env, now: () => Date = () => NOW) {
+  const c = client({ fetch, now }, e);
   return {
     async call<T = Record<string, unknown>>(method: string, path: string, body?: unknown) {
       const res = await c.api<T>(method, path, body);
@@ -519,6 +520,25 @@ describe('Zerodha Kite', () => {
     expect(await slots()).toEqual({});
   });
 
+  it('expires a login using the injected clock, including across midnight', async () => {
+    let now = new Date('2030-12-31T23:55:00.000Z');
+    const fetch = fakeFetch(kiteRoutes());
+    const a = api(fetch, env, () => now);
+    const start = await a.call<{ url: string }>('POST', '/v1/link/zerodha_kite/start');
+    expect(start.status).toBe(200);
+    const state = new URLSearchParams(
+      new URL(start.body.url).searchParams.get('redirect_params') ?? '',
+    ).get('state')!;
+    expect(Number(state.split('.')[1]) * 1000).toBe(Date.parse('2031-01-01T00:05:00.000Z'));
+    now = new Date('2031-01-01T00:05:01.000Z');
+    const back = await a.raw(
+      `/v1/link/zerodha_kite/callback?request_token=expired&status=success&state=${state}`,
+    );
+    expect(back.status).toBe(400);
+    expect(fetch.calls).toHaveLength(0);
+    expect(await selectAll(db, connectionsTable)).toHaveLength(0);
+  });
+
   it('refuses a forged, tampered or expired state and drops foreign return addresses', async () => {
     const fetch = fakeFetch(kiteRoutes());
     const a = api(fetch);
@@ -538,7 +558,7 @@ describe('Zerodha Kite', () => {
       linkId!,
       new Date(Number(exp) * 1000),
     );
-    const expired = await signState(env, linkId!, new Date(Date.now() - 1000));
+    const expired = await signState(env, linkId!, new Date(NOW.getTime() - 1000));
     for (const bad of [forged, `${linkId}.${Number(exp) + 600}.${sig}`, expired, 'garbage']) {
       const res = await a.raw(
         `/v1/link/zerodha_kite/callback?request_token=t&status=success&state=${encodeURIComponent(bad)}`,

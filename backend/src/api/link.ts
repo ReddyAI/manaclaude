@@ -113,6 +113,9 @@ async function parse<T extends z.ZodTypeAny>(c: C, schema: T): Promise<z.infer<T
 }
 
 const fetchOf = (c: C) => c.get('deps').fetch;
+const nowOf = (c: C) => c.get('deps').now?.() ?? new Date();
+const contextOf = (c: C, connectorId: string) =>
+  linkContext(c.env, connectorId, fetchOf(c), {}, c.get('deps').now);
 
 function publicUrl(env: Env): string {
   const base = env.PUBLIC_URL?.replace(/\/$/, '');
@@ -160,30 +163,31 @@ async function sophtronStatus(c: C, session: LinkSession): Promise<SophtronLinkS
     return { linkId: session.id, status: 'failed', message: 'This attempt ended. Start again.' };
   const secret = await sessionSecret(env, session.id);
   if (!secret.jobId) return { linkId: session.id, status: 'failed', message: 'Start again.' };
-  const ctx = linkContext(env, 'sophtron', fetchOf(c));
+  const ctx = contextOf(c, 'sophtron');
   const job = await getSophtronJob(ctx, secret.jobId);
   if (job.state === 'pending') return { linkId: session.id, status: 'pending' };
   if (job.state === 'mfa') return { linkId: session.id, status: 'mfa', challenge: job.challenge };
   if (job.state === 'failed') {
-    await endSession(env, session.id, 'failed');
+    await endSession(env, session.id, 'failed', nowOf(c));
     return { linkId: session.id, status: 'failed', message: job.reason };
   }
   // Success: only one request may finish the attempt.
-  if (!(await moveSession(env, session.id, ['pending'], 'done'))) {
+  if (!(await moveSession(env, session.id, ['pending'], 'done', nowOf(c)))) {
     return { linkId: session.id, status: 'done' };
   }
   let done: { connectionId: string; repaired: boolean };
   if (secret.userInstitutionId) {
     done = await finishLink(env, {
+      now: nowOf(c),
       connectorId: 'sophtron',
       institutionName: session.institutionName ?? 'Bank',
       credentials: { SOPHTRON_USER_INSTITUTION_ID: secret.userInstitutionId },
       connectionId: session.connectionId,
     });
   } else {
-    done = await markRepaired(env, session.connectionId ?? '', 'sophtron');
+    done = await markRepaired(env, session.connectionId ?? '', 'sophtron', nowOf(c));
   }
-  await endSession(env, session.id, 'done');
+  await endSession(env, session.id, 'done', nowOf(c));
   return {
     linkId: session.id,
     status: 'done',
@@ -213,10 +217,7 @@ async function snaptradeUser(c: C): Promise<SnaptradeUser> {
     return { userId: saved.SNAPTRADE_USER_ID, userSecret: saved.SNAPTRADE_USER_SECRET };
   }
   // A random id: SnapTrade only needs it to be unique for this app.
-  const user = await registerSnaptradeUser(
-    linkContext(c.env, 'snaptrade', fetchOf(c)),
-    newId('billionaire'),
-  );
+  const user = await registerSnaptradeUser(contextOf(c, 'snaptrade'), newId('billionaire'));
   await saveCredentials(
     c.env,
     SNAPTRADE_USER_KEY,
@@ -250,10 +251,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
   app.post('/v1/link/sophtron/institutions', async (c) => {
     requireConfigured(c.env, 'sophtron');
     const b = await parse(c, z.object({ query: z.string().trim().min(2).max(100) }));
-    const institutions = await searchSophtronInstitutions(
-      linkContext(c.env, 'sophtron', fetchOf(c)),
-      b.query,
-    );
+    const institutions = await searchSophtronInstitutions(contextOf(c, 'sophtron'), b.query);
     return c.json({ institutions });
   });
 
@@ -271,7 +269,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
         ...optionalConnection,
       }),
     );
-    const ctx = linkContext(c.env, 'sophtron', fetchOf(c));
+    const ctx = contextOf(c, 'sophtron');
     let secret: Record<string, string>;
     let institutionName = b.institutionName ?? null;
     if (b.refresh) {
@@ -283,7 +281,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
         throw conflict('This connection has no saved Sophtron login. Sign in again instead.');
       const job = await startSophtronRefresh(ctx, creds.SOPHTRON_USER_INSTITUTION_ID);
       if (!job) {
-        const done = await markRepaired(c.env, conn.id, 'sophtron');
+        const done = await markRepaired(c.env, conn.id, 'sophtron', nowOf(c));
         return c.json({
           linkId: '',
           status: 'done',
@@ -311,6 +309,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
       secret = { jobId: login.jobId, userInstitutionId: login.userInstitutionId };
     }
     const session = await createSession(c.env, {
+      now: nowOf(c),
       connectorId: 'sophtron',
       connectionId: b.connectionId ?? null,
       institutionName,
@@ -322,20 +321,20 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
 
   app.get('/v1/link/sophtron/:linkId', async (c) => {
     requireConfigured(c.env, 'sophtron');
-    const session = await getSession(c.env, c.req.param('linkId'), 'sophtron');
+    const session = await getSession(c.env, c.req.param('linkId'), 'sophtron', nowOf(c));
     if (!session) throw notFound('This sign-in has expired. Start again.');
     return c.json(await sophtronStatus(c, session));
   });
 
   app.post('/v1/link/sophtron/:linkId/answer', async (c) => {
     requireConfigured(c.env, 'sophtron');
-    const session = await getSession(c.env, c.req.param('linkId'), 'sophtron');
+    const session = await getSession(c.env, c.req.param('linkId'), 'sophtron', nowOf(c));
     if (!session || session.status !== 'pending')
       throw notFound('This sign-in has expired. Start again.');
     const answer = await parse(c, answerSchema);
     const secret = await sessionSecret(c.env, session.id);
     if (!secret.jobId) throw notFound('This sign-in has expired. Start again.');
-    await answerSophtronJob(linkContext(c.env, 'sophtron', fetchOf(c)), secret.jobId, answer);
+    await answerSophtronJob(contextOf(c, 'sophtron'), secret.jobId, answer);
     return c.json({ linkId: session.id, status: 'pending' } satisfies SophtronLinkStatus);
   });
 
@@ -348,11 +347,9 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     );
     if (b.connectionId) await loadConnectionFor(c.env.DB, b.connectionId, 'simplefin');
     else await assertCanLink(c.env.DB, 'simplefin');
-    const accessUrl = await claimSimplefinSetupToken(
-      linkContext(c.env, 'simplefin', fetchOf(c)),
-      b.setupToken,
-    );
+    const accessUrl = await claimSimplefinSetupToken(contextOf(c, 'simplefin'), b.setupToken);
     const done = await finishLink(c.env, {
+      now: nowOf(c),
       connectorId: 'simplefin',
       institutionName: 'SimpleFIN',
       credentials: { SIMPLEFIN_ACCESS_URL: accessUrl },
@@ -380,6 +377,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     }
     const user = await snaptradeUser(c);
     const session = await createSession(c.env, {
+      now: nowOf(c),
       connectorId: 'snaptrade',
       connectionId: b.connectionId ?? null,
       returnUrl: safeReturnUrl(c.env, b.returnUrl),
@@ -387,7 +385,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     });
     const state = await signState(c.env, session.id, new Date(session.expiresAt));
     const callback = withParams(`${publicUrl(c.env)}/v1/link/snaptrade/callback`, { state });
-    const url = await snaptradePortalUrl(linkContext(c.env, 'snaptrade', fetchOf(c)), user, {
+    const url = await snaptradePortalUrl(contextOf(c, 'snaptrade'), user, {
       customRedirect: callback,
       reconnect,
     });
@@ -395,12 +393,12 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
   });
 
   app.get('/v1/link/snaptrade/callback', async (c) => {
-    const linkId = await verifyState(c.env, c.req.query('state'), new Date());
-    const session = linkId ? await getSession(c.env, linkId, 'snaptrade') : null;
+    const linkId = await verifyState(c.env, c.req.query('state'), nowOf(c));
+    const session = linkId ? await getSession(c.env, linkId, 'snaptrade', nowOf(c)) : null;
     if (!session) {
       return page(c, 400, 'This link has expired', 'Go back to Billionaire and start again.');
     }
-    await moveSession(c.env, session.id, ['pending'], 'returned');
+    await moveSession(c.env, session.id, ['pending'], 'returned', nowOf(c));
     return backToApp(
       c,
       session,
@@ -413,17 +411,14 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
 
   app.post('/v1/link/snaptrade/:linkId/complete', async (c) => {
     requireConfigured(c.env, 'snaptrade');
-    const session = await getSession(c.env, c.req.param('linkId'), 'snaptrade');
+    const session = await getSession(c.env, c.req.param('linkId'), 'snaptrade', nowOf(c));
     if (!session || session.status === 'done' || session.status === 'failed')
       throw notFound('This link has expired. Start again.');
     const user = await snaptradeUser(c);
-    const auths = await listSnaptradeAuthorizations(
-      linkContext(c.env, 'snaptrade', fetchOf(c)),
-      user,
-    );
+    const auths = await listSnaptradeAuthorizations(contextOf(c, 'snaptrade'), user);
     if (session.connectionId) {
-      const done = await markRepaired(c.env, session.connectionId, 'snaptrade');
-      await endSession(c.env, session.id, 'done');
+      const done = await markRepaired(c.env, session.connectionId, 'snaptrade', nowOf(c));
+      await endSession(c.env, session.id, 'done', nowOf(c));
       return c.json({
         connectionIds: [done.connectionId],
         repaired: true,
@@ -438,11 +433,12 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
       );
     }
     await assertCanLink(c.env.DB, 'snaptrade', fresh.length);
-    if (!(await moveSession(c.env, session.id, ['pending', 'returned'], 'done')))
+    if (!(await moveSession(c.env, session.id, ['pending', 'returned'], 'done', nowOf(c))))
       throw conflict('This link was already finished.');
     const ids: string[] = [];
     for (const a of fresh) {
       const done = await finishLink(c.env, {
+        now: nowOf(c),
         connectorId: 'snaptrade',
         institutionName: a.name,
         credentials: {
@@ -453,7 +449,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
       });
       ids.push(done.connectionId);
     }
-    await endSession(c.env, session.id, 'done');
+    await endSession(c.env, session.id, 'done', nowOf(c));
     return c.json({ connectionIds: ids, repaired: false } satisfies LinkDoneResponse, 201);
   });
 
@@ -473,6 +469,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
       if (!connectionId) await assertCanLink(c.env.DB, 'zerodha_kite');
     }
     const session = await createSession(c.env, {
+      now: nowOf(c),
       connectorId: 'zerodha_kite',
       connectionId,
       institutionName: 'Zerodha',
@@ -480,7 +477,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
       minutes: KITE_MINUTES,
     });
     const state = await signState(c.env, session.id, new Date(session.expiresAt));
-    const apiKey = linkContext(c.env, 'zerodha_kite', fetchOf(c)).secrets.KITE_API_KEY ?? '';
+    const apiKey = contextOf(c, 'zerodha_kite').secrets.KITE_API_KEY ?? '';
     return c.json({
       linkId: session.id,
       url: kiteLoginUrl(apiKey, state),
@@ -488,7 +485,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
   });
 
   app.get('/v1/link/zerodha_kite/callback', async (c) => {
-    const now = new Date();
+    const now = nowOf(c);
     const linkId = await verifyState(c.env, c.req.query('state'), now);
     const session = linkId ? await getSession(c.env, linkId, 'zerodha_kite', now) : null;
     if (!session) {
@@ -518,10 +515,11 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     try {
       requireConfigured(c.env, 'zerodha_kite');
       const accessToken = await exchangeKiteRequestToken(
-        linkContext(c.env, 'zerodha_kite', fetchOf(c)),
+        contextOf(c, 'zerodha_kite'),
         requestToken,
       );
       await finishLink(c.env, {
+        now: nowOf(c),
         connectorId: 'zerodha_kite',
         institutionName: 'Zerodha',
         credentials: { KITE_ACCESS_TOKEN: accessToken },
@@ -568,7 +566,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     } else {
       await assertCanLink(c.env.DB, 'plaid');
     }
-    const token = await createPlaidLinkToken(linkContext(c.env, 'plaid', fetchOf(c)), {
+    const token = await createPlaidLinkToken(contextOf(c, 'plaid'), {
       clientUserId: OWNER_CLIENT_ID,
       platform: b.platform,
       androidPackageName: ANDROID_PACKAGE,
@@ -590,18 +588,16 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     );
     if (!b.publicToken) {
       if (!b.connectionId) throw badRequest('Send the public token from Plaid Link.');
-      const done = await markRepaired(c.env, b.connectionId, 'plaid');
+      const done = await markRepaired(c.env, b.connectionId, 'plaid', nowOf(c));
       return c.json({
         connectionIds: [done.connectionId],
         repaired: true,
       } satisfies LinkDoneResponse);
     }
     if (!b.connectionId) await assertCanLink(c.env.DB, 'plaid');
-    const exchanged = await exchangePlaidPublicToken(
-      linkContext(c.env, 'plaid', fetchOf(c)),
-      b.publicToken,
-    );
+    const exchanged = await exchangePlaidPublicToken(contextOf(c, 'plaid'), b.publicToken);
     const done = await finishLink(c.env, {
+      now: nowOf(c),
       connectorId: 'plaid',
       institutionName: b.institutionName ?? 'Bank (Plaid)',
       credentials: { PLAID_ACCESS_TOKEN: exchanged.accessToken, PLAID_ITEM_ID: exchanged.itemId },
@@ -629,8 +625,9 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     else await assertCanLink(c.env.DB, b.connectorId);
     const prefix = b.connectorId === 'coinbase' ? 'COINBASE' : 'WAZIRX';
     const credentials = { [`${prefix}_API_KEY`]: b.apiKey, [`${prefix}_API_SECRET`]: b.apiSecret };
-    await checkKeys(c.env, b.connectorId, credentials, fetchOf(c));
+    await checkKeys(c.env, b.connectorId, credentials, fetchOf(c), c.get('deps').now);
     const done = await finishLink(c.env, {
+      now: nowOf(c),
       connectorId: b.connectorId,
       institutionName: b.connectorId === 'coinbase' ? 'Coinbase' : 'WazirX',
       credentials,
