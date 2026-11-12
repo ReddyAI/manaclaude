@@ -5,7 +5,14 @@ import { setHapticsEnabled } from '../design/haptics';
 
 /**
  * App settings, saved on the device (AsyncStorage; localStorage on web).
- * Later the backend keeps a copy so the MCP server and AI jobs can read it.
+ * The backend keeps its own copy of some of them (data/backend/settingsSync.ts)
+ * so the MCP server and AI jobs can read it.
+ *
+ * Two ways in, kept apart on purpose:
+ * - `updateSettings` is a change you made. Change listeners hear about it.
+ * - `applyBackendSettings` is the backend's copy arriving. The screen updates,
+ *   but change listeners stay silent, so it is never sent back as if you had
+ *   chosen it.
  */
 
 const STORAGE_KEY = 'mana.settings.v1';
@@ -14,6 +21,8 @@ type Listener = () => void;
 let settings: Settings = DEFAULT_SETTINGS;
 let loaded = false;
 const listeners = new Set<Listener>();
+type ChangeListener = (prev: Settings, next: Settings) => void;
+const changeListeners = new Set<ChangeListener>();
 
 function emit(): void {
   setHapticsEnabled(settings.hapticsEnabled);
@@ -50,12 +59,32 @@ export async function loadSettings(): Promise<Settings> {
   return settings;
 }
 
-export function updateSettings(patch: Partial<Settings>): void {
-  settings = merge({ ...settings, ...patch });
-  emit();
+function save(): void {
   AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(settings)).catch(() => {
     // Saving can fail in private browsing; the change still applies for this session.
   });
+}
+
+/** A change made by the person using the app. */
+export function updateSettings(patch: Partial<Settings>): void {
+  const prev = settings;
+  settings = merge({ ...settings, ...patch });
+  emit();
+  save();
+  for (const l of changeListeners) l(prev, settings);
+}
+
+/** The backend's values for some settings. Shown and saved here; not reported as a change. */
+export function applyBackendSettings(values: Partial<Settings>): void {
+  settings = merge({ ...settings, ...values });
+  emit();
+  save();
+}
+
+/** Hears only changes made through `updateSettings`, with the settings before and after. */
+export function subscribeSettingChanges(listener: ChangeListener): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
 }
 
 export function subscribeSettings(listener: Listener): () => void {

@@ -95,6 +95,11 @@ describe('loading and saving through the backend', () => {
   });
 
   it('undoes a change the backend refused and says what was not saved', async () => {
+    // Saving is allowed once the backend's own data is on screen.
+    reply(200, createSampleData());
+    await act(async () => {
+      await refreshDataset();
+    });
     const before = getFinance();
     updateFinance((d) => ({ ...d, budgets: [] }));
     reply(500, { error: 'internal', message: 'Something went wrong on the server.' });

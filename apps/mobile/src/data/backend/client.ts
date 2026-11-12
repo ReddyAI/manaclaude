@@ -1,4 +1,4 @@
-import { getBackendConfig } from './config';
+import { getBackendConfig, subscribeBackendConfig } from './config';
 
 /**
  * The app's calls to the Worker's /v1 API. Every request carries the bearer
@@ -18,8 +18,50 @@ export class BackendError extends Error {
 
   /** The request never reached the Worker (offline, wrong URL, DNS). */
   get offline(): boolean {
-    return this.status === 0;
+    return this.status === 0 && this.code !== 'superseded';
   }
+
+  /**
+   * The backend address or token changed (or the token was forgotten) while
+   * this request was on its way. Its answer belongs to the old backend and
+   * was thrown away.
+   */
+  get superseded(): boolean {
+    return this.code === 'superseded';
+  }
+}
+
+/** True for a request dropped because the backend settings changed under it. */
+export function isSuperseded(e: unknown): boolean {
+  return e instanceof BackendError && e.superseded;
+}
+
+function supersededError(): BackendError {
+  return new BackendError(
+    0,
+    'superseded',
+    'The backend settings changed while this was loading, so its answer was ignored. Try again.',
+  );
+}
+
+// Requests made with the saved URL and token, still waiting for an answer.
+// When the saved backend changes they are aborted; any answer that arrives
+// anyway is dropped in api() below.
+const pending = new Set<AbortController>();
+let watchedScope: string | null = null;
+let watching = false;
+
+function watchConfig(): void {
+  if (watching) return;
+  watching = true;
+  watchedScope = getBackendConfig().scope;
+  subscribeBackendConfig(() => {
+    const scope = getBackendConfig().scope;
+    if (scope === watchedScope) return;
+    watchedScope = scope;
+    for (const c of [...pending]) c.abort();
+    pending.clear();
+  });
 }
 
 const TIMEOUT_MS = 30_000;
@@ -42,11 +84,16 @@ export async function api<T>(
   body?: unknown,
   opts: { timeoutMs?: number; url?: string; token?: string; acceptStatus?: number[] } = {},
 ): Promise<T> {
+  watchConfig();
   const cfg = getBackendConfig();
   const base = (opts.url ?? cfg.url).replace(/\/+$/, '');
   const token = opts.token ?? cfg.token;
   if (!base || !token)
     throw new BackendError(0, 'not_set', 'Set the backend URL and API token in Settings, Backend.');
+  // A call that names its own URL and token (the check before saving in
+  // Settings) is not tied to the saved backend.
+  const scoped = opts.url === undefined && opts.token === undefined;
+  const stale = () => scoped && getBackendConfig().scope !== cfg.scope;
   const headers: Record<string, string> = { authorization: `Bearer ${token}` };
   let payload: BodyInit | undefined;
   if (body instanceof FormData) payload = body;
@@ -58,7 +105,9 @@ export async function api<T>(
   const timer = controller
     ? setTimeout(() => controller.abort(), opts.timeoutMs ?? TIMEOUT_MS)
     : null;
+  if (scoped && controller) pending.add(controller);
   let res: Response;
+  let text: string;
   try {
     res = await http.fetch(`${base}${path}`, {
       method,
@@ -66,7 +115,9 @@ export async function api<T>(
       body: payload,
       signal: controller?.signal,
     });
+    text = await res.text().catch(() => '');
   } catch {
+    if (stale()) throw supersededError();
     throw new BackendError(
       0,
       'offline',
@@ -74,8 +125,9 @@ export async function api<T>(
     );
   } finally {
     if (timer) clearTimeout(timer);
+    if (controller) pending.delete(controller);
   }
-  const text = await res.text().catch(() => '');
+  if (stale()) throw supersededError();
   let parsed: unknown = null;
   try {
     parsed = text ? JSON.parse(text) : null;
