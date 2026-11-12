@@ -330,10 +330,15 @@ export async function previewImport(
   const format = input.format ?? detectFormat(input.fileName, text);
   const contentType = input.contentType || (format === 'pdf' ? 'application/pdf' : 'text/plain');
   const r2Key = vaultKey(id, input.fileName, now);
-  await env.FILES.put(r2Key, input.bytes, {
-    httpMetadata: { contentType },
-    customMetadata: { importId: id, sha256, fileName: input.fileName.slice(0, 200) },
-  });
+  const saveOriginal = () =>
+    env.FILES.put(r2Key, input.bytes, {
+      httpMetadata: { contentType },
+      customMetadata: { importId: id, sha256, fileName: input.fileName.slice(0, 200) },
+    });
+  const removeUnlistedOriginal = async (error: unknown): Promise<never> => {
+    await env.FILES.delete(r2Key);
+    throw error;
+  };
   const accounts = await selectAll(db, accountsTable);
   const chosen = input.accountId ? (accounts.find((a) => a.id === input.accountId) ?? null) : null;
   if (input.accountId && !chosen) throw badRequest('No such account.');
@@ -356,6 +361,7 @@ export async function previewImport(
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Could not read this file.';
+    await saveOriginal();
     await db
       .prepare(
         'INSERT INTO imports (id, format, status, account_id, file_name, content_type, size, sha256, r2_key, error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -374,7 +380,8 @@ export async function previewImport(
         now,
         now,
       )
-      .run();
+      .run()
+      .catch(removeUnlistedOriginal);
     throw badRequest(
       message,
       e instanceof Error && e.name === 'AiDisabledError' ? 'ai_disabled' : 'unreadable_file',
@@ -493,6 +500,9 @@ export async function previewImport(
     periodStart: period.start,
     periodEnd: period.end,
   };
+  // Only keep an upload when it has a corresponding preview/failed record.
+  // Rejected account/currency selections must not leave an unlisted vault file.
+  await saveOriginal();
   await db
     .prepare(
       'INSERT INTO imports (id, format, status, account_id, file_name, content_type, size, sha256, r2_key, rows_total, preview, period_start, period_end, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -514,7 +524,8 @@ export async function previewImport(
       now,
       now,
     )
-    .run();
+    .run()
+    .catch(removeUnlistedOriginal);
   return preview;
 }
 

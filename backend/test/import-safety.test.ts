@@ -47,6 +47,7 @@ describe('destination and currency safeguards', () => {
   it.each(['csv', 'ofx', 'pdf'])(
     'rejects %s currency mismatch without saving transactions',
     async (format) => {
+      const originals = (await testEnv.FILES.list()).objects.map((o) => o.key);
       const account = await addAccount({
         type: 'savings',
         currency: format === 'ofx' ? 'INR' : 'USD',
@@ -68,6 +69,7 @@ describe('destination and currency safeguards', () => {
         ),
       ).rejects.toMatchObject({ code: 'import_currency_mismatch' });
       expect(await allTxns()).toEqual([]);
+      expect((await testEnv.FILES.list()).objects.map((o) => o.key)).toEqual(originals);
     },
   );
 
