@@ -1,10 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useSyncExternalStore } from 'react';
 import type { FinanceDataset, Transaction } from '@manaclaude/shared';
 import { createSampleData } from '@manaclaude/shared/sample';
-import { getSettings, subscribeSettings } from '../settingsStore';
 import { getFinance, setFinance, updateFinance } from '../store';
-import { api, errorText } from './client';
+import { api, errorText, isSuperseded } from './client';
 import {
   getBackendConfig,
   isBackendReady,
@@ -12,63 +10,34 @@ import {
   subscribeBackendConfig,
 } from './config';
 import { readCachedDataset, writeCachedDataset } from './datasetCache';
+import {
+  applyLoadedSettings,
+  loadWaitingSettings,
+  resetSettingsSync,
+  settingsMarker,
+  watchSettingChanges,
+} from './settingsSync';
+import { getBackendStatus, reportBackendError, setBackendStatus } from './status';
 
 /**
  * Loads your data from the backend into the app's data store.
  *
- * - With a URL and token set: the last loaded copy opens first (so the app
- *   works offline), then GET /v1/dataset replaces it.
+ * - With a URL and token set: the last copy loaded from that same backend
+ *   opens first (so the app works offline), then GET /v1/dataset replaces it.
+ *   The backend's settings arrive with it (settingsSync.ts).
  * - If the backend can't be reached, the last loaded data stays and the
  *   status carries a plain error the app shows in a banner.
  * - Without a URL or token: the sample data, as before.
  */
 
-export interface BackendStatus {
-  mode: 'sample' | 'live';
-  loading: boolean;
-  /** A plain sentence for the banner; null when all is well. */
-  error: string | null;
-  /** When the data on screen was loaded from the backend. */
-  lastLoadedAt: string | null;
-  /** The data on screen came from the saved copy, not a fresh load. */
-  fromCache: boolean;
-}
-
-type Listener = () => void;
-let status: BackendStatus = {
-  mode: 'sample',
-  loading: false,
-  error: null,
-  lastLoadedAt: null,
-  fromCache: false,
-};
-const listeners = new Set<Listener>();
-
-function setStatus(patch: Partial<BackendStatus>): void {
-  status = { ...status, ...patch };
-  for (const l of listeners) l();
-}
-
-export function getBackendStatus(): BackendStatus {
-  return status;
-}
-
-export function subscribeBackendStatus(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-export function useBackendStatus(): BackendStatus {
-  return useSyncExternalStore(subscribeBackendStatus, getBackendStatus, getBackendStatus);
-}
-
-export function reportBackendError(message: string): void {
-  setStatus({ error: message });
-}
-
-export function dismissBackendError(): void {
-  setStatus({ error: null });
-}
+export {
+  dismissBackendError,
+  getBackendStatus,
+  reportBackendError,
+  subscribeBackendStatus,
+  useBackendStatus,
+  type BackendStatus,
+} from './status';
 
 // -- receipt photos ------------------------------------------------------------------
 // The backend keeps receipt images in R2; the photo on this phone stays the one
@@ -103,36 +72,66 @@ function withLocalReceipts(data: FinanceDataset): FinanceDataset {
 }
 
 // -- loading ---------------------------------------------------------------------------
-let inflight: Promise<boolean> | null = null;
+// Everything here is tied to one backend: the config's `scope`, which changes
+// whenever the URL or token changes or the token is forgotten. A request, a
+// saved copy or a timer started for one scope never touches the screen once
+// another scope is selected.
+
+/** The backend whose data is on screen; null while the sample data is shown. */
+let liveScope: string | null = null;
+let inflight: { scope: string; promise: Promise<boolean> } | null = null;
+
+/** True when the data on screen came from the backend selected now, so changes may be saved to it. */
+export function canSaveToBackend(): boolean {
+  return isBackendReady() && liveScope !== null && liveScope === getBackendConfig().scope;
+}
 
 /** GET /v1/dataset into the store. Keeps the current data when it fails. Returns true on success. */
 export function refreshDataset(): Promise<boolean> {
   if (!isBackendReady()) return Promise.resolve(false);
-  if (inflight) return inflight;
-  setStatus({ loading: true });
-  inflight = (async () => {
+  const scope = getBackendConfig().scope;
+  if (inflight?.scope === scope) return inflight.promise;
+  watchSettingChanges();
+  setBackendStatus({ loading: true });
+  const marker = settingsMarker();
+  const current = () => getBackendConfig().scope === scope && isBackendReady();
+  const entry = { scope, promise: Promise.resolve(false) };
+  entry.promise = (async () => {
     try {
       const data = await api<FinanceDataset>('GET', '/v1/dataset', undefined, {
         timeoutMs: 60_000,
       });
+      // The backend was changed or forgotten while this was on its way: drop the answer.
+      if (!current()) return false;
       const now = new Date().toISOString();
       setFinance(withLocalReceipts(data));
-      setStatus({ mode: 'live', loading: false, error: null, lastLoadedAt: now, fromCache: false });
-      void writeCachedDataset(data, now);
+      liveScope = scope;
+      setBackendStatus({
+        mode: 'live',
+        loading: false,
+        error: null,
+        lastLoadedAt: now,
+        fromCache: false,
+      });
+      applyLoadedSettings(data.settings, scope, marker);
+      void writeCachedDataset(data, now, scope);
       return true;
     } catch (e) {
-      setStatus({
+      if (isSuperseded(e) || !current()) return false;
+      const { lastLoadedAt } = getBackendStatus();
+      setBackendStatus({
         loading: false,
-        error: status.lastLoadedAt
-          ? `${errorText(e)} Showing your data from ${new Date(status.lastLoadedAt).toLocaleString()}.`
+        error: lastLoadedAt
+          ? `${errorText(e)} Showing your data from ${new Date(lastLoadedAt).toLocaleString()}.`
           : errorText(e),
       });
       return false;
     } finally {
-      inflight = null;
+      if (inflight === entry) inflight = null;
     }
   })();
-  return inflight;
+  inflight = entry;
+  return entry.promise;
 }
 
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -146,100 +145,90 @@ export function scheduleRefresh(delayMs = 800): void {
   }, delayMs);
 }
 
+/** The selected backend changed (or the app just started): show the right data for it. */
 async function applyMode(): Promise<void> {
-  if (!isBackendReady()) {
-    if (status.mode === 'live') {
-      setFinance(createSampleData());
-      void writeCachedDataset(null, '');
-    }
-    setStatus({
+  const scope = getBackendConfig().scope;
+  // Leave the old backend completely before anything from the new one shows.
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = null;
+  resetSettingsSync(scope);
+  if (liveScope !== null && liveScope !== scope) {
+    liveScope = null;
+    setFinance(createSampleData());
+    void writeCachedDataset(null, '', '');
+  }
+  if (liveScope === null)
+    setBackendStatus({
       mode: 'sample',
       loading: false,
       error: null,
       lastLoadedAt: null,
       fromCache: false,
     });
-    return;
-  }
-  if (status.mode === 'sample') {
-    const cached = await readCachedDataset();
-    if (cached && isBackendReady()) {
+  if (!isBackendReady()) return;
+  if (liveScope === null) {
+    const cached = await readCachedDataset(scope);
+    // Checked again after the read: the backend may have changed meanwhile,
+    // or a fresh load may already be on screen.
+    if (cached && liveScope === null && isBackendReady() && getBackendConfig().scope === scope) {
       setFinance(withLocalReceipts(cached.data));
-      setStatus({ mode: 'live', lastLoadedAt: cached.savedAt, fromCache: true });
+      liveScope = scope;
+      setBackendStatus({ mode: 'live', lastLoadedAt: cached.savedAt, fromCache: true });
     }
+    if (getBackendConfig().scope !== scope) return;
   }
   await refreshDataset();
 }
 
-// -- settings ------------------------------------------------------------------------------
-// The Worker reads some settings (AI switch, MCP write tools, money policies), so
-// changes made in Settings are sent to PATCH /v1/settings.
-const SERVER_SETTINGS = [
-  'displayCurrencyMode',
-  'primaryCurrency',
-  'secondaryCurrency',
-  'aiEnabled',
-  'aiProvider',
-  'look',
-  'colorScheme',
-  'hapticsEnabled',
-  'dashboardLayout',
-  'moneyPolicies',
-  'mcpWriteToolsEnabled',
-  'weekStartsOn',
-] as const;
-let lastSentSettings = '';
-let settingsTimer: ReturnType<typeof setTimeout> | null = null;
-
-function serverSettings(): Record<string, unknown> {
-  const s = getSettings() as unknown as Record<string, unknown>;
-  return Object.fromEntries(SERVER_SETTINGS.map((k) => [k, s[k]]));
-}
-
-function watchSettings(): void {
-  lastSentSettings = JSON.stringify(serverSettings());
-  subscribeSettings(() => {
-    const body = serverSettings();
-    const key = JSON.stringify(body);
-    if (key === lastSentSettings || !isBackendReady()) return;
-    if (settingsTimer) clearTimeout(settingsTimer);
-    settingsTimer = setTimeout(() => {
-      lastSentSettings = key;
-      api('PATCH', '/v1/settings', body).catch((e: unknown) =>
-        reportBackendError(`Settings not saved on the backend. ${errorText(e)}`),
-      );
-    }, 600);
-  });
-}
-
 let started = false;
-let lastKey = '';
+let lastScope = '';
+let unsubscribeConfig: (() => void) | null = null;
 
 /** Once at app start: read the backend settings, then load. Follows later changes in Settings. */
 export async function startBackend(): Promise<void> {
   if (started) return;
   started = true;
-  await loadReceiptUris();
-  watchSettings();
+  await Promise.all([loadReceiptUris(), loadWaitingSettings()]);
+  watchSettingChanges();
   const cfg = await loadBackendConfig();
-  lastKey = `${cfg.url}|${cfg.token}`;
-  subscribeBackendConfig(() => {
-    const c = getBackendConfig();
-    const key = `${c.url}|${c.token}`;
-    if (key === lastKey) return;
-    lastKey = key;
+  lastScope = cfg.scope;
+  unsubscribeConfig = subscribeBackendConfig(() => {
+    const { scope } = getBackendConfig();
+    if (scope === lastScope) return;
+    lastScope = scope;
     void applyMode();
   });
   await applyMode();
+}
+
+/** Tests: back to a newly opened app showing the sample data. */
+export function resetBackendForTests(): void {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  refreshTimer = null;
+  started = false;
+  lastScope = '';
+  liveScope = null;
+  inflight = null;
+  unsubscribeConfig?.();
+  unsubscribeConfig = null;
+  setBackendStatus({
+    mode: 'sample',
+    loading: false,
+    error: null,
+    lastLoadedAt: null,
+    fromCache: false,
+  });
 }
 
 // -- saving changes ----------------------------------------------------------------------
 
 /**
  * Sends one change to the backend after the screen already shows it. When
- * the backend is not set up this does nothing (sample data stays on the
- * phone). When the save fails, the change is undone (if nothing else changed
- * since) and the banner says what was not saved.
+ * the backend is not set up, or its data has not loaded yet (the sample data
+ * is still on screen), this does nothing: a change to sample data is never
+ * sent. When the save fails, the change is undone (if nothing else changed
+ * since) and the banner says what was not saved. An answer that arrives after
+ * the backend was changed or forgotten is ignored.
  */
 export function persist<T>(
   label: string,
@@ -247,15 +236,19 @@ export function persist<T>(
   call: () => Promise<T>,
   opts: { onSaved?: (result: T) => void; refreshAfter?: boolean } = {},
 ): Promise<T | null> {
-  if (!isBackendReady()) return Promise.resolve(null);
+  if (!canSaveToBackend()) return Promise.resolve(null);
+  const scope = getBackendConfig().scope;
   const after = getFinance();
   return call().then(
     (result) => {
+      if (getBackendConfig().scope !== scope) return null;
       opts.onSaved?.(result);
       if (opts.refreshAfter) scheduleRefresh();
       return result;
     },
     (e: unknown) => {
+      // The data on screen is no longer this backend's: nothing to undo or report.
+      if (isSuperseded(e) || getBackendConfig().scope !== scope) return null;
       if (getFinance() === after) setFinance(before);
       else scheduleRefresh();
       reportBackendError(`Not saved (${label}). ${errorText(e)}`);

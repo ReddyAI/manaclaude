@@ -15,13 +15,33 @@ export interface BackendConfig {
   url: string;
   token: string;
   loaded: boolean;
+  /**
+   * Names the backend these credentials select. A new random value is made
+   * every time the URL or token changes (and when the token is forgotten), so
+   * requests, saved copies and waiting changes made for one backend can be
+   * told apart from another's. It is not derived from the token.
+   */
+  scope: string;
 }
 
 const URL_KEY = 'billionaire.backendUrl';
+const SCOPE_KEY = 'billionaire.backendScope';
 
 type Listener = () => void;
-let config: BackendConfig = { url: defaultUrl(), token: '', loaded: false };
+let config: BackendConfig = { url: defaultUrl(), token: '', loaded: false, scope: '' };
 const listeners = new Set<Listener>();
+
+function newScope(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+async function storeScope(scope: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(SCOPE_KEY, scope);
+  } catch {
+    // Without storage the scope lasts for this session, which only costs a fresh load next time.
+  }
+}
 
 export function defaultUrl(): string {
   return normalizeUrl(process.env.EXPO_PUBLIC_API_URL ?? '');
@@ -66,7 +86,17 @@ export async function loadBackendConfig(): Promise<BackendConfig> {
     url = '';
   }
   const token = (await readToken()) ?? '';
-  config = { url: normalizeUrl(url) || defaultUrl(), token, loaded: true };
+  let scope = '';
+  try {
+    scope = (await AsyncStorage.getItem(SCOPE_KEY)) ?? '';
+  } catch {
+    scope = '';
+  }
+  if (!scope) {
+    scope = newScope();
+    await storeScope(scope);
+  }
+  config = { url: normalizeUrl(url) || defaultUrl(), token, loaded: true, scope };
   emit();
   return config;
 }
@@ -80,20 +110,31 @@ export async function saveBackendConfig(next: { url: string; token: string }): P
     // Storage can fail in private browsing; the value still applies for this session.
   }
   await writeToken(token || null);
-  config = { url, token, loaded: true };
+  const same = config.loaded && url === config.url && token === config.token && config.scope !== '';
+  const scope = same ? config.scope : newScope();
+  if (!same) await storeScope(scope);
+  config = { url, token, loaded: true, scope };
   emit();
 }
 
 /** Forget the token (the URL stays). The app goes back to the sample data. */
 export async function forgetBackendToken(): Promise<void> {
-  await writeToken(null);
-  config = { ...config, token: '', loaded: true };
+  const scope = newScope();
+  // The new scope applies at once, so answers still on their way are dropped
+  // even while the secure store is busy removing the token.
+  config = { ...config, token: '', loaded: true, scope };
   emit();
+  await Promise.all([writeToken(null), storeScope(scope)]);
 }
 
-/** Tests: set the config without storage. */
+/** Tests: set the config without storage. A changed URL or token gets a new scope, as in the app. */
 export function setBackendConfigForTests(next: Partial<BackendConfig>): void {
-  config = { ...config, loaded: true, ...next };
+  const merged = { ...config, loaded: true, ...next };
+  const changed = merged.url !== config.url || merged.token !== config.token;
+  config = {
+    ...merged,
+    scope: next.scope ?? (changed || !config.scope ? newScope() : config.scope),
+  };
   emit();
 }
 

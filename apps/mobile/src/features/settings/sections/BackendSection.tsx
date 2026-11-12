@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Button } from '../../../design/components/Button';
@@ -38,6 +38,9 @@ export function BackendSection() {
   const [token, setToken] = useState('');
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<{ tone: 'danger' | 'muted'; text: string } | null>(null);
+  // Counts Save and Forget presses, so a check that finishes after a later
+  // press does not save its (older) credentials.
+  const attempt = useRef(0);
   const shownUrl = url ?? config.url;
   const hasToken = config.token !== '';
 
@@ -52,6 +55,7 @@ export function BackendSection() {
       setMessage({ tone: 'danger', text: 'Paste your APP_API_TOKEN.' });
       return;
     }
+    const mine = ++attempt.current;
     setChecking(true);
     setMessage(null);
     try {
@@ -61,16 +65,18 @@ export function BackendSection() {
         token: nextToken,
         timeoutMs: 15_000,
       });
+      if (attempt.current !== mine) return;
       await saveBackendConfig({ url: nextUrl, token: nextToken });
       setToken('');
       setUrl(null);
       setMessage({ tone: 'muted', text: 'Connected. Loading your data.' });
       haptic('confirm');
     } catch (e) {
+      if (attempt.current !== mine) return;
       setMessage({ tone: 'danger', text: errorText(e) });
       haptic('reject');
     } finally {
-      setChecking(false);
+      if (attempt.current === mine) setChecking(false);
     }
   };
 
@@ -140,6 +146,9 @@ export function BackendSection() {
               size="sm"
               variant="ghost"
               onPress={() => {
+                attempt.current += 1;
+                setChecking(false);
+                setToken('');
                 void forgetBackendToken();
                 setMessage({ tone: 'muted', text: 'Token removed. Showing sample data.' });
               }}
