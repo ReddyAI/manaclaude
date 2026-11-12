@@ -71,7 +71,7 @@ describe('budget, recurring and receipt edits from the app', () => {
   });
 
   it('edits receipt line items and removes a receipt from its transaction', async () => {
-    const now = new Date().toISOString();
+    const now = '2026-11-05T12:00:00.000Z';
     await insertStatement(db, receiptsTable, {
       id: 'rcp_1',
       r2Key: 'receipts/2026-11/rcp_1',

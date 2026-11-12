@@ -236,9 +236,11 @@ export async function checkKeys(
   connectorId: 'coinbase' | 'wazirx',
   secrets: Record<string, string>,
   injectedFetch: typeof fetch | undefined,
+  now: () => Date = () => new Date(),
 ): Promise<void> {
   const adapter = getAdapter(connectorId);
   if (!adapter?.checkHealth) return;
+  const timestamp = nowIso(now());
   const probe: Connection = {
     id: 'conn_probe',
     connectorId,
@@ -249,11 +251,11 @@ export async function checkKeys(
     lastError: null,
     syncCursor: null,
     accountIds: [],
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
   };
   const status = await adapter.checkHealth(
-    linkContext(env, connectorId, injectedFetch, secrets),
+    linkContext(env, connectorId, injectedFetch, secrets, now),
     probe,
   );
   const name = getConnector(connectorId)?.name ?? connectorId;

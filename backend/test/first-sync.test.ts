@@ -72,10 +72,10 @@ async function addLinkedConnection(id: string, over: Partial<Connection> = {}) {
 /** One POST /v1/connections/:id/sync, as its own invocation, with every D1 query counted. */
 async function syncOnce(id: string, fetch: typeof globalThis.fetch) {
   const meter = meterDb(db);
-  const res = await client({ fetch }, { ...env, DB: meter.db }).api<ConnectionSyncReport>(
-    'POST',
-    `/v1/connections/${id}/sync`,
-  );
+  const res = await client(
+    { fetch, now: () => NOW },
+    { ...env, DB: meter.db },
+  ).api<ConnectionSyncReport>('POST', `/v1/connections/${id}/sync`);
   return { status: res.status, report: res.body, queries: meter.used() };
 }
 
@@ -181,6 +181,7 @@ describe('a first sync with two years of history (3,120 transactions)', () => {
     // The connection is healthy with a cursor, and its accounts are attached.
     const conn = await selectOne(db, connectionsTable, 'id = ?', ['conn_2y']);
     expect(conn).toMatchObject({ status: 'healthy', lastError: null });
+    expect(conn?.lastSuccessfulSyncAt).toBe(NOW.toISOString());
     expect(JSON.parse(conn?.syncCursor ?? '{}').since).toBe('2026-11-05');
     const accounts = await selectAll(db, accountsTable, 'connection_id = ?', ['conn_2y']);
     expect(accounts.map((a) => a.externalId).sort()).toEqual([CARD_ID, CHECKING_ID].sort());

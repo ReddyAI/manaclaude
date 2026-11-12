@@ -72,6 +72,8 @@ import { newId, nowIso, safeEqual } from '../util/ids';
 export interface AppDeps extends AiDeps {
   /** Outbound fetch for FX providers (tests pass a fake). */
   fetch?: typeof fetch;
+  /** Clock for connector syncs and account-link sessions; defaults to real time. */
+  now?: () => Date;
 }
 
 type AppEnv = { Bindings: Env; Variables: { deps: AppDeps } };
@@ -736,6 +738,7 @@ export function createApp(deps: AppDeps = {}) {
   app.post('/v1/connections/:id/sync', async (c) => {
     const report = await syncConnection(c.env, c.req.param('id'), {
       fetch: c.get('deps').fetch,
+      now: c.get('deps').now,
       force: c.req.query('force') === 'true',
     });
     return c.json(report, report.outcome === 'error' ? 502 : 200);
