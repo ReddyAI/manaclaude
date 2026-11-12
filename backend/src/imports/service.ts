@@ -3,7 +3,6 @@ import {
   assignOccurrences,
   buildSplitChildren,
   csvHeaderSignature,
-  daysBetween,
   detectDelimiter,
   importFingerprint,
   parseActualCsv,
@@ -28,11 +27,12 @@ import {
 } from '@manaclaude/shared';
 import type { Env } from '../env';
 import { getAi, type AiDeps } from '../ai/provider';
-import { bulkInsertSpecs, runSpecs } from '../db/bulk';
+import { bulkInsertSpecs, runSpecs, type StatementSpec } from '../db/bulk';
 import { selectAll } from '../db/table';
 import {
   accountsTable,
   categoriesTable,
+  categoryGroupsTable,
   rulesTable,
   tagsTable,
   transactionsTable,
@@ -43,8 +43,17 @@ import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
 import { getSettings } from '../services/settings';
 import { makeTransaction } from '../services/transactions';
-import { categoryMatcher } from './categories';
+import { categoryMatcher, monefyCategories } from './categories';
 import { extractStatement } from './pdf';
+import { isMonefyCsv, parseMonefyCsv } from './monefy';
+import {
+  duplicateCandidates,
+  existingForRows,
+  requireCurrency,
+  sameImportIdentity,
+  validateDateRange,
+  type SafeImportPreview,
+} from './safety';
 
 export interface ImportFileInput {
   bytes: Uint8Array<ArrayBuffer>;
@@ -59,6 +68,13 @@ export interface ImportFileInput {
   skipRows?: number;
   /** Ambiguous dates (03/04/2026) read day-first. Defaults to true for INR accounts. */
   preferDayFirst?: boolean;
+  /** Inclusive transaction dates; no change to automatic bank sync schedules. */
+  fromDate?: string;
+  toDate?: string;
+  /** Explicit destinations for names in multi-account exports. */
+  accountMappings?: Record<string, Id>;
+  /** Currency for formats that do not carry it, when no destination is selected. */
+  currency?: string;
 }
 
 /** Guesses the format from the file name and the first bytes. */
@@ -93,11 +109,19 @@ function matchAccount(
   if (parsed.mask) {
     const byMask = accounts.filter((a) => a.mask === parsed.mask);
     if (byMask.length === 1) return byMask[0]!;
+    if (byMask.length > 1)
+      throw badRequest(
+        'More than one account matches the statement mask. Select a destination explicitly.',
+      );
   }
   if (parsed.name) {
     const n = parsed.name.trim().toLowerCase();
-    const byName = accounts.find((a) => a.name.trim().toLowerCase() === n);
-    if (byName) return byName;
+    const byName = accounts.filter((a) => a.name.trim().toLowerCase() === n);
+    if (byName.length === 1) return byName[0]!;
+    if (byName.length > 1)
+      throw badRequest(
+        'More than one account matches the file name. Select a destination explicitly.',
+      );
   }
   return null;
 }
@@ -105,7 +129,7 @@ function matchAccount(
 async function loadRecord(
   db: D1Database,
   id: Id,
-): Promise<ImportRecord & { preview: ImportPreview | null }> {
+): Promise<ImportRecord & { preview: SafeImportPreview | null }> {
   const row = await db
     .prepare('SELECT * FROM imports WHERE id = ?')
     .bind(id)
@@ -131,7 +155,7 @@ async function loadRecord(
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     committedAt: (row.committed_at as string | null) ?? null,
-    preview: row.preview ? (JSON.parse(String(row.preview)) as ImportPreview) : null,
+    preview: row.preview ? (JSON.parse(String(row.preview)) as SafeImportPreview) : null,
   };
 }
 
@@ -165,11 +189,22 @@ async function parseFile(
   period: { start: string | null; end: string | null };
   statementCheck: ImportPreview['statementCheck'];
 }> {
-  const currency = account?.currency ?? 'USD';
+  const currency = account?.currency ?? input.currency ?? 'USD';
   const preferDayFirst = input.preferDayFirst ?? currency === 'INR';
   const none = { start: null, end: null };
   switch (format) {
     case 'csv': {
+      if (isMonefyCsv(text)) {
+        if (input.mapping || input.skipRows)
+          throw badRequest('Monefy columns are fixed; remove the custom CSV mapping or preamble.');
+        return {
+          parsed: await parseMonefyCsv(text, input.preferDayFirst),
+          mapping: null,
+          needsMapping: null,
+          period: none,
+          statementCheck: null,
+        };
+      }
       const suggestion = suggestCsvMapping(text, { preferDayFirst, skipRows: input.skipRows ?? 0 });
       const signature = csvHeaderSignature(suggestion.headers);
       let mapping = input.mapping ?? null;
@@ -220,6 +255,8 @@ async function parseFile(
       return { parsed, mapping, needsMapping: csvInfo, period: none, statementCheck: null };
     }
     case 'qif':
+      if (!account && !input.currency)
+        throw badRequest('QIF does not specify currency. Select an account or provide a currency.');
       return {
         parsed: parseQif(text, { currency, preferDayFirst }),
         mapping: null,
@@ -276,8 +313,11 @@ export async function previewImport(
   env: Env,
   input: ImportFileInput,
   aiDeps: AiDeps = {},
-): Promise<ImportPreview> {
+): Promise<SafeImportPreview> {
   const db = env.DB;
+  validateDateRange(input.fromDate, input.toDate);
+  if (input.currency && !/^[A-Z]{3}$/.test(input.currency))
+    throw badRequest('Currency must be a three-letter uppercase code.');
   if (input.bytes.byteLength === 0) throw badRequest('The file is empty.');
   if (input.bytes.byteLength > 20 * 1024 * 1024)
     throw badRequest('Files up to 20 MB can be imported.');
@@ -341,6 +381,17 @@ export async function previewImport(
     );
   }
   const { parsed, mapping, needsMapping, period, statementCheck } = parsedResult;
+  const monefy = format === 'csv' && isMonefyCsv(text);
+  const sourceNames = new Set(parsed.rows.map((r) => r.accountName));
+  if (chosen && sourceNames.size > 1)
+    throw badRequest(
+      'This file contains multiple accounts. Map each account separately instead of selecting one destination.',
+    );
+  const totalParsed = parsed.rows.length;
+  parsed.rows = parsed.rows.filter(
+    (r) =>
+      (!input.fromDate || r.date >= input.fromDate) && (!input.toDate || r.date <= input.toDate),
+  );
 
   // Resolve the account of each row.
   const accountFor = new Map<string, Account | null>();
@@ -349,9 +400,10 @@ export async function previewImport(
     if (!name) return chosen;
     if (accountFor.has(name)) return accountFor.get(name)!;
     const info = parsed.accounts.find((a) => a.name === name);
-    const found =
-      matchAccount(accounts, { name, mask: info?.mask }) ??
-      (parsed.accounts.length <= 1 ? chosen : null);
+    const mappedId = input.accountMappings?.[name];
+    const mapped = mappedId ? accounts.find((a) => a.id === mappedId) : undefined;
+    if (mappedId && !mapped) throw badRequest('An account mapping points to a missing account.');
+    const found = chosen ?? mapped ?? matchAccount(accounts, { name, mask: info?.mask });
     accountFor.set(name, found);
     if (!found && info && !toCreate.includes(info)) toCreate.push(info);
     return found;
@@ -363,30 +415,6 @@ export async function previewImport(
       accountId: rowAccounts[i]?.id ?? `new:${r.accountName ?? ''}`,
     })),
   );
-  const accountIds = [
-    ...new Set(rowAccounts.filter((a): a is Account => a !== null).map((a) => a.id)),
-  ];
-  const existing: Transaction[] = [];
-  for (const accId of accountIds) {
-    const dates = parsed.rows.map((r) => r.date).sort();
-    existing.push(
-      ...(await selectAll(
-        db,
-        transactionsTable,
-        "account_id = ? AND date >= date(?, '-5 days') AND date <= date(?, '+5 days')",
-        [accId, dates[0] ?? '1900-01-01', dates[dates.length - 1] ?? '2200-01-01'],
-      )),
-    );
-  }
-  const byFingerprint = new Map(
-    existing
-      .filter((t) => t.importFingerprint)
-      .map((t) => [`${t.accountId}|${t.importFingerprint}`, t]),
-  );
-  const byExternal = new Map(
-    existing.filter((t) => t.externalId).map((t) => [`${t.accountId}|${t.externalId}`, t]),
-  );
-  const claimed = new Set<Id>();
   const categoryFor = categoryMatcher(await selectAll(db, categoriesTable));
 
   const rows: ImportPreviewRow[] = parsed.rows.map((r, i) => {
@@ -394,50 +422,42 @@ export async function previewImport(
     const fingerprint = account && !r.externalId ? importFingerprint(account.id, r, occ[i]!) : null;
     const base: ImportPreviewRow = {
       ...r,
+      currency:
+        r.currency ??
+        account?.currency ??
+        parsed.accounts.find((a) => a.name === r.accountName)?.currency ??
+        null,
       accountId: account?.id ?? null,
       fingerprint,
       occurrence: occ[i]!,
-      categoryId: categoryFor(r.categoryName),
+      categoryId: monefy ? null : categoryFor(r.categoryName),
       decision: 'new',
       matchedTransactionId: null,
     };
     if (!account) return { ...base, decision: 'needs_account' };
-    const sameId =
-      (r.externalId && byExternal.get(`${account.id}|${r.externalId}`)) ||
-      (fingerprint && byFingerprint.get(`${account.id}|${fingerprint}`));
-    if (sameId) {
-      claimed.add(sameId.id);
-      return { ...base, decision: 'already_imported', matchedTransactionId: sameId.id };
-    }
+    requireCurrency(base, account);
     return base;
   });
-  // Reconcile against rows that came from a sync or were typed in: same account,
-  // same amount, date within 3 days, oldest first, each existing row used once.
+  const existing = await existingForRows(db, rows);
   for (const row of rows) {
-    if (row.decision !== 'new' || !row.accountId) continue;
-    const match = existing
-      .filter(
-        (t) =>
-          !claimed.has(t.id) &&
-          t.source !== 'import' &&
-          t.accountId === row.accountId &&
-          t.amount === row.amount &&
-          !t.splitParentId &&
-          Math.abs(daysBetween(t.date, row.date)) <= 3,
-      )
-      .sort(
-        (a, b) =>
-          Math.abs(daysBetween(a.date, row.date)) - Math.abs(daysBetween(b.date, row.date)) ||
-          a.createdAt.localeCompare(b.createdAt),
-      )[0];
+    const match = existing.find((t) => sameImportIdentity(row, t));
     if (match) {
-      claimed.add(match.id);
-      row.decision = 'existing';
+      row.decision = 'already_imported';
       row.matchedTransactionId = match.id;
     }
   }
+  const candidates = duplicateCandidates(rows, existing, new Map(accounts.map((a) => [a.id, a])));
 
-  const preview: ImportPreview = {
+  const preview: SafeImportPreview = {
+    ...(monefy ? { sourceFormat: 'monefy' as const } : {}),
+    requiresDateConfirmation:
+      monefy && parsed.dateFormatAmbiguous && input.preferDayFirst === undefined,
+    duplicateCandidates: candidates,
+    dateRange: {
+      from: input.fromDate ?? null,
+      to: input.toDate ?? null,
+      excluded: totalParsed - parsed.rows.length,
+    },
     importId: id,
     format,
     status:
@@ -449,6 +469,11 @@ export async function previewImport(
     errors: parsed.errors,
     warnings: [
       ...parsed.warnings,
+      ...(candidates.length
+        ? [
+            'Possible duplicates need review before saving. Similar amounts and dates do not prove that transactions are the same.',
+          ]
+        : []),
       ...(earlier
         ? [
             `This exact file was imported before (${earlier.committed_at.slice(0, 10)}); matching rows will be skipped.`,
@@ -498,6 +523,12 @@ export interface CommitOptions {
   skipLines?: number[];
   /** Create accounts named in the file that don't exist yet (default true). */
   createAccounts?: boolean;
+  /** Possible duplicates explicitly confirmed as distinct transactions. */
+  keepLines?: number[];
+}
+
+export interface ImportSaveResult extends ImportCommitResult {
+  warnings: string[];
 }
 
 function newAccount(info: ParsedAccount, fallbackCurrency: string, now: string): Account {
@@ -534,19 +565,21 @@ export async function commitImport(
   env: Env,
   importId: Id,
   options: CommitOptions = {},
-): Promise<ImportCommitResult> {
+  clock: () => Date = () => new Date(),
+): Promise<ImportSaveResult> {
   const db = env.DB;
   const record = await loadRecord(db, importId);
   if (record.status === 'committed') throw conflict('This import was already saved.');
-  if (record.status !== 'preview' || !record.preview)
+  if (!['preview', 'committing'].includes(record.status) || !record.preview)
     throw badRequest('This import has no preview to save.');
-  const now = nowIso();
+  const now = clock().toISOString();
+  const staleBefore = new Date(Date.parse(now) - 5 * 60_000).toISOString();
   // Lock: only one commit of an import can run.
   const lock = await db
     .prepare(
-      "UPDATE imports SET status = 'committing', updated_at = ? WHERE id = ? AND status = 'preview'",
+      "UPDATE imports SET status = 'committing', updated_at = ? WHERE id = ? AND (status = 'preview' OR (status = 'committing' AND updated_at < ?))",
     )
-    .bind(now, importId)
+    .bind(now, importId, staleBefore)
     .run();
   if ((lock.meta.changes ?? 0) !== 1) throw conflict('This import is already being saved.');
   try {
@@ -554,9 +587,9 @@ export async function commitImport(
   } catch (e) {
     await db
       .prepare(
-        "UPDATE imports SET status = 'preview', updated_at = ? WHERE id = ? AND status = 'committing'",
+        "UPDATE imports SET status = 'preview', updated_at = ? WHERE id = ? AND status = 'committing' AND updated_at = ?",
       )
-      .bind(now, importId)
+      .bind(now, importId, now)
       .run();
     throw e;
   }
@@ -565,21 +598,53 @@ export async function commitImport(
 async function commitLocked(
   env: Env,
   importId: Id,
-  preview: ImportPreview,
+  preview: SafeImportPreview,
   options: CommitOptions,
   now: string,
-): Promise<ImportCommitResult> {
+): Promise<ImportSaveResult> {
   const db = env.DB;
   const skip = new Set(options.skipLines ?? []);
+  const keep = new Set(options.keepLines ?? []);
+  if ([...skip].some((line) => keep.has(line)))
+    throw badRequest('A row cannot be both kept and skipped.');
+  if (preview.requiresDateConfirmation)
+    throw badRequest(
+      'Confirm Monefy date order by previewing again with preferDayFirst set to true or false.',
+    );
+  if (preview.errors.some((error) => !skip.has(error.line)))
+    throw badRequest(
+      'Some rows could not be read. Correct the file or explicitly skip those lines before saving.',
+      'import_parse_errors',
+    );
+  if (preview.rows.length === 0)
+    throw badRequest('No transactions are available in the selected import period.');
+
+  const [tags, existingAccounts, categories] = await Promise.all([
+    selectAll(db, tagsTable),
+    selectAll(db, accountsTable),
+    selectAll(db, categoriesTable),
+  ]);
 
   // Accounts named in the file that don't exist yet.
   const created: Account[] = [];
   if (preview.accountsToCreate.length > 0 && options.createAccounts !== false) {
     const byName = new Map<string, Account>();
     for (const info of preview.accountsToCreate) {
-      const acc = newAccount(info, 'USD', now);
+      if (!preview.rows.some((r) => r.accountName === info.name && !skip.has(r.line))) continue;
+      // Another preview may have created the same account since this one was shown.
+      const current = matchAccount(existingAccounts, info);
+      const acc = current ?? newAccount(info, 'USD', now);
+      if (!current) {
+        const identity = JSON.stringify([
+          preview.format,
+          info.name.trim().toLowerCase(),
+          acc.currency,
+        ]);
+        acc.id = `acc_import_${await sha256Hex(new TextEncoder().encode(identity))}`;
+      }
+      if (!current && preview.sourceFormat === 'monefy') acc.includeInNetWorth = false;
       byName.set(info.name, acc);
-      created.push(acc);
+      if (!current) created.push(acc);
     }
     for (const row of preview.rows) {
       const acc =
@@ -598,32 +663,57 @@ async function commitLocked(
         r.fingerprint = importFingerprint(r.accountId, r, occ[i]!);
     });
   }
-  const [tags, existingAccounts, categories] = await Promise.all([
-    selectAll(db, tagsTable),
-    selectAll(db, accountsTable),
-    selectAll(db, categoriesTable),
-  ]);
   const tagByName = new Map(tags.map((t) => [t.name.toLowerCase(), t.id]));
   const accounts = new Map([...existingAccounts, ...created].map((a) => [a.id, a]));
   const categoryFor = categoryMatcher(categories);
-
-  if (created.length > 0) await runSpecs(db, bulkInsertSpecs(accountsTable, created));
+  for (const row of preview.rows) {
+    if (skip.has(row.line)) continue;
+    const account = row.accountId ? accounts.get(row.accountId) : null;
+    if (!account)
+      throw badRequest(
+        `Line ${row.line} has no destination account. Select an account and preview again.`,
+        'import_account_required',
+      );
+    requireCurrency(row, account);
+  }
+  const existing = await existingForRows(db, preview.rows);
+  for (const row of preview.rows) {
+    if (skip.has(row.line)) continue;
+    const same = existing.find((t) => sameImportIdentity(row, t));
+    if (same) {
+      row.decision = 'already_imported';
+      row.matchedTransactionId = same.id;
+    } else if (row.decision === 'already_imported' || row.decision === 'existing') {
+      throw conflict('Transactions changed since this preview. Preview the file again.');
+    }
+  }
+  const candidates = duplicateCandidates(preview.rows, existing, accounts);
+  const unresolved = candidates.filter(
+    (candidate) => !skip.has(candidate.line) && !keep.has(candidate.line),
+  );
+  if (unresolved.length)
+    throw badRequest(
+      `Review possible duplicates on lines ${unresolved.map((c) => c.line).join(', ')}. Explicitly keep or skip each row before saving.`,
+      'import_duplicates_require_review',
+    );
+  const newRows = preview.rows.filter((r) => r.decision === 'new' && !skip.has(r.line));
+  const custom =
+    preview.sourceFormat === 'monefy'
+      ? monefyCategories(newRows, categories)
+      : { groups: [], categories: [] };
 
   // Rules run in memory before the rows are written (one query for the rules, none per row).
   const rules = await selectAll(db, rulesTable, 'enabled = 1');
   const parents: Transaction[] = [];
   const childrenOf = new Map<Id, Transaction[]>();
-  let skipped = 0;
+  let skipped = preview.errors.filter((error) => skip.has(error.line)).length;
   for (const row of preview.rows) {
-    if (row.decision !== 'new' || !row.accountId || skip.has(row.line)) {
-      if (row.decision === 'new' || row.decision === 'needs_account') skipped += 1;
-      continue;
-    }
-    const account = accounts.get(row.accountId);
-    if (!account) {
+    if (skip.has(row.line)) {
       skipped += 1;
       continue;
     }
+    if (row.decision !== 'new') continue;
+    const account = accounts.get(row.accountId!)!;
     let txn = toTransaction(row, account, importId, tagByName, now);
     if (row.splits.length >= 2) {
       const built = buildSplitChildren(
@@ -638,64 +728,137 @@ async function commitLocked(
       );
       txn = built.parent;
       childrenOf.set(txn.id, built.children);
-    } else if (rules.length > 0) {
+    } else if (rules.length > 0 && preview.sourceFormat !== 'monefy') {
       txn = applyRules(txn, rules).transaction;
     }
     parents.push(txn);
   }
 
-  // Multi-row writes (Free plan: about 50 D1 queries per invocation). The unique
-  // fingerprint and provider-id indexes skip rows stored before; the new ids that
-  // exist afterwards are the rows this commit added, and only their split
-  // children are written.
-  await runSpecs(db, bulkInsertSpecs(transactionsTable, parents, 'ignore'));
-  const addedIds = new Set<string>();
-  for (let i = 0; i < parents.length; i += 2000) {
-    const res = await db
-      .prepare('SELECT id FROM transactions WHERE id IN (SELECT value FROM json_each(?))')
-      .bind(JSON.stringify(parents.slice(i, i + 2000).map((t) => t.id)))
-      .all<{ id: string }>();
-    for (const r of res.results) addedIds.add(r.id);
-  }
-  const addedTxns = parents.filter((t) => addedIds.has(t.id));
-  await runSpecs(
-    db,
-    bulkInsertSpecs(
-      transactionsTable,
-      addedTxns.flatMap((t) => childrenOf.get(t.id) ?? []),
-    ),
-  );
-  const groups = parents;
-
-  const added = addedTxns.length;
-  const matched =
-    preview.rows.filter((r) => r.decision === 'already_imported' || r.decision === 'existing')
-      .length +
-    (groups.length - added);
-  await db
-    .prepare(
-      "UPDATE imports SET status = 'committed', rows_added = ?, rows_matched = ?, rows_skipped = ?, preview = ?, updated_at = ?, committed_at = ? WHERE id = ?",
-    )
-    .bind(added, matched, skipped, JSON.stringify(preview), now, now, importId)
-    .run();
+  // Accounts, categories, parents, children, mapping and completion are ONE D1
+  // transaction. A failure rolls back every write, so retry cannot lose splits
+  // or create a second set of accounts.
+  const parentIndex = Object.keys(transactionsTable.columns).indexOf('splitParentId');
+  const children = bulkInsertSpecs(transactionsTable, [...childrenOf.values()].flat()).map((s) => ({
+    ...s,
+    sql: `${s.sql} AND json_extract(value, '$[${parentIndex}]') IN (SELECT id FROM transactions WHERE import_id = ?)`,
+    params: [...s.params, importId],
+  }));
+  const matchedBefore = preview.rows.filter(
+    (r) => !skip.has(r.line) && r.decision === 'already_imported',
+  ).length;
+  const countParents =
+    '(SELECT count(*) FROM transactions WHERE import_id = ? AND split_parent_id IS NULL)';
+  const unreviewed = newRows
+    .filter((r) => !keep.has(r.line))
+    .map((r) => ({
+      accountId: r.accountId,
+      date: r.date,
+      amount: r.amount,
+      currency: r.currency ?? accounts.get(r.accountId!)!.currency,
+      externalId: r.externalId,
+      fingerprint: r.fingerprint,
+    }));
+  const specs: StatementSpec[] = [
+    {
+      // Fail the whole batch if a concurrent save/sync invalidated our review,
+      // or another invocation reclaimed the lease. status is NOT NULL.
+      sql: `UPDATE imports SET status = CASE WHEN status = 'committing' AND updated_at = ? AND NOT EXISTS (
+        SELECT 1 FROM json_each(?) j JOIN transactions t
+        ON t.account_id = json_extract(j.value, '$.accountId')
+        AND t.currency = json_extract(j.value, '$.currency')
+        AND t.amount = json_extract(j.value, '$.amount')
+        AND abs(julianday(t.date) - julianday(json_extract(j.value, '$.date'))) <= 3
+        WHERE t.split_parent_id IS NULL AND NOT (
+          coalesce(t.source = 'import' AND t.external_id = json_extract(j.value, '$.externalId'), 0)
+          OR coalesce(t.import_fingerprint = json_extract(j.value, '$.fingerprint'), 0)
+        )
+      ) THEN status ELSE NULL END WHERE id = ?`,
+      params: [now, JSON.stringify(unreviewed), importId],
+      rows: 1,
+    },
+    ...bulkInsertSpecs(accountsTable, created),
+    ...bulkInsertSpecs(categoryGroupsTable, custom.groups),
+    ...bulkInsertSpecs(categoriesTable, custom.categories),
+    ...bulkInsertSpecs(transactionsTable, parents, 'ignore'),
+    ...children,
+    {
+      sql: `UPDATE imports SET status = 'committed', rows_added = ${countParents}, rows_matched = ? - ${countParents}, rows_skipped = ?, preview = ?, updated_at = ?, committed_at = ? WHERE id = ? AND status = 'committing'`,
+      params: [
+        importId,
+        matchedBefore + parents.length,
+        importId,
+        skipped,
+        JSON.stringify(preview),
+        now,
+        now,
+        importId,
+      ],
+      rows: 1,
+    },
+  ];
   if (preview.format === 'csv' && preview.mapping && preview.csv) {
-    await db
-      .prepare(
-        'INSERT INTO import_mappings (signature, name, account_id, mapping, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (signature) DO UPDATE SET mapping = excluded.mapping, account_id = excluded.account_id, updated_at = excluded.updated_at',
-      )
-      .bind(
+    specs.push({
+      sql: 'INSERT INTO import_mappings (signature, name, account_id, mapping, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (signature) DO UPDATE SET mapping = excluded.mapping, account_id = excluded.account_id, updated_at = excluded.updated_at',
+      params: [
         preview.csv.signature,
         preview.fileName,
         preview.accountId,
         JSON.stringify(preview.mapping),
         now,
         now,
-      )
-      .run();
+      ],
+      rows: 1,
+    });
   }
+  // Leave room for reads and post-processing on Workers Free. Do not split the
+  // transaction into independently committed batches to fit an oversized file.
+  if (specs.length > 20)
+    throw badRequest(
+      'This import is too large to save safely in one request. Choose a shorter date period.',
+    );
+  try {
+    await runSpecs(db, specs);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.includes('NOT NULL constraint failed: imports.status')
+    )
+      throw conflict(
+        'Transactions or import state changed while saving. Preview the file again.',
+        'import_preview_changed',
+      );
+    throw error;
+  }
+  const addedTxns = await selectAll(
+    db,
+    transactionsTable,
+    'import_id = ? AND split_parent_id IS NULL',
+    [importId],
+  );
+  const added = addedTxns.length;
+  const matched = matchedBefore + parents.length - added;
   const ids = addedTxns.map((t) => t.id);
-  const atm = await recordAtmWithdrawals(db, addedTxns);
-  const match = await runTransferMatcher(db);
+  let atm = 0;
+  let match = { linked: 0, suggested: 0 };
+  const warnings: string[] = [];
+  try {
+    if (preview.sourceFormat !== 'monefy') {
+      atm = await recordAtmWithdrawals(db, addedTxns);
+      match = await runTransferMatcher(db);
+    }
+  } catch {
+    // The import is already durably saved. Do not report it as failed or invite
+    // a retry just because optional transfer processing failed.
+    const message = 'Transactions saved; automatic transfer processing needs to be retried.';
+    warnings.push(message);
+    await db
+      .prepare('UPDATE imports SET error = ? WHERE id = ?')
+      .bind(message, importId)
+      .run()
+      .catch(() => {
+        /* A warning-write failure must not turn a saved import into a reported failure. */
+      });
+  }
   return {
     importId,
     added,
@@ -705,6 +868,7 @@ async function commitLocked(
     transactionIds: ids,
     linked: match.linked + atm,
     suggested: match.suggested,
+    warnings,
   };
 }
 
@@ -727,6 +891,8 @@ function toTransaction(
       notes: row.notes,
       categoryId: row.categoryId,
       categorySource: row.categoryId ? 'import' : null,
+      userEditedFields:
+        row.externalId?.startsWith('monefy:') && row.categoryId ? ['categoryId', 'notes'] : [],
       kind: row.kindHint ?? 'regular',
       pending: row.pending,
       tagIds: row.tags
@@ -745,15 +911,21 @@ export async function discardImport(db: D1Database, importId: Id): Promise<void>
   const record = await loadRecord(db, importId);
   if (record.status === 'committed')
     throw conflict('Saved imports can be undone with DELETE /v1/imports/:id/transactions.');
-  await db
-    .prepare("UPDATE imports SET status = 'discarded', updated_at = ? WHERE id = ?")
+  if (record.status === 'committing') throw conflict('This import is being saved.');
+  const changed = await db
+    .prepare(
+      "UPDATE imports SET status = 'discarded', updated_at = ? WHERE id = ? AND status NOT IN ('committed', 'committing')",
+    )
     .bind(nowIso(), importId)
     .run();
+  if (!changed.meta.changes) throw conflict('This import changed. Refresh before discarding it.');
 }
 
 /** Removes the transactions an import added (the original file stays in the vault). */
 export async function undoImport(db: D1Database, importId: Id): Promise<number> {
-  await loadRecord(db, importId);
+  const record = await loadRecord(db, importId);
+  if (record.status === 'undone') return 0;
+  if (record.status !== 'committed') throw conflict('Only a saved import can be undone.');
   const now = nowIso();
   const res = await db.batch([
     db

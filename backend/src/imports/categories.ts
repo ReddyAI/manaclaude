@@ -1,4 +1,11 @@
-import { normalizeDescription, type Category, type Id } from '@manaclaude/shared';
+import {
+  normalizeDescription,
+  type Category,
+  type CategoryGroup,
+  type Id,
+  type ImportPreviewRow,
+} from '@manaclaude/shared';
+import { newId } from '../util/ids';
 
 /**
  * Finds the category a file's label means: exact name first, then one name
@@ -31,4 +38,44 @@ export function categoryMatcher(
     cache.set(key, found);
     return found;
   };
+}
+
+/** Monefy labels are user data: preserve them exactly instead of fuzzy matching. */
+export function monefyCategories(
+  rows: ImportPreviewRow[],
+  existing: readonly Category[],
+): { groups: CategoryGroup[]; categories: Category[] } {
+  const groups: CategoryGroup[] = [];
+  const categories: Category[] = [];
+  const byName = new Map(existing.filter((c) => !c.archived).map((c) => [c.name, c]));
+  for (const row of rows) {
+    const name = row.categoryName;
+    if (!name) continue;
+    let category = byName.get(name);
+    if (!category) {
+      // A positive refund keeps the category's expense treatment when the file
+      // also contains expenses under that label. No transfer inference by amount.
+      const kind = rows.some((r) => r.categoryName === name && r.amount < 0) ? 'expense' : 'income';
+      let group = groups.find((g) => g.kind === kind);
+      if (!group) {
+        group = { id: newId('grp'), name: `Monefy ${kind}`, kind, order: 1000 + groups.length };
+        groups.push(group);
+      }
+      category = {
+        id: newId('cat'),
+        name,
+        kind,
+        groupId: group.id,
+        icon: 'tag',
+        color: 'c1',
+        excludeFromBudget: false,
+        archived: false,
+        order: 1000 + categories.length,
+      };
+      categories.push(category);
+      byName.set(name, category);
+    }
+    row.categoryId = category.id;
+  }
+  return { groups, categories };
 }
