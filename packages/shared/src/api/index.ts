@@ -155,6 +155,48 @@ export interface ImportPreviewRow extends ParsedImportRow {
   matchedTransactionId: Id | null;
 }
 
+/**
+ * A row the file wants to add that looks like a transaction already in the
+ * same account (same currency and signed amount, dates within three days).
+ * It is only a candidate: the app shows both sides and the user chooses to
+ * keep the file's row as a separate transaction or to skip it.
+ */
+export interface ImportDuplicateCandidate {
+  /** The preview row's `line`. */
+  line: number;
+  /** Stored transactions it resembles. */
+  transactionIds: Id[];
+}
+
+/** The inclusive dates a preview was limited to, and how many readable rows fell outside them. */
+export interface ImportDateRange {
+  from: LocalDate | null;
+  to: LocalDate | null;
+  excluded: number;
+}
+
+/**
+ * Extra multipart fields of POST /v1/imports, all optional text fields.
+ * `accountMappings` is sent as JSON text, `preferDayFirst` as "true" or "false".
+ */
+export interface ImportPreviewOptions {
+  /** One destination for a file that holds a single account. */
+  accountId?: Id;
+  /** Source account label in the file -> existing account id, for files with several accounts. */
+  accountMappings?: Record<string, Id>;
+  /** Inclusive bounds on transaction dates. Neither means all rows. */
+  fromDate?: LocalDate;
+  toDate?: LocalDate;
+  /** Three-letter code for formats that carry no currency, when no destination is selected. */
+  currency?: CurrencyCode;
+  /** How to read ambiguous dates such as 03/04/2026. */
+  preferDayFirst?: boolean;
+  /** CSV: use these columns. */
+  mapping?: CsvMapping;
+  /** CSV: lines of bank preamble before the header. */
+  skipRows?: number;
+}
+
 export interface CsvPreviewInfo {
   headers: string[];
   /** Saved mappings are stored under this key. */
@@ -194,12 +236,21 @@ export interface ImportPreview {
   statementCheck: StatementCheck | null;
   periodStart: LocalDate | null;
   periodEnd: LocalDate | null;
+  /** 'monefy' when the dedicated Monefy reader recognised the file. */
+  sourceFormat?: 'monefy';
+  /** Rows that need an explicit keep or skip before saving. They stay `decision: 'new'`. */
+  duplicateCandidates?: ImportDuplicateCandidate[];
+  dateRange?: ImportDateRange;
+  /** The date order must be confirmed with a new preview (preferDayFirst) before saving. */
+  requiresDateConfirmation?: boolean;
 }
 
 /** POST /v1/imports/:id/commit */
 export interface ImportCommitRequest {
-  /** Lines unticked in the preview. */
+  /** Lines left out: unticked rows, skipped duplicates, and unreadable lines the user acknowledged. */
   skipLines?: number[];
+  /** Possible duplicates the user confirmed as separate transactions. A line cannot be in both lists. */
+  keepLines?: number[];
   createAccounts?: boolean;
 }
 
@@ -212,7 +263,20 @@ export interface ImportCommitResult {
   transactionIds: Id[];
   linked: number;
   suggested: number;
+  /** The rows were saved, but something after the save needs attention (for example transfer matching). */
+  warnings?: string[];
 }
+
+/**
+ * Error codes of the import routes (the `error` field of the JSON error body).
+ * `import_preview_changed` comes with HTTP 409; the others with 400.
+ */
+export type ImportErrorCode =
+  | 'import_parse_errors'
+  | 'import_account_required'
+  | 'import_duplicates_require_review'
+  | 'import_currency_mismatch'
+  | 'import_preview_changed';
 
 /** POST /v1/imports with commit=true */
 export interface ImportResponse {
@@ -245,6 +309,63 @@ export interface ImportRecord {
 
 export interface VaultListResponse {
   files: ImportRecord[];
+}
+
+/** GET /v1/imports: the newest 200 import records, newest first. */
+export interface ImportListResponse {
+  imports: ImportRecord[];
+}
+
+/** GET /v1/imports/:id: the record with its stored preview. */
+export interface ImportDetail extends ImportRecord {
+  preview: ImportPreview | null;
+}
+
+/** DELETE /v1/imports/:id/transactions (undo): how many transactions were removed. */
+export interface ImportUndoResult {
+  removed: number;
+}
+
+// ---------------------------------------------------------------------------
+// Manual accounts (proposed; the Worker does not serve this route yet)
+// ---------------------------------------------------------------------------
+
+/** Account types a person can create by hand as the destination of statements. */
+export const MANUAL_ACCOUNT_TYPES = [
+  'checking',
+  'savings',
+  'credit_card',
+  'loan',
+  'mortgage',
+  'brokerage',
+  'retirement',
+  'other_asset',
+  'other_liability',
+] as const satisfies readonly Account['type'][];
+
+export type ManualAccountType = (typeof MANUAL_ACCOUNT_TYPES)[number];
+
+/**
+ * POST /v1/accounts/manual: an account with no connection, kept by hand and
+ * by statement imports. The app checks for the route before offering it.
+ */
+export interface ManualAccountRequest {
+  /** 1 to 100 characters. A name already used by another account (ignoring case) is refused with 409 `account_exists`. */
+  name: string;
+  type: ManualAccountType;
+  currency: CurrencyCode;
+  /** Last four digits at most. */
+  mask?: string;
+  institutionName?: string;
+  /** Current balance in minor units, when known. Defaults to 0. */
+  balance?: MinorUnits;
+  /** Defaults to true. False for history-only accounts whose balance is unknown. */
+  includeInNetWorth?: boolean;
+}
+
+/** 201 with the stored account. */
+export interface ManualAccountResponse {
+  account: Account;
 }
 
 // ---------------------------------------------------------------------------
