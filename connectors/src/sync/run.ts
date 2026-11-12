@@ -5,13 +5,15 @@ import type {
   SyncResult,
 } from '@manaclaude/shared';
 import { afterSyncFailure, afterSyncSuccess } from '../health';
-import { ConnectorRepairNeededError } from '../errors';
+import { ConnectorRateLimitedError, ConnectorRepairNeededError } from '../errors';
 
 export interface SyncOutcome {
   connection: Connection;
   result: SyncResult | null;
   kind: 'ok' | 'needs_repair' | 'error' | 'skipped';
   error: string | null;
+  /** A provider's minimum delay must survive into the persistent retry scheduler. */
+  retryAfterSeconds?: number | null;
 }
 
 /**
@@ -46,6 +48,9 @@ export async function runConnectionSync(
       result: null,
       kind: error instanceof ConnectorRepairNeededError ? 'needs_repair' : 'error',
       error: updated.lastError,
+      ...(error instanceof ConnectorRateLimitedError
+        ? { retryAfterSeconds: error.retryAfterSeconds }
+        : {}),
     };
   }
 }

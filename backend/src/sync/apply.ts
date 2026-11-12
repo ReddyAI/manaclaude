@@ -18,6 +18,7 @@ import {
   bulkInsertSpecs,
   bulkUpdateSpecs,
   runSpecs,
+  toStatement,
   type StatementSpec,
 } from '../db/bulk';
 import type { QueryBudget } from '../db/meter';
@@ -36,6 +37,7 @@ import {
 import { newId, nowIso } from '../util/ids';
 import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
+import { clearRetrySpec, retryStatement } from './retries';
 
 export interface SyncSummary {
   accountsCreated: number;
@@ -301,7 +303,8 @@ export async function applySyncResult(
     // Account writes, the connection row, and (on the last part) the after-sync steps must fit too.
     const fits = () => {
       const last = txnCount === allInserts.length && actCount === allActivityInserts.length;
-      const need = accountSpecs.length + plan.specs.length + 1 + (last ? AFTER_SYNC_RESERVE : 0);
+      // The connection update and retry reset are both part of the successful data batch.
+      const need = accountSpecs.length + plan.specs.length + 2 + (last ? AFTER_SYNC_RESERVE : 0);
       return opts.budget!.allows(need);
     };
     while (!fits() && txnCount + actCount > 0) {
@@ -339,7 +342,7 @@ export async function applySyncResult(
     },
   ]);
   await runSpecs(db, accountSpecs);
-  await runSpecs(db, [...plan.specs, ...connectionSpec]);
+  await runSpecs(db, [...plan.specs, ...connectionSpec, clearRetrySpec(connection.id)]);
 
   // -- after the last part is saved -----------------------------------------------------
   let linked = 0;
@@ -372,11 +375,17 @@ export async function markConnectionError(
   status: Connection['status'],
   message: string,
   now = nowIso(),
+  retryAfterSeconds: number | null = null,
 ): Promise<void> {
-  await updateStatement(
-    db,
-    connectionsTable,
-    { id: connection.id },
-    { status, lastError: message.slice(0, 200), lastSyncAt: now, updatedAt: now },
-  ).run();
+  await db.batch([
+    updateStatement(
+      db,
+      connectionsTable,
+      { id: connection.id },
+      { status, lastError: message.slice(0, 200), lastSyncAt: now, updatedAt: now },
+    ),
+    status === 'needs_repair' || status === 'disconnected'
+      ? toStatement(db, clearRetrySpec(connection.id))
+      : retryStatement(db, connection.id, now, retryAfterSeconds),
+  ]);
 }

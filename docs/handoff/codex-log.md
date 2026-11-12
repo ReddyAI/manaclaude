@@ -66,3 +66,33 @@ Defaults: production still uses the real clock unless a caller injects one. Test
 ### Handoff
 
 Fix the startup blocker and the applicable data-integrity/linking findings before treating this as ready for real accounts. Coordinate mobile and shared changes with their owners. This PR is for the clock correction, agent instructions and review record only; it must not be merged by the coding agent.
+
+## 2026-11-11 — Worker startup and sync recovery after PR #10
+
+Started from merged `main` at `cdf983a`, on `codex/worker-startup-and-sync-recovery`. This task addresses findings **1, 2 and 9** above. The other findings remain open.
+
+### Changes and files
+
+- `backend/src/index.ts` now exports only the supported Worker handlers at runtime. The factory and cron constant moved unchanged to `backend/src/worker.ts`; `backend/test/worker.ts`, `backend/test/fx.test.ts` and `backend/test/first-sync.test.ts` import the factory there. This removes the startup failure without changing the production entry path or cron configuration.
+- `backend/deploy/test/runtime.test.ts` boots the configured production entry in a real local Worker runtime and checks health and API authentication. It retains the entry, compatibility settings and local storage bindings from Wrangler configuration, omitting the remote Workers AI binding. This test runs with the existing backend/deploy tests in CI and before deployment; no workflow change was needed.
+- `backend/src/sync/policy.ts`, `backend/src/sync/run.ts` and `backend/src/link/service.ts` share the existing Plaid switch check. Disabled manual/forced sync returns a clear skipped report before reading credentials or changing connection state. Cron excludes disabled Plaid connections. The outbound transport also refuses a disabled connector before invoking even an injected fetch, covering link/probe callers as well. The flag's configured value is unchanged.
+- `backend/migrations/0004_sync_retries.sql` and `backend/src/sync/retries.ts` add persistent retry metadata separate from credentials, transactions and provider cursors. Failed attempts atomically update connection health and retry timing. `backend/src/sync/apply.ts` resets that metadata in the same data batch as a successful sync part and includes the extra write in its query budget.
+- `backend/src/sync/run.ts` makes due retries eligible independently of daily freshness, recovers errors from before the migration, and preserves immediate continuation after partial success or explicit Repair. `connectors/src/sync/run.ts` carries a numeric provider Retry-After through to the scheduler instead of discarding it.
+- `backend/test/sync-recovery.test.ts` covers disabled manual/forced/cron/transport paths, first-sync recovery, delays across midnight, rate limits, Retry-After, preserving partial transactions and cursor, Repair, manual retry, and pre-migration errors. `backend/test/helpers.ts` clears retry state between tests. `backend/test/sync.test.ts` checks all eligible connections across budgeted cron invocations rather than requiring both to fit in one invocation; the expected connections and statuses are unchanged and each invocation is checked against the Free-plan limit.
+
+### Defaults and rollout
+
+- Consecutive automatic failures wait **5 minutes, 15 minutes, 1 hour, 6 hours, then 24 hours** between attempts; subsequent failures stay at 24 hours. A longer numeric provider Retry-After wins. The schedule persists across Worker invocations. A successful partial or complete write resets the backoff.
+- Sync now remains an explicit immediate retry. Repair queues immediate continuation. A login requiring Repair, a disconnected connection, or disabled Plaid is not automatically contacted. Healthy connections retain the existing daily boundary.
+- Migration `0004` is additive and contains no account data or secrets. The existing workflow applies it before deploying the Worker. Existing errored connections without retry rows become eligible after five minutes from their last attempt.
+- No changes to `CREDENTIALS_SECRET` usage, encrypted credential storage, `PLAID_LINK_ENABLED` configuration, shared/mobile code, root configuration, workflows, dependencies or lockfile. Generic agent commit metadata is used. No live provider accounts, Plaid endpoints or remote Cloudflare resources were exercised.
+
+### Validation
+
+- Targeted sync/recovery/first-sync tests: **36 passed**, including the existing two-year history fixture and per-invocation database query limits.
+- The new runtime startup test passed. A standard `wrangler dev --local` invocation now starts the actual configured entry without the old ignored wrapper. Local migration `0004` applied successfully; API health, bearer authentication, dataset loading and MCP OAuth/tool smoke checks passed against that Worker with invented data.
+- `npm run check` passed: typecheck, lint, formatting and **780 tests** (shared 118, connectors 345, backend 146, deployment/runtime 35, mobile 136).
+
+### Next work
+
+The remaining import destination/currency, duplicate-account, stale-holding and link-completion findings still need their own changes before real accounts are linked. Mobile fixes remain Claude-owned; shared and workflow edits still need explicit authorization. The older ignored onboarding wrapper is unnecessary after this change, but the environment draft was not edited or republished.
