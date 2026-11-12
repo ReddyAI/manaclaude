@@ -173,7 +173,7 @@ describe('CSV date formats', () => {
 });
 
 describe('PDF statements: AI extraction, preview, confirm, reconcile, vault', () => {
-  it('previews without saving, reconciles synced rows, and saves only on confirm', async () => {
+  it('previews without saving, requires duplicate review, and saves only on confirm', async () => {
     const nre = await addAccount({
       type: 'savings',
       subtype: 'nre',
@@ -206,14 +206,18 @@ describe('PDF statements: AI extraction, preview, confirm, reconcile, vault', ()
       openingBalance: 35_000_000,
       closingBalance: 52_576_000,
     });
-    expect(preview.rows.map((r) => r.decision)).toEqual(['new', 'existing', 'new']);
+    expect(preview.rows.map((r) => r.decision)).toEqual(['new', 'new', 'new']);
+    expect(preview.duplicateCandidates?.map((r) => r.line)).toEqual([2]);
+    await expect(commitImport(testEnv, preview.importId)).rejects.toMatchObject({
+      code: 'import_duplicates_require_review',
+    });
     expect(await allTxns()).toHaveLength(1); // nothing saved yet
     const rec = await getImport(db, preview.importId);
     expect(rec.status).toBe('preview');
     expect(await (await testEnv.FILES.get(rec.r2Key))?.text()).toBe(pdfText);
 
-    const result = await commitImport(testEnv, preview.importId, { skipLines: [3] });
-    expect(result).toMatchObject({ added: 1, matched: 1, skipped: 1 });
+    const result = await commitImport(testEnv, preview.importId, { skipLines: [2, 3] });
+    expect(result).toMatchObject({ added: 1, matched: 0, skipped: 2 });
     expect(await allTxns()).toHaveLength(2);
     await expect(commitImport(testEnv, preview.importId)).rejects.toMatchObject({ status: 409 });
   });

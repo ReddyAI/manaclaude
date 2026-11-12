@@ -511,6 +511,22 @@ export function createApp(deps: AppDeps = {}) {
         throw badRequest('mapping must be JSON.');
       }
     }
+    let accountMappings: Record<string, string> | undefined;
+    const rawAccounts = form.get('accountMappings');
+    if (rawAccounts !== null) {
+      try {
+        accountMappings = z
+          .record(z.string(), z.string().min(1))
+          .parse(JSON.parse(String(rawAccounts)));
+      } catch {
+        throw badRequest(
+          'accountMappings must be a JSON object mapping file account names to account IDs.',
+        );
+      }
+    }
+    const dayFirst = form.get('preferDayFirst');
+    if (dayFirst !== null && dayFirst !== 'true' && dayFirst !== 'false')
+      throw badRequest('preferDayFirst must be true or false.');
     const preview = await previewImport(
       c.env,
       {
@@ -520,6 +536,10 @@ export function createApp(deps: AppDeps = {}) {
         format: format as ImportFormat | undefined,
         accountId: (form.get('accountId') as string | null) || undefined,
         mapping,
+        accountMappings,
+        currency: (form.get('currency') as string | null) || undefined,
+        fromDate: (form.get('fromDate') as string | null) || undefined,
+        toDate: (form.get('toDate') as string | null) || undefined,
         skipRows: form.get('skipRows') ? Number(form.get('skipRows')) : undefined,
         preferDayFirst: form.get('preferDayFirst')
           ? form.get('preferDayFirst') === 'true'
@@ -532,7 +552,7 @@ export function createApp(deps: AppDeps = {}) {
       throw badRequest('PDF statements need a look at the preview first.');
     const result =
       wantCommit && preview.status === 'preview'
-        ? await commitImport(c.env, preview.importId)
+        ? await commitImport(c.env, preview.importId, {}, c.get('deps').now)
         : null;
     const res: ImportResponse = { preview, result };
     return c.json(res, 201);
@@ -544,10 +564,11 @@ export function createApp(deps: AppDeps = {}) {
       c,
       z.object({
         skipLines: z.array(z.number().int()).optional(),
+        keepLines: z.array(z.number().int().positive()).optional(),
         createAccounts: z.boolean().optional(),
       }),
     );
-    return c.json(await commitImport(c.env, c.req.param('id'), b));
+    return c.json(await commitImport(c.env, c.req.param('id'), b, c.get('deps').now));
   });
   app.post('/v1/imports/:id/discard', async (c) => {
     await discardImport(c.env.DB, c.req.param('id'));
