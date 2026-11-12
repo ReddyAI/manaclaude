@@ -23,7 +23,13 @@ import {
 import type { Env } from '../src/env';
 import { deleteCredentials, loadCredentials, saveCredentials } from '../src/sync/credentials';
 import { workerSecretsFor } from '../src/sync/secrets';
-import { fetchForConnector, syncAllConnections, syncConnection } from '../src/sync/run';
+import {
+  fetchForConnector,
+  syncAllConnections,
+  syncConnection,
+  syncDueConnections,
+} from '../src/sync/run';
+import { D1_QUERIES_PER_INVOCATION, meterDb } from '../src/db/meter';
 import { freshDb, testEnv } from './helpers';
 
 const env: Env = { ...testEnv, CREDENTIALS_SECRET: 'test-credentials-secret-0123456789' };
@@ -343,7 +349,14 @@ describe('daily sync of all connections', () => {
       });
     }
     const fetch = fakeFetch(sfRoutes());
-    const reports = await syncAllConnections(env, { fetch, now: () => NOW });
+    // The retry reset is another budgeted write. Follow the cron across invocations
+    // rather than requiring every connection to fit into the same Free-plan allowance.
+    const reports = [];
+    for (let run = 0; run < 2; run += 1) {
+      const meter = meterDb(db);
+      reports.push(...(await syncDueConnections(env, { fetch, now: () => NOW, meter })));
+      expect(meter.used()).toBeLessThanOrEqual(D1_QUERIES_PER_INVOCATION);
+    }
     expect(reports.map((r) => r.connectionId).sort()).toEqual(['conn_err', 'conn_ok']);
     const users = new Set(
       fetch.calls.map((c) => atob((c.headers.Authorization ?? '').replace('Basic ', ''))),

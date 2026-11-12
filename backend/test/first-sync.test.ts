@@ -11,7 +11,7 @@ import {
 import { bulkInsertSpecs, bulkUpdateSpecs, chunkRows, runSpecs } from '../src/db/bulk';
 import { D1_QUERIES_PER_INVOCATION, meterDb } from '../src/db/meter';
 import type { Env } from '../src/env';
-import { createWorker, SYNC_CRON } from '../src/index';
+import { createWorker, SYNC_CRON } from '../src/worker';
 import { saveCredentials } from '../src/sync/credentials';
 import { syncDueConnections, type ConnectionSyncReport } from '../src/sync/run';
 import { CARD_ID, CHECKING_ID, twoYearsOfSophtron } from './fixtures/sophtronTwoYears';

@@ -1,5 +1,5 @@
 import { createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
-import { createWorker } from '../src/index';
+import { createWorker } from '../src/worker';
 import type { AppDeps } from '../src/api/app';
 import type { Env } from '../src/env';
 import { testEnv } from './helpers';

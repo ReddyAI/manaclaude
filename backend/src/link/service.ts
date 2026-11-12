@@ -17,6 +17,7 @@ import { insertStatement, selectOne } from '../db/table';
 import { connectionsTable } from '../db/tables';
 import { saveCredentials, type Credentials } from '../sync/credentials';
 import { fetchForConnector } from '../sync/run';
+import { connectorEnabled } from '../sync/policy';
 import { WORKER_SECRETS_BY_CONNECTOR, workerSecretsFor } from '../sync/secrets';
 import { ApiError, badRequest, conflict, notFound } from '../util/errors';
 import { newId, nowIso } from '../util/ids';
@@ -39,7 +40,7 @@ export const ANDROID_PACKAGE = 'com.reddyai.manaclaude';
 export const OWNER_CLIENT_ID = 'billionaire-owner';
 
 export function plaidEnabled(env: Env): boolean {
-  return env.PLAID_LINK_ENABLED === 'true';
+  return connectorEnabled(env, 'plaid');
 }
 
 /** Is every app-level secret this connector needs set? Answers yes or no, never a value. */

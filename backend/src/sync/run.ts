@@ -7,6 +7,7 @@ import {
 } from '@manaclaude/shared';
 import {
   getAdapter,
+  ConnectorConfigError,
   runConnectionSync as runAdapterSync,
   shouldRefreshValuation,
 } from '@manaclaude/connectors';
@@ -19,6 +20,8 @@ import { meterDb, QueryBudget, type MeteredDb } from '../db/meter';
 import { applySyncResult, markConnectionError, type SyncSummary } from './apply';
 import { loadCredentials, saveCredentials } from './credentials';
 import { VALUATION_CONNECTORS, workerSecretsFor } from './secrets';
+import { connectorEnabled, PLAID_DISABLED_MESSAGE } from './policy';
+import { FIRST_RETRY_DELAY_MS, retrySchedule } from './retries';
 
 export type SyncOutcomeKind = 'ok' | 'needs_repair' | 'error' | 'skipped';
 
@@ -28,8 +31,8 @@ export interface ConnectionSyncReport {
   outcome: SyncOutcomeKind;
   /** A long first sync wrote part of its rows; call sync again (the app does, and so does the cron). */
   more: boolean;
-  /** Why nothing was fetched: the login needs repair, or a property value was refreshed under a month ago. */
-  skippedBecause?: 'needs_repair' | 'valuation_recent';
+  /** Why nothing was fetched. Disabled connectors cannot be forced. */
+  skippedBecause?: 'disabled' | 'needs_repair' | 'valuation_recent';
   status: ConnectionStatus;
   /** Short message for the UI; never a provider payload. */
   error: string | null;
@@ -59,10 +62,15 @@ export const SYNC_QUERY_BUDGET = 44;
 export const MIN_QUERIES_TO_START = 20;
 
 /**
- * The fetch every provider call goes through. An injected fetch (tests) wins.
+ * The fetch every provider call goes through. The connector gate also applies to injected fetches.
  * (Teller's mTLS binding used to be chosen here; Teller shut down its API in July 2026.)
  */
-export function fetchForConnector(_env: Env, _connectorId: string, injected?: typeof fetch) {
+export function fetchForConnector(env: Env, connectorId: string, injected?: typeof fetch) {
+  if (!connectorEnabled(env, connectorId)) {
+    return (async () => {
+      throw new ConnectorConfigError(PLAID_DISABLED_MESSAGE);
+    }) as typeof fetch;
+  }
   if (injected) return injected;
   // Not `return fetch`: workerd throws "Illegal invocation" when the global fetch is called as a method.
   return ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init)) as typeof fetch;
@@ -102,10 +110,22 @@ export async function syncConnection(
   env = { ...env, DB: meter.db };
   const connection = await selectOne(env.DB, connectionsTable, 'id = ?', [connectionId]);
   if (!connection) throw notFound('Connection not found.');
+  const base = { connectionId, connectorId: connection.connectorId };
+  // Stop before reading credentials or touching the connection's state.
+  if (!connectorEnabled(env, connection.connectorId)) {
+    return {
+      ...base,
+      outcome: 'skipped',
+      more: false,
+      skippedBecause: 'disabled',
+      status: connection.status,
+      error: PLAID_DISABLED_MESSAGE,
+      summary: null,
+    };
+  }
   const adapter = getAdapter(connection.connectorId);
   if (!adapter) throw badRequest(`No adapter for ${connection.connectorId} yet.`, 'no_adapter');
   const nowFn = opts.now ?? (() => new Date());
-  const base = { connectionId, connectorId: connection.connectorId };
 
   const skipped = skipReason(connection, nowFn(), opts.force ?? false);
   if (skipped) {
@@ -143,6 +163,7 @@ export async function syncConnection(
         failed.status,
         failed.lastError ?? 'Sync failed.',
         now,
+        outcome.retryAfterSeconds,
       );
       return {
         ...base,
@@ -226,7 +247,8 @@ export function lastDailyBoundary(now: Date): Date {
 /**
  * The five-minute cron. First it continues long first syncs (status
  * "syncing"), then it syncs connections not synced since the last 06:30 UTC
- * boundary, as many as one invocation's D1 allowance takes. So every
+ * boundary, plus failed attempts whose persistent backoff has elapsed, as many
+ * as one invocation's D1 allowance takes. So every
  * connection still syncs once a day, but never all in one invocation, and a
  * first sync with years of history finishes even if the app is closed.
  */
@@ -236,8 +258,24 @@ export async function syncDueConnections(
 ): Promise<ConnectionSyncReport[]> {
   const now = (opts.now ?? (() => new Date()))();
   const boundary = lastDailyBoundary(now).toISOString();
+  const meter = opts.meter ?? meterDb(env.DB);
+  const retries = await retrySchedule(meter.db);
   return syncAllConnections(env, {
     ...opts,
-    only: (c) => c.status === 'syncing' || c.lastSyncAt === null || c.lastSyncAt < boundary,
+    meter,
+    only: (c) => {
+      if (!connectorEnabled(env, c.connectorId)) return false;
+      // A successful partial write or explicit Repair queues immediate continuation.
+      if (c.status === 'syncing' && !c.lastError) return true;
+      const retryAt = retries.get(c.id);
+      if (retryAt !== undefined) return retryAt <= now.getTime();
+      // Recover failures recorded before the retry migration, including healthy-but-rate-limited logins.
+      if (c.status === 'error' || c.lastError) {
+        return (
+          c.lastSyncAt === null || Date.parse(c.lastSyncAt) + FIRST_RETRY_DELAY_MS <= now.getTime()
+        );
+      }
+      return c.lastSyncAt === null || c.lastSyncAt < boundary;
+    },
   });
 }

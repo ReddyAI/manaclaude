@@ -15,7 +15,7 @@ import {
   createExecutionContext,
   waitOnExecutionContext,
 } from 'cloudflare:test';
-import { createWorker } from '../src/index';
+import { createWorker } from '../src/worker';
 import { addAccount, freshDb, testEnv } from './helpers';
 import { client } from './worker';
 
