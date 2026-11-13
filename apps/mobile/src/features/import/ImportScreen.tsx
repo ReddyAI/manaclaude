@@ -310,6 +310,8 @@ export function ImportScreen() {
               review={review}
               accounts={data.accounts}
               dateOrderChosen={used.dayFirst !== null || used.mapping !== null}
+              onLeaveOut={flow.leaveOut}
+              onPutRowsBack={flow.putRowsBack}
             />
             <ParseErrorsCard preview={preview} review={review} onChange={flow.setReview} />
             <DuplicateReviewCard

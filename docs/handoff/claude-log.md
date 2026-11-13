@@ -238,3 +238,32 @@ Entering a balance later for an account made as unknown; renaming or removing a 
 ### Next (in the order Sankar set, one PR at a time)
 
 PR B import follow-up (leave out single rows; `docs/setup.md` section), PR C alerts and stored statements, PR D categories and rules, PR E Ask AI, PR F transaction editing controls.
+
+## 2026-11-13: Blocks B and C (leave out single import rows, alerts, stored statements)
+
+Started from `main` at `e6e824f` (PRs #14, #15, #16 and #17 verified as merged on GitHub) on `claude/vigilant-hopper-biu3nv`. Main moved to `03405d0` during the work (Codex's PR #18) and the branch was brought up to it before the first commit. One pull request with one commit per block. Codex is not available, so everything here uses routes that already exist in `backend/src/api/`. Changed: `apps/mobile/`, the one authorized section of `docs/setup.md`, and this log. No backend, connector, shared, workflow, root-config, dependency or lockfile changes. `packages/shared/src/api/index.ts` already had every type needed (`Alert`, `AlertsResponse`, `VaultListResponse`, `ImportRecord`, `ImportCommitRequest`), so it was not touched.
+
+### Block B: import follow-up
+
+What changed:
+
+- `apps/mobile/src/features/import/importFlow.ts`: `Review` gains `leftOut`, the rows unticked one by one, kept by the file's line number together with the row as it read at that moment. `commitLines` sends them in `skipLines` (the Worker already accepts that), only for lines that are rows of the preview on screen. New `rowChoices` (which rows get a tick box), `duplicateAnswer` (an unticked row that is also a possible duplicate counts as "skip the file's row"), `carryLeftOut` (what happens to unticked rows after a new preview) and `markOf`. `planImport` reports `leftOutByHand` and `unreadableLeftOut`.
+- `apps/mobile/src/features/import/useImportFlow.ts`: `leaveOut(line, out)` and `putRowsBack()`. A keep-or-skip answer replaces an earlier untick of the same row. Unticked rows are carried through every new preview, including the one made after the Worker reports that transactions changed.
+- `apps/mobile/src/features/import/PreviewCard.tsx`: every row that is not settled elsewhere has a tick box (role checkbox, with the line number and description as its label). Unticked rows are greyed and badged "Left out". A line under the totals says how many rows you left out and offers "Put them back". The list shows 60 rows and then "Show 100 more", so every row of a long file can be reached; the note next to the button says the counts and totals are for the whole file.
+- `apps/mobile/src/features/import/ReviewCards.tsx`: the duplicates card shows an unticked row as "Will be left out" and counts it as answered.
+- `apps/mobile/src/features/import/ImportScreen.tsx`: passes the two new actions to the preview.
+- `docs/setup.md`: the section "India NRE and NRO statements" was replaced with the text Sankar supplied ("Monefy history and India NRE and NRO statements"). Nothing else in that file changed.
+
+How counts and totals stay right:
+
+- The counts line, the totals per account and currency, the Import button's row count and the totals shown with the result all come from the same `planImport`, which leaves out exactly the lines `commitLines` sends. The preview now says "N left out (R rows, U unreadable lines)" when unreadable lines are among them, so the number matches the "left out" figure the Worker reports after the save.
+- A line is never sent twice, and never as both kept and skipped. An untick outranks an older "keep" for the same line.
+- Rows that are already stored, rows whose account is left out as a whole, and possible duplicates have no tick box: each is decided in one place only.
+
+Defaults chosen:
+
+- A CSV, OFX or QIF line number is the same line of the same file in every preview (checked in `packages/shared/src/import/{csv,ofx,qif}.ts` and `backend/src/imports/monefy.ts`), so an unticked row stays left out when the dates, the destination, the date order or the columns change. A row that falls outside narrower dates is remembered and is still left out when the dates are widened again.
+- A PDF is read again by Workers AI for every preview and its rows are numbered in the order they come back (`packages/shared/src/import/statement.ts`). There a row stays left out only if the same row (date, amount, description, account) is still at that number. Otherwise it is put back in and the screen says how many, so nothing is left out by guesswork.
+- Picking another file or "Start over" forgets the unticked rows.
+- A row with no account can be unticked, which removes that reason not to save.
+- "Put them back" restores every unticked row at once; one row is restored by ticking it.

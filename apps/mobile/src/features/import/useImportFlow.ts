@@ -19,10 +19,12 @@ import {
 } from './importApi';
 import {
   carryDecisions,
+  carryLeftOut,
   commitLines,
   dateProblem,
   EMPTY_OPTIONS,
   EMPTY_REVIEW,
+  markOf,
   planImport,
   resultFromRecord,
   rowSpan,
@@ -148,10 +150,28 @@ export function useImportFlow() {
     (lines: readonly number[], decision: 'keep' | 'skip') => {
       const decisions = { ...ref.current.review.decisions };
       for (const line of lines) decisions[line] = decision;
-      setReview({ decisions });
+      // An answer given here replaces an earlier untick of the same row in the list.
+      const leftOut = { ...ref.current.review.leftOut };
+      for (const line of lines) delete leftOut[line];
+      setReview({ decisions, leftOut });
     },
     [setReview],
   );
+
+  /** Leaves one row of the file out of the import, or puts it back. */
+  const leaveOut = useCallback(
+    (line: number, out: boolean) => {
+      const leftOut = { ...ref.current.review.leftOut };
+      const row = ref.current.preview?.rows.find((r) => r.line === line);
+      if (!out) delete leftOut[line];
+      else if (row) leftOut[line] = markOf(row);
+      setReview({ leftOut });
+    },
+    [setReview],
+  );
+
+  /** Puts back every row that was left out one by one. */
+  const putRowsBack = useCallback(() => setReview({ leftOut: {} }), [setReview]);
 
   const pick = useCallback(async () => {
     set({ busy: 'pick', error: null });
@@ -220,6 +240,16 @@ export function useImportFlow() {
         if (old) void discardImport(old.importId).catch(() => {});
         const sameErrors =
           old !== null && JSON.stringify(old.errors) === JSON.stringify(next.errors);
+        const carried = carryLeftOut(next, ref.current.review.leftOut);
+        if (carried.putBack.length > 0) {
+          const n = carried.putBack.length;
+          notice = [
+            notice,
+            `${n} ${n === 1 ? 'row you left out was' : 'rows you left out were'} read differently this time, so ${n === 1 ? 'it is' : 'they are'} back in the import. Untick ${n === 1 ? 'it' : 'them'} again if ${n === 1 ? 'it' : 'they'} should stay out.`,
+          ]
+            .filter(Boolean)
+            .join(' ');
+        }
         set({
           preview: next,
           // Choices edited while the preview was loading stay as edited (and show as changed).
@@ -234,6 +264,7 @@ export function useImportFlow() {
           review: {
             decisions: carryDecisions(old, next, review.decisions),
             skipErrors: review.skipErrors && sameErrors,
+            leftOut: carried.leftOut,
           },
         });
         // The review shows the stored side of each possible duplicate; load any the app does not have yet.
@@ -468,6 +499,8 @@ export function useImportFlow() {
     setOptions,
     setReview,
     decide,
+    leaveOut,
+    putRowsBack,
     pick,
     loadPreview,
     save,

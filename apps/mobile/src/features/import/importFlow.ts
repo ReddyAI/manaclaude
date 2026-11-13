@@ -133,9 +133,24 @@ export interface Review {
   decisions: Record<number, 'keep' | 'skip'>;
   /** The lines that could not be read are knowingly left out. */
   skipErrors: boolean;
+  /**
+   * Rows left out one by one in the preview list, by the file's line number,
+   * each with the row as it read when it was left out. They stay left out
+   * through a new preview (see `carryLeftOut`) until put back or another
+   * file is picked. A line that is not a row of the preview on screen (it is
+   * outside the dates, say) is kept here but counts for nothing.
+   */
+  leftOut: Readonly<Record<number, RowMark>>;
 }
 
-export const EMPTY_REVIEW: Review = { decisions: {}, skipErrors: false };
+/** What tells one row of a file from another. */
+export type RowMark = Pick<ImportPreviewRow, 'date' | 'amount' | 'rawName' | 'accountName'>;
+
+export function markOf(row: ImportPreviewRow): RowMark {
+  return { date: row.date, amount: row.amount, rawName: row.rawName, accountName: row.accountName };
+}
+
+export const EMPTY_REVIEW: Review = { decisions: {}, skipErrors: false, leftOut: {} };
 
 function leftOutBySource(row: ImportPreviewRow, options: ImportOptions): boolean {
   return row.accountName !== null && options.sources[row.accountName]?.kind === 'skip';
@@ -148,7 +163,8 @@ export function commitLines(
   review: Review,
 ): { skipLines: number[]; keepLines: number[] } {
   const skip = new Set<number>();
-  for (const row of preview.rows) if (leftOutBySource(row, options)) skip.add(row.line);
+  for (const row of preview.rows)
+    if (leftOutBySource(row, options) || review.leftOut[row.line]) skip.add(row.line);
   if (review.skipErrors) for (const e of preview.errors) skip.add(e.line);
   const keep = new Set<number>();
   for (const c of preview.duplicateCandidates ?? []) {
@@ -158,6 +174,36 @@ export function commitLines(
   }
   const sorted = (s: Set<number>) => [...s].sort((a, b) => a - b);
   return { skipLines: sorted(skip), keepLines: sorted(keep) };
+}
+
+/**
+ * The answer to one possible duplicate. A row left out by hand counts as
+ * "skip the file's row": it is the same thing said in another place.
+ */
+export function duplicateAnswer(review: Review, line: number): 'keep' | 'skip' | undefined {
+  return review.leftOut[line] ? 'skip' : review.decisions[line];
+}
+
+/**
+ * The rows that can be ticked or unticked one by one in the preview list,
+ * and where each stands: 'in' is imported, 'out' was left out by hand. Rows
+ * settled somewhere else are not offered: their account is left out, they
+ * have a keep-or-skip question of their own, or they are already stored.
+ */
+export function rowChoices(
+  preview: ImportPreview,
+  options: ImportOptions,
+  review: Review,
+): Map<number, 'in' | 'out'> {
+  const candidates = new Set((preview.duplicateCandidates ?? []).map((c) => c.line));
+  const choices = new Map<number, 'in' | 'out'>();
+  for (const row of preview.rows) {
+    if (leftOutBySource(row, options) || candidates.has(row.line)) continue;
+    if (review.leftOut[row.line]) choices.set(row.line, 'out');
+    else if (row.decision !== 'already_imported' && row.decision !== 'existing')
+      choices.set(row.line, 'in');
+  }
+  return choices;
 }
 
 /** Does the date order still need an explicit answer before this preview may be saved? */
@@ -186,8 +232,12 @@ export interface ImportPlan {
   importing: ImportPreviewRow[];
   /** Rows already stored from an earlier import of the same file rows. */
   alreadyThere: number;
-  /** Rows left out by choice: a source left out, or a duplicate skipped. */
+  /** Rows left out by choice: a source left out, a duplicate skipped, or a row unticked in the list. */
   leftOut: number;
+  /** Of those, the rows unticked in the list. */
+  leftOutByHand: number;
+  /** Unreadable lines knowingly left out. With `leftOut` this is what the save reports as left out. */
+  unreadableLeftOut: number;
   /** Rows with no destination and none that can be made. */
   unplaced: number;
   /** Possible duplicates with no keep or skip yet. */
@@ -231,6 +281,9 @@ export function planImport(
     (c) => !skip.has(c.line) && review.decisions[c.line] === undefined,
   );
   const unreadable = review.skipErrors ? 0 : preview.errors.length;
+  const leftOutByHand = preview.rows.filter(
+    (r) => review.leftOut[r.line] && !leftOutBySource(r, options),
+  ).length;
 
   const lines = new Map<string, TotalLine>();
   for (const row of importing) {
@@ -279,6 +332,8 @@ export function planImport(
     importing,
     alreadyThere,
     leftOut,
+    leftOutByHand,
+    unreadableLeftOut: review.skipErrors ? preview.errors.length : 0,
     unplaced,
     undecided,
     unreadable,
@@ -287,7 +342,7 @@ export function planImport(
   };
 }
 
-const sameRow = (a: ImportPreviewRow | undefined, b: ImportPreviewRow | undefined) =>
+const sameRow = (a: RowMark | undefined, b: RowMark | undefined) =>
   Boolean(
     a &&
     b &&
@@ -319,6 +374,31 @@ export function carryDecisions(
       kept[candidate.line] = decision;
   }
   return kept;
+}
+
+/**
+ * After a new preview of the same file: which rows left out by hand stay
+ * left out. A CSV, OFX or QIF line number is the same line of the file in
+ * every preview, so those rows stay out however the line is read now. A PDF
+ * is read afresh each time and its rows may come back in another order, so
+ * there a row stays out only if the same row is still at that number; the
+ * others are put back in and reported, never left out by guesswork.
+ */
+export function carryLeftOut(
+  after: ImportPreview,
+  leftOut: Review['leftOut'],
+): { leftOut: Review['leftOut']; putBack: number[] } {
+  const kept: Record<number, RowMark> = {};
+  const putBack: number[] = [];
+  const rows = new Map(after.rows.map((r) => [r.line, r]));
+  for (const [key, mark] of Object.entries(leftOut)) {
+    const line = Number(key);
+    const row = rows.get(line);
+    if (!row || sameRow(mark, row)) kept[line] = mark;
+    else if (after.format === 'pdf') putBack.push(line);
+    else kept[line] = markOf(row);
+  }
+  return { leftOut: kept, putBack };
 }
 
 /** The counts of a saved import, read back from its record (used when the answer to the save was lost). */

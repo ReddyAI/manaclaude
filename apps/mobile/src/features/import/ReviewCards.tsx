@@ -13,7 +13,7 @@ import { Card } from '../../design/components/Card';
 import { Badge, Switch } from '../../design/components/Controls';
 import { HStack, VStack } from '../../design/components/Layout';
 import { Text } from '../../design/components/Text';
-import type { Review } from './importFlow';
+import { duplicateAnswer, type Review } from './importFlow';
 
 const SHOWN = 40;
 
@@ -125,7 +125,7 @@ export function DuplicateReviewCard({
   const rows = new Map<number, ImportPreviewRow>(preview.rows.map((r) => [r.line, r]));
   const stored = new Map(transactions.map((t) => [t.id, t]));
   const lines = candidates.map((c) => c.line);
-  const answered = candidates.filter((c) => review.decisions[c.line] !== undefined).length;
+  const answered = candidates.filter((c) => duplicateAnswer(review, c.line) !== undefined).length;
   return (
     <Card>
       <VStack gap="md" testID="import-duplicates">
@@ -160,7 +160,8 @@ export function DuplicateReviewCard({
           if (!row) return null;
           const account = accounts.find((a) => a.id === row.accountId);
           const currency = row.currency ?? account?.currency ?? 'USD';
-          const decision = review.decisions[c.line];
+          // A row unticked in the list before it turned out to be a possible duplicate counts as skipped.
+          const decision = duplicateAnswer(review, c.line);
           const matches = c.transactionIds.map((id) => stored.get(id));
           return (
             <View key={c.line} style={styles.pair} testID={`import-duplicate-${c.line}`}>
