@@ -1,7 +1,10 @@
 import { defineConfig } from 'vitest/config';
 
-// Tests for the deploy scripts in deploy/. They run in plain Node (the Worker
-// tests in test/ run inside workerd) because they read files and the workflow.
+// Deploy/runtime and private recovery tests run in Node so they can use the
+// filesystem and independent local stores. Worker tests in test/ run in workerd.
 export default defineConfig({
-  test: { include: ['deploy/test/**/*.test.ts'], environment: 'node' },
+  test: {
+    include: ['deploy/test/**/*.test.ts', 'recovery/test/**/*.test.ts'],
+    environment: 'node',
+  },
 });
