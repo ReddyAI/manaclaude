@@ -27,6 +27,7 @@ export const testEnv = workerEnv as unknown as Env & {
 export const db = testEnv.DB;
 
 const TABLES = [
+  'manual_account_details',
   'sync_retries',
   'transactions',
   'transfer_links',
