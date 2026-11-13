@@ -1,7 +1,6 @@
 import type { FinanceDataset } from '@manaclaude/shared';
 import { selectAll } from '../db/table';
 import {
-  accountsTable,
   activitiesTable,
   balanceSnapshotsTable,
   budgetsTable,
@@ -23,6 +22,7 @@ import {
   transferLinksTable,
 } from '../db/tables';
 import { getSettings } from './settings';
+import { listAccounts } from './accounts';
 
 /** The whole dataset in the shape the app already renders (GET /v1/dataset). */
 export async function loadDataset(db: D1Database): Promise<FinanceDataset> {
@@ -50,7 +50,7 @@ export async function loadDataset(db: D1Database): Promise<FinanceDataset> {
     slots,
     settings,
   ] = await Promise.all([
-    selectAll(db, accountsTable, '', [], 'name'),
+    listAccounts(db),
     selectAll(db, balanceSnapshotsTable, '', [], 'date'),
     selectAll(db, transactionsTable, '', [], 'date DESC, created_at DESC'),
     selectAll(db, transferLinksTable),

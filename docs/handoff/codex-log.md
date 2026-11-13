@@ -213,3 +213,91 @@ The four additional import limits in the preceding entry also remain open: missi
 Ownership is unchanged: Claude owns `apps/mobile/`; Codex owns `backend/` and `connectors/`. This handoff does not authorize shared/root/workflow edits or reassign backend work to Claude. Keep separate handoff logs. Never call Plaid (including Sandbox), change its enablement flag, alter `CREDENTIALS_SECRET` usage, or commit private data. Test with invented fixtures and run `npm run check` before every push.
 
 This audit adds no application behavior, migration, dependency or environment changes. Validation: `npm run check` passed (typecheck, lint, formatting and **808 tests**: shared 118, connectors 345, backend 174, deployment/runtime 35, mobile 136). The changed-file inventory was also checked against the three original log entries, with no missing file references. No new tests were added for this documentation-only task.
+
+## 2026-11-12 — Phase 1: general manual-account API for import destinations
+
+Read `CLAUDE.md`, `AGENTS.md` and this log in order. Verified GitHub reports PRs **#10, #11, #12 and #13 merged**, fetched their commits, and started `codex/manual-account-import-foundation` from latest `main` at `24d7195` (the #13 merge). Used the existing manaclaude cloud checkout without republishing environment settings. This task implements the missing general manual-account creation API only; the previously completed startup, retry and import safeguards remain in place.
+
+Before pushing, fetched again and verified Claude's phone-safety **PR #14** merged as `5009636` (implementation `c8adbe0`). Updated this branch onto that latest main and reran the full check. Its settings hydration, request/cache isolation and fixed mobile test clock are delivered by Claude and are not reimplemented here; read Claude's separate log for details and phone verification.
+
+### Exact changes and defaults
+
+- `backend/src/services/accounts.ts`: validates manual creation, stores explicit opening/current balance information, returns persistent balance provenance, and handles retry identity. A required current-balance choice distinguishes a confirmed zero from unknown. Opening balances never become synthetic income/expense transactions or an inferred current balance. Known readings create daily balance snapshots; where opening and current readings share a date, current wins in the snapshot and both values remain available through the account and opening metadata.
+- `backend/migrations/0005_manual_accounts.sql`: additive `manual_account_details` table with a unique creation key, normalized request hash, opening reading and current-known flag. Account, metadata, key and snapshots write in one atomic D1 batch. A late failure rolls all of them back. Concurrent requests use the unique key to choose one winner; the other request replays it or reports a payload conflict. No existing account is rewritten or backfilled.
+- `backend/src/api/app.ts`: authenticated `POST /v1/accounts/manual`; `GET /v1/accounts` includes the additive metadata below. `backend/src/services/dataset.ts` includes the same metadata in `GET /v1/dataset`. A left join keeps account loading at one query, without a query per account. Existing accounts have no new metadata property.
+- `backend/test/manual-accounts.test.ts`: 48 cases for supported account types, unknown/zero/explicit balances, signs, snapshots, validation/authentication, concurrent/lost-response retries, conflicting key reuse, preserved later edits, rollback, query counts, cash compatibility and the create → partial CSV import → repeat → currency rejection → undo journey.
+- `backend/test/helpers.ts`: clears the new table before accounts when resetting local test databases. This log is the only documentation file changed. No connector changes were needed.
+
+The existing cash API and automatic cash-target behavior are unchanged. The general route rejects `type: 'cash'` and directs callers to `/v1/accounts/cash`; it cannot accidentally make an unknown-balance import destination into the cash quick-add target. Cash deletion/editing remains Phase 5 work.
+
+### Exact request contract for Claude
+
+`POST /v1/accounts/manual`, `Authorization: Bearer <existing app token>`, JSON body. Entirely invented example:
+
+```json
+{
+  "idempotencyKey": "b1309553-5329-4772-b642-cae13ecf551a",
+  "name": "Orchard savings",
+  "type": "savings",
+  "currency": "INR",
+  "subtype": "nre",
+  "openingBalance": { "amount": 20000, "date": "2025-01-01" },
+  "currentBalance": { "amount": 45000, "asOf": "2026-11-12T12:00:00.000Z" },
+  "includeInNetWorth": true
+}
+```
+
+- `idempotencyKey`: required, 1–200 ASCII letters/digits/underscores/hyphens; generate a UUID **once per creation intention and persist it with the original request until the outcome is known**. Retry the same request/key after timeout, a lost response, reload or double tap. Do not generate a fresh timestamp or key on each retry. Keys are scoped to this manual-creation API/database and do not expire. A new key creates a distinct account even if its name matches another account; this is not name-based account reconciliation.
+- `name`: required, trimmed, 1–100 characters after trimming.
+- `type`: required: `checking`, `savings`, `credit_card`, `brokerage`, `retirement`, `crypto`, `loan`, `mortgage`, `property`, `vehicle`, `other_asset` or `other_liability`. No default type and no linked connection are inferred. Cash keeps its existing route/contract.
+- `currency`: required, exactly three uppercase letters, following the existing ISO-code convention. Both balance amounts use this account currency; no conversion or second currency field is accepted. The validator checks the code's shape, not an exhaustive ISO registry.
+- `subtype`: optional, defaults to `null`; otherwise a trimmed 1–100-character label. Use applicable existing labels such as `nre`/`nro` for the chosen bank account, `demat` or `401k` where applicable. The shared model deliberately permits custom subtype strings, so the backend preserves the label without inferring or changing account type/currency from it. It does not impose a new exhaustive subtype taxonomy.
+- `openingBalance`: optional or `null` (default). If provided, both `amount` and a real calendar `date` in `YYYY-MM-DD` are required. This records an explicitly supplied historical balance, not a transaction, a bank-history cutoff or proof of complete history. It sets `account.openedOn` to that date. Otherwise `openedOn` is `null`.
+- `currentBalance`: **required**: either `null` for unknown or an object with both `amount` and `asOf`. `asOf` is a valid ISO UTC timestamp ending in `Z`, normalized to millisecond precision in responses. Omission is rejected. If both readings are supplied, opening date cannot be later than the UTC calendar date of the current reading. Readings need not be recent; callers must display their dates rather than claim freshness.
+- All amounts are signed **safe integer minor units**, never floating-point major units. Asset balances mean what is held; liability balances mean what is owed as a positive number, with a negative value allowed for a credit. These are the existing `Account.balance` signs, not the transaction debit/credit sign rule. No sign inversion is performed.
+- `includeInNetWorth`: optional; defaults to `true` only when a current balance was explicitly supplied, otherwise `false`. Explicit `true` with unknown current balance is rejected. Explicit `false` with a known balance is allowed.
+- Unknown JSON keys at the top level or inside a balance object are rejected, including provider IDs and nested currency fields. No institution, mask, provider attachment, automatic sync or account-edit operation is part of this endpoint.
+
+### Exact response, replay and read contracts
+
+First creation: **201**, `{ "account": <AccountWithManualBalance>, "replayed": false }`. Matching retry: **200**, `{ "account": <current stored AccountWithManualBalance>, "replayed": true }`. Retry never resets the balance, name or other later account edits. The hash uses normalized values: trimmed names/subtypes, normalized timestamp, `null` defaults and effective net-worth setting. A successful retry does not insert snapshots again.
+
+The `account` contains all existing `Account` fields, plus this optional additive property on accounts created by this route:
+
+```ts
+manualBalance?: {
+  currentKnown: boolean;
+  openingBalance: { amount: number; date: string } | null;
+};
+```
+
+With a known current balance, `account.balance`/`balanceAsOf` hold the explicit amount/timestamp. With unknown current balance, the existing shared model still requires a number and timestamp, so these fields contain **compatibility placeholders**: `0` and the creation timestamp. **Claude must render unknown (not ₹0/$0 or a fresh balance) when `manualBalance.currentKnown === false`.** It remains excluded from net worth. Missing `manualBalance` means a legacy/provider/cash account, not proof of unknown or known provenance. This PR does not relabel older import-created accounts.
+
+The same account shape is returned by `GET /v1/accounts` (`{ accounts: [...] }`) and in `GET /v1/dataset.accounts`. The creation key and request hash are never exposed by either read. Opening snapshots appear in the existing `balanceHistory`; neither opening nor current readings create transactions. Unknown current balance creates no current snapshot. There is no assumption that opening plus the imported rows reconciles to current.
+
+Other new-account defaults: `institutionName`, `availableBalance`, `creditLimit`, `mask`, `connectionId`, `externalId` and `interestRate` are `null`; `hidden` and `isDefaultCash` are `false`; `createdAt`/`updatedAt` use the creation clock. Account IDs are server generated.
+
+Errors keep the existing `{ error, message }` envelope: **400 `invalid_body`** for schema validation (malformed/missing JSON is 400 `bad_request`); **401 `unauthorized`** for missing/wrong authentication; **409 `idempotency_conflict`** when the key was used with different normalized details. A generic storage failure is **500 `internal`**; retain the original request/key for retry. The defensive **409 `account_missing`** result means the key exists but its account cannot be loaded; do not automatically create another. A 409 is not permission to silently rotate the key: reload/review the prior intention first.
+
+### Import integration and rollout dependencies
+
+1. Claude owns the phone form, retry-state persistence, unknown-balance display, optional additive shared API types and existing import review controls. No `packages/shared/` or mobile files were edited here. The new form should collect explicit currency/type and a known-or-unknown current balance, with optional opening information; it must not populate current balance or a sync cutoff from the last Monefy row.
+2. Create the manual destination **before** previewing a plain CSV. Use the returned ID in the existing `accountId` multipart field, or map a Monefy source label through existing `accountMappings`. If a preview already exists without a destination, request a fresh preview with the chosen ID. The new endpoint itself does not preview or commit a file. The existing currency, date, parse-error and duplicate-review safeguards remain enforced.
+3. Applying migration `0005` before this Worker version is required. The existing deployment preparation applies additive migrations; no workflow/configuration changes are included. Rollback to the previous Worker can leave the unused table in place. The migration does not need a shared/mobile change to apply, but the UI must adopt the metadata before offering unknown-balance creation to the user.
+4. A first creation without a race uses at most **5 D1 queries** with both readings (one retry lookup plus four batch statements); a matching retry uses two reads, and recovering a concurrent winner can add those two reads after a failed batch. Account list remains **one query**. Production CPU and current platform quotas are **not verified** by these tests. Existing multi-year sync and 1,200-row import query-budget coverage is retained.
+5. Backend finding 7's missing creation API is supplied here; the phone import/account-creation flow is still Claude's dependency. Claude's Phase 1 settings hydration, cache/request isolation and deterministic mobile dates are merged in #14. No real linking or physical-phone test was performed in this task. No real providers or Plaid endpoints were called; no private data was added. `PLAID_LINK_ENABLED`, `CREDENTIALS_SECRET` usage, root configuration, workflows, dependencies and lockfile remain unchanged by this PR.
+
+### Validation and plain phone-testing instructions
+
+- Targeted manual-account, import-safety, API, imports and build-check suites: **125 passed**, including all **48** new tests. Backend typecheck and scoped lint passed. Tests use invented data and local D1/R2. A failed initial test run exposed two test-harness mistakes (query meter invocation and the existing undo URL); those assertions were corrected to exercise the actual interfaces, then all targeted tests passed.
+- Full `npm run check` passed after updating to main `5009636`: typecheck, lint, formatting and **883 tests** (shared 118, connectors 345, backend 222, deployment/runtime 35, mobile 163). The real Worker startup/authentication test passes. In this cloud executor the first run hit ESLint's default Node heap limit; the next run passed application tests but Wrangler could not create its global settings directory outside the writable sandbox. The final successful command used process-local `NODE_OPTIONS=--max-old-space-size=6144`, `XDG_CONFIG_HOME=/tmp/manaclaude-test-config`, `WRANGLER_LOG_PATH=/tmp/manaclaude-wrangler`, `WRANGLER_SEND_METRICS=false` and `EXPO_OFFLINE=1`. No repository or published environment settings were changed for these test accommodations.
+
+After this backend PR and Claude's corresponding UI are merged/deployed:
+
+1. In the import account picker, create an invented INR savings account with subtype NRE. Choose **current balance unknown** and, optionally, an opening balance of ₹200 dated January 1, 2025. Check that its current balance displays as unknown and it is excluded from net worth.
+2. Import a small invented CSV into it. Check selected account, INR, dates and expense signs in preview. Saving, repeating the same file and undoing the import must not turn its balance into a calculated number. A file with explicit USD rows must fail instead of changing their currency label.
+3. Repeat with a second invented account and an explicitly entered current balance of ₹450 with its date. Imports and undo must leave that balance/date intact; the opening reading must not appear as spending or income.
+4. Double-tap create or interrupt the response and retry after reopening the form. With the saved original request/key, one account should exist. A changed request using that same key must show a conflict instead of making another account.
+5. Use cash quick-add as before. Confirm the existing default cash account receives the entry and its balance moves by that amount. The manual bank account must not become the cash target.
+
+Before Claude's UI lands, these new phone controls do not exist; use the automated API tests as the verification record. Stop after opening this focused Phase 1 PR and reporting dependencies. Phase 2 has **not started**: private database/file backup and demonstrated restoration, realistic invented workloads, bounded/resumable nightly work, production CPU/quota verification and a reviewable deployment health-check proposal are still prerequisites for a large real-history migration. Monefy transfer semantics remain unverified; per-account bank history, overlap/gap review, provider identity and reconciliation remain Phase 3 work. Incomplete Monefy history is never an automatic bank-sync cutoff, and transaction-date choices must not suppress current balances or investment cost-basis history.
