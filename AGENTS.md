@@ -9,3 +9,6 @@
 - Never call Plaid, including its Sandbox, or change `PLAID_LINK_ENABLED`. Existing tests use invented responses only.
 - Never change how `CREDENTIALS_SECRET` is used. Never commit secrets or personal data.
 - After every task, append to `docs/handoff/codex-log.md`; do not edit Claude's log.
+- Read both handoff logs (docs/handoff/codex-log.md and docs/handoff/claude-log.md) at the start of every task.
+- Codex owns backend/ and connectors/. Claude owns apps/mobile/ and adds types to packages/shared/src/api/ from Codex's written contract.
+- Codex writes an "API contract for Claude" section for every new or changed route. Claude writes requests under "For Codex". Screens are built only on merged routes.

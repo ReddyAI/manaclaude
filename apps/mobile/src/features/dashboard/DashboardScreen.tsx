@@ -33,6 +33,7 @@ import { TransactionRow } from '../transactions/TransactionRow';
 import { useBackendStatus } from '../../data/backend/sync';
 import { useRefreshControl } from '../../data/backend/useRefreshControl';
 import { AlertsEntry } from '../alerts/AlertsEntry';
+import { AskEntry } from '../ask/AskEntry';
 
 /**
  * Dashboard (session A owns this screen). Two layouts behind a setting:
@@ -209,6 +210,7 @@ export function DashboardScreen() {
           </Card>
         </View>
         <AlertsEntry />
+        <AskEntry />
         {spendingCard}
       </Screen>
     );
@@ -319,6 +321,7 @@ export function DashboardScreen() {
             />
           </Card>
           <AlertsEntry />
+          <AskEntry />
           <Card padding="none">
             <View style={styles.cardHeader}>
               <Text variant="label" tone="muted">
