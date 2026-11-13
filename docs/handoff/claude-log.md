@@ -177,3 +177,64 @@ Sankar merged Codex's PR #16 (`POST /v1/accounts/manual`) while PR #15 was open.
 - Items 2 to 8 of the previous entry's list for Codex are unchanged.
 - Editing a hand-made account later (entering a balance for one created as unknown, renaming, removing) has no backend operation yet; it is Phase 5 work on both sides.
 - Older accounts made by a Monefy import have no `manualBalance`, so they still show a balance of zero. Codex chose not to relabel them; a backend decision is needed if they should read as unknown too.
+
+## 2026-11-13 — PR A: safer linking on the phone (mobile half of findings 10 and 11)
+
+Started from `main` at `3804a7a` (PRs #14, #15 and #16 verified as merged on GitHub) on `claude/modest-babbage-iv591f`. Codex is not available, so this is only the phone's half of findings **10** (Sophtron) and **11** (SnapTrade). Changed: `apps/mobile/src/features/link/` and this log. No backend, connector, shared, workflow, root-config, dependency or lockfile changes. The backend halves are not assumed to exist.
+
+### What changed
+
+Sophtron (finding 10):
+
+- `apps/mobile/src/features/link/sophtronPoll.ts` (new): the wait for a sign-in. `pollSophtron` sends one `GET /v1/link/sophtron/:linkId`, waits for its answer, pauses 3 seconds and only then sends the next. The old screen fired a request every 3 seconds whether or not the last one had answered, so two could reach the Worker together, and the one that lost the race got `done` with no connection.
+  - A request that gets no answer or a Worker error (HTTP 5xx) is tried again. Three in a row stop the wait.
+  - The wait stops after 60 requests or 5 minutes. Before, the spinner stayed up after the limit with nothing behind it.
+  - A 404 (sign-in expired), 401 or a changed backend ends the attempt and goes back to the start with the Worker's message.
+  - Leaving the screen stops it.
+- `apps/mobile/src/features/link/SophtronFlow.tsx`: new steps.
+  - **Stalled:** the message, **Check again** (asks about the same sign-in; no second sign-in at the bank) and **Start over**.
+  - **`done` without connection IDs:** the app reloads the dataset (up to three times, 2 seconds apart) and looks. For a repair, the connection being repaired must show `healthy` or `syncing`. For a new login, exactly one Sophtron connection must be there that was not on screen when the sign-in started (the one with the picked bank's name if several are new). Found: the flow carries on to the sync step. Not found: **Not confirmed**, in plain words, with **Look again** and **Start over**. It says separately when the data could not be reloaded at all. Nothing is written in either case, so a repair that is not confirmed keeps its connection and its error.
+
+SnapTrade and Zerodha (finding 11):
+
+- `apps/mobile/src/features/link/BrowserFlow.tsx`: on the phone, `POST /v1/link/snaptrade/:linkId/complete` is sent only when the browser came back with `status=ok`. Before, it was sent after any closed window, and for a repair the Worker answers that with "repaired" without checking.
+  - Repair, window closed or cancelled: "closed before the login finished, so nothing was changed. This connection still needs repair." No complete call, no Done button, only Open SnapTrade again.
+  - New link, window closed: nothing is sent by itself. A button **I finished in SnapTrade** sends complete on your own tap. That is safe today: for a new link the Worker only saves a brokerage that is really new and otherwise answers `not_finished`.
+  - Zerodha, window closed on the phone: the same message; no reload and no "linked".
+  - Web: unchanged in shape (the page opens in a new tab and Done is your own tap), because the web build has no way to learn that the tab was closed.
+- `apps/mobile/src/features/link/SyncStep.tsx`: for a repair the sync is now the proof. While it runs the screen says "Checking the login with a sync...", not "Repaired". "Repaired and synced" appears only after a sync with outcome `ok`. Anything else, including `skipped`, shows **The repair is not confirmed** with the Worker's reason. This covers the web's Done tap on a repair, where the Worker still marks the connection repaired unchecked. A new link keeps its wording.
+- `apps/mobile/src/features/link/repair.ts`: the one-tap Zerodha repair said "Zerodha is connected again" whatever the sync answered. It now says that only for outcome `ok`.
+- `apps/mobile/src/features/link/types.ts`: a small `sentence()` helper so a Worker message without a full stop reads properly before the app's own sentence.
+
+### Defaults chosen
+
+- The pause between an answer and the next status request stays 3 seconds; limits are 60 requests or 5 minutes, and three failed requests in a row.
+- A new Sophtron connection is recognised by difference with what was on screen when the sign-in started. If the data on screen was not the selected backend's (sample data, first load not in yet), the app does not guess and reports not confirmed.
+- A repair found as `healthy` or `syncing` after the reload counts as confirmed; the forced sync that follows is still the proof shown to the user.
+- After a cancelled SnapTrade repair there is deliberately no "I finished" button on the phone, because the current Worker would accept it unchecked.
+- "Repaired" wording changed for every connector's repair, not only SnapTrade, since the same sync step serves all of them.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **955 tests** (shared 118, connectors 345, backend 222, deployment/runtime 35, mobile 235, up from 208). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192` in the cloud container, as before; no config change.
+- New `apps/mobile/src/features/link/__tests__/linkSafety.test.tsx` (27 tests, invented data): one status request at a time with held answers; no requests after leaving; retry after a lost answer; stop after three failures and Check again on the same sign-in; stop at the limit; expired sign-in; `done` without IDs found after a reload, found by bank name among two, not found, data not reloadable, sample data on screen, repair still in error then confirmed, another new connection not mistaken for the repaired one; SnapTrade finished, cancelled and dismissed repair, closed new link then own tap, own tap with nothing new, error callback, Zerodha closed, web Done; the sync step for a repair with outcomes ok, needs_repair, error and skipped; the Zerodha one-tap repair.
+- Each guard was removed in turn to confirm a test fails without it: old `BrowserFlow` (5 failures), old `SyncStep` (5), old `repair.ts` (1), overlapping status requests (2), repair accepted without a status check (2), new-connection guess with sample data on screen (1), no failure limit (1).
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `.dev.vars`, `ALLOW_SAMPLE_SEED=true`, `POST /v1/dev/seed`), at 412 px and 1280 px. The dataset and sync calls went to the real local Worker. The `/v1/link` routes that talk to Sophtron and SnapTrade were answered in the browser with invented data, because no provider may be called and the local Worker has no provider keys. 14 checks passed:
+  - Sophtron repair with answers slower than the pause (4.5 s) and one lost answer: never more than one status request in flight, each sent about 3 s after the previous answer, 4 status requests and 1 start, then `done` without IDs led to a dataset reload and "Not confirmed"; no further requests afterwards. After the dataset showed the connection as syncing, Look again went on to the sync step, which said "Checking the login with a sync..." and ended as "The repair is not confirmed" because the local Worker has no Sophtron keys.
+  - Sophtron new login: `done` without IDs and nothing new said so plainly; after a new connection appeared in the dataset, Look again carried on.
+  - SnapTrade repair on the web: opening the page sent no complete; Done sent exactly one; the sync step never said "Repaired" and ended as "The repair is not confirmed".
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted afterwards; none is committed.
+- **No Android device or emulator was used.** The phone-only path (the in-app browser closing or being cancelled) is covered by the Jest tests with a stand-in browser, not by a real Custom Tab.
+
+### Still needed from Codex for findings 10 and 11
+
+- **Sophtron:** store the result of the request that finishes a sign-in and return it again (connection IDs and `repaired`) on later status requests, and make a half-finished finalisation recoverable. Today `sophtronStatus` in `backend/src/api/link.ts` moves the session to `done` before the connection is made and later answers `done` with no IDs. The phone's reload-and-look is a fallback for that, not a replacement.
+- **SnapTrade:** in the repair branch of `POST /v1/link/snaptrade/:linkId/complete`, check that the saved authorization is present and enabled before `markRepaired`, and answer with an error otherwise. Until then a Done tap on the web marks the connection repaired for the moment before the sync corrects it. A status the app could read for a browser session (returned or not) would also let the web build tell a finished login from a closed tab.
+
+### Not possible until Codex is back (not built)
+
+Entering a balance later for an account made as unknown; renaming or removing a hand-made account; cash deletion; category merging; export and backup; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; and items 2 to 8 under "What Codex needs to do" above.
+
+### Next (in the order Sankar set, one PR at a time)
+
+PR B import follow-up (leave out single rows; `docs/setup.md` section), PR C alerts and stored statements, PR D categories and rules, PR E Ask AI, PR F transaction editing controls.
