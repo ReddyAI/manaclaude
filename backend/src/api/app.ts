@@ -30,7 +30,6 @@ import { JOBS, runJob, type JobName } from '../ai/jobs';
 import { listRecaps } from '../ai/jobs/recap';
 import { insertStatement, selectAll, selectOne, updateStatement } from '../db/table';
 import {
-  accountsTable,
   categoriesTable,
   connectionsTable,
   receiptsTable,
@@ -54,6 +53,7 @@ import {
 } from '../imports/service';
 import { attachReceipt, searchReceipts, splitByReceipt, uploadReceipt } from '../receipts/service';
 import { addCashTransaction, createCashAccount } from '../services/cash';
+import { createManualAccount, listAccounts, manualAccountSchema } from '../services/accounts';
 import { loadDataset } from '../services/dataset';
 import { editTransaction } from '../services/edits';
 import { confirmLink, linkManually, listLinks, rejectLink } from '../services/links';
@@ -72,7 +72,7 @@ import { newId, nowIso, safeEqual } from '../util/ids';
 export interface AppDeps extends AiDeps {
   /** Outbound fetch for FX providers (tests pass a fake). */
   fetch?: typeof fetch;
-  /** Clock for connector syncs and account-link sessions; defaults to real time. */
+  /** Clock for syncs, account creation, link sessions and import commits; defaults to real time. */
   now?: () => Date;
 }
 
@@ -327,9 +327,12 @@ export function createApp(deps: AppDeps = {}) {
     await ensureDefaultCategories(c.env.DB);
     return c.json(await loadDataset(c.env.DB));
   });
-  app.get('/v1/accounts', async (c) =>
-    c.json({ accounts: await selectAll(c.env.DB, accountsTable, '', [], 'name') }),
-  );
+  app.get('/v1/accounts', async (c) => c.json({ accounts: await listAccounts(c.env.DB) }));
+  app.post('/v1/accounts/manual', async (c) => {
+    const input = await body(c, manualAccountSchema);
+    const result = await createManualAccount(c.env.DB, input, c.get('deps').now);
+    return c.json(result, result.replayed ? 200 : 201);
+  });
   app.post('/v1/accounts/cash', async (c) => {
     const b = await body(
       c,
