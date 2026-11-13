@@ -1,11 +1,19 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DEFAULT_SETTINGS } from '@manaclaude/shared';
+import { setBackendConfigForTests } from '../../../data/backend/config';
+import { fakeBackend, json } from '../../../data/backend/__tests__/helpers';
 import { updateSettings } from '../../../data/settingsStore';
+import { resetAlertsForTests } from '../../alerts/alertsStore';
 import { DashboardScreen } from '../DashboardScreen';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), navigate: jest.fn() } }));
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => null),
+  setItemAsync: jest.fn(async () => {}),
+  deleteItemAsync: jest.fn(async () => {}),
+}));
 jest.mock('../../../design/haptics', () => ({
   ...jest.requireActual('../../../design/haptics'),
   haptic: jest.fn(),
@@ -45,5 +53,43 @@ describe('dashboard layouts', () => {
     await act(() => updateSettings({ dashboardLayout: 'safe_to_spend' }));
     await view.rerender(inRoot(<DashboardScreen />));
     expect(screen.getByTestId('currency-chip')).toBeTruthy();
+  });
+});
+
+describe('the way to the alerts', () => {
+  afterEach(() => {
+    setBackendConfigForTests({ url: '', token: '' });
+    resetAlertsForTests();
+  });
+
+  it('is on Home in both layouts when a backend is set, and absent without one', async () => {
+    const view = await render(inRoot(<DashboardScreen />));
+    expect(screen.queryByTestId('alerts-entry')).toBeNull();
+    await view.unmount();
+
+    const alert = {
+      id: 'alr_1',
+      type: 'unusual',
+      transactionId: null,
+      recurringId: null,
+      message: 'Demo charge is far above the usual.',
+      amount: 310_00,
+      currency: 'USD',
+      createdAt: '2026-11-04T06:30:00.000Z',
+      dismissedAt: null,
+    };
+    const backend = fakeBackend({ 'GET /v1/alerts': () => json(200, { alerts: [alert] }) });
+    try {
+      setBackendConfigForTests({ url: 'https://api.demo.test', token: 'demo-token' });
+      const grid = await render(inRoot(<DashboardScreen />));
+      await waitFor(() => expect(screen.getByText('1 alert')).toBeTruthy());
+      await grid.unmount();
+      await act(() => updateSettings({ dashboardLayout: 'safe_to_spend' }));
+      await render(inRoot(<DashboardScreen />));
+      await waitFor(() => expect(screen.getByText('1 alert')).toBeTruthy());
+      expect(screen.getByText('Safe to spend this month')).toBeTruthy();
+    } finally {
+      backend.restore();
+    }
   });
 });

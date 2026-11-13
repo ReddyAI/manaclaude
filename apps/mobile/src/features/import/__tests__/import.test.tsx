@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { formatMoney, type CsvMapping, type ImportCommitResult } from '@manaclaude/shared';
 import { createSampleData } from '@manaclaude/shared/sample';
+import { router } from 'expo-router';
 import { BackendError } from '../../../data/backend/client';
 import { getBackendConfig, setBackendConfigForTests } from '../../../data/backend/config';
 import { getFinance, setFinance } from '../../../data/store';
@@ -787,6 +788,23 @@ describe('history', () => {
     expect(screen.getByTestId('import-history-note').props.children).toMatch(
       /Removed 12 transactions from october.csv/,
     );
+  });
+
+  it('leads to the stored file of an import, and to all stored statements', async () => {
+    (listImports as jest.Mock).mockResolvedValue([
+      record({ id: 'imp_3', fileName: 'october.csv' }),
+      record({ id: 'imp_1', fileName: 'september.csv', status: 'undone' }),
+    ]);
+    await render(<ImportScreen />);
+    await fireEvent.press(screen.getByText('History'));
+    await waitFor(() => expect(screen.getByText('october.csv')).toBeTruthy());
+    await press('import-file-imp_1');
+    expect(router.push).toHaveBeenLastCalledWith({
+      pathname: '/vault/[id]',
+      params: { id: 'imp_1' },
+    });
+    await press('import-open-vault');
+    expect(router.push).toHaveBeenLastCalledWith('/vault');
   });
 });
 

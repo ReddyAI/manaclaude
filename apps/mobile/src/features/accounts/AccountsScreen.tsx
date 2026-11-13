@@ -212,6 +212,14 @@ export function AccountsScreen() {
               variant="secondary"
               onPress={() => router.push('/import')}
             />
+            <Button
+              label="Stored statements"
+              icon="paperclip"
+              size="sm"
+              variant="ghost"
+              onPress={() => router.push('/vault')}
+              testID="open-vault"
+            />
           </HStack>
           <ConnectionsCard />
           <ConnectorsList />

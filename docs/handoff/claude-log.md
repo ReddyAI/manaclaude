@@ -267,3 +267,71 @@ Defaults chosen:
 - Picking another file or "Start over" forgets the unticked rows.
 - A row with no account can be unticked, which removes that reason not to save.
 - "Put them back" restores every unticked row at once; one row is restored by ticking it.
+
+### Block C: alerts and stored statements
+
+Read first: `backend/src/api/app.ts` (the four routes), `backend/src/ai/jobs/alerts.ts` and `recurring.ts` (what makes an alert and what its `amount` means), `backend/src/imports/service.ts` (`listImports`, `loadRecord`) and migration `0001` (the `alerts` table).
+
+Alerts (`GET /v1/alerts`, `POST /v1/alerts/:id/dismiss`):
+
+- `apps/mobile/src/features/alerts/alertsApi.ts`, `alertsStore.ts`: the list is read from the Worker, kept in memory only, shared by Home and the Alerts screen, and dropped the moment the backend changes or the token is forgotten. Calls made at the same moment share one request.
+- `apps/mobile/src/features/alerts/AlertsScreen.tsx` and route `apps/mobile/src/app/alerts/index.tsx`: kind ("Possible duplicate", "Unusual charge", "Price went up"; an unknown kind shows as "Alert"), the Worker's message, the amount through `Amount` (labelled "Charged", or "More than before" for a price rise, because that is what the Worker stores there), the day it was raised, the transaction's name, date and account when it is in the data on the device, "See the transaction" (only then), "See recurring" when the alert names a recurring item, and Dismiss. Pull to refresh and a reload button. When exactly 100 are listed it says these are the newest 100.
+- Dismiss sends the request at once and removes the alert only after the Worker confirmed. If the Worker cannot be reached the alert stays and the reason is shown. A list that was asked for before a dismissal cannot bring the alert back.
+- `apps/mobile/src/features/alerts/AlertsEntry.tsx`, added to `features/dashboard/DashboardScreen.tsx` in both layouts.
+
+Stored statements (`GET /v1/vault`, `GET /v1/vault/:id/file`):
+
+- `apps/mobile/src/features/vault/vaultApi.ts`, `vaultStore.ts`, `vaultFiles.ts`, `labels.ts`: `GET /v1/vault` sends one record per stored copy and every preview stores its own copy, so the app groups records with the same SHA-256 into one file and shows it by its most telling copy (a saved import before a save under way, before an undone one, before a failed one, before a preview).
+- `apps/mobile/src/features/vault/VaultScreen.tsx` and route `src/app/vault/index.tsx`: one row per file with its kind, size, the day it was stored and what became of it (Imported, Import undone, Saving, Could not be read, Not imported). When the Worker's list is full (200 records) the screen says older files are kept but not listed.
+- `apps/mobile/src/features/vault/VaultFileScreen.tsx` and route `src/app/vault/[id].tsx`: the facts, every import of that file with its counts, how often it was only previewed, and two ways to open it:
+  - **Show the contents** (CSV, OFX, QIF): the text is fetched with the token and shown in the app, first 300 lines, with the full line count. Nothing is written to the device.
+  - **Open in another app** (phone, `openStoredFile.ts`): the file is downloaded into the app's private cache with `File.downloadFileAsync` and handed to another app with `File.canPreview` / `File.preview`, both part of the `expo-file-system` version already installed (58.0.13). A PDF can only be opened this way. One copy stays in the cache until another file is opened or the list is opened again. If no app opens that kind of file, the screen says so and keeps no copy.
+  - **Download the file** (web, `openStoredFile.web.ts`): fetched with the token and saved through the browser under its own name.
+- `apps/mobile/src/features/import/ImportScreen.tsx` and `ImportHistory.tsx`: the two ways in from the History tab. `features/accounts/AccountsScreen.tsx`: the button on the Connectors tab.
+- `apps/mobile/src/data/backend/client.ts`: one word, `export` on the existing `supersededError()`, so the file request (which returns bytes and cannot go through `api()`) reports a changed backend the same way.
+- An answer or a download that arrives after the backend changed is thrown away and never shown or opened.
+
+Where the screens are reached from (my choice):
+
+- **Alerts:** a row on Home, in both layouts, whenever a backend is set. It reads "3 alerts", or "No alerts" when there are none, so the screen is always in the same place. It reloads when the app's data is loaded again.
+- **Stored statements:** Accounts, Connectors tab, next to "Import a statement"; and Import a statement, History tab ("Stored statements" at the top, "See the file" on each import).
+
+Other defaults:
+
+- Dismiss is one tap with no confirmation and no undo, because the Worker has no route to bring an alert back. The screen says "A dismissed alert does not come back."
+- No "check now" button. `POST /v1/ai/jobs/alerts` exists, but this block was list and dismiss only; the Worker runs that job once a day.
+- Dates are shown as the Worker's UTC day, as History already does.
+- Files never saved (previewed and cancelled) are listed too, as "Not imported", because they are in the vault.
+
+### Validation
+
+- Main moved to `03405d0` during the work (Codex's PR #18, recovery tooling under `backend/recovery/`; no route, shared or mobile change). The branch was brought up to it before committing, and the checks below were run again on top of it.
+- `npm run check` passed: typecheck, lint, format and **1,033 tests** (shared 118, connectors 345, backend 222, deployment, runtime and recovery 46, mobile 302, up from 235). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192` in the cloud container, as before; no config change.
+- New mobile tests, all with invented data: `importFlow.test.ts` +11 and `import.test.tsx` +7 (block B and the History links), `features/alerts/__tests__/alerts.test.tsx` (16), `features/vault/__tests__/vaultFiles.test.ts` (11), `vault.test.tsx` (17, with a stand-in for the phone's file system), `openStoredFile.web.test.ts` (3), and one each in the accounts and dashboard tests for the new ways in.
+- Each guard was removed in turn to confirm a test fails without it.
+  - Block B: unticked rows not sent (12 failures), an untick not counted as a duplicate answer (2), a tick box on a possible duplicate (3), PDF rows never put back (2), a keep answer not clearing the untick (1), unticked rows dropped on a new preview (3), unreadable lines missing from the left-out count (2).
+  - Alerts: a list asked for earlier bringing a dismissed alert back (1), alerts kept after a backend change (2), a late failure shown on the new backend (1), a load attempted with no backend (1), the same alert dismissed twice (1), an alert removed before the Worker confirmed (2), the Home row shown with no backend (1), two callers not sharing one request (1), the row missing from the safe-to-spend layout (1).
+  - Stored statements: the list kept after a backend change (2), a file answer accepted after a backend change (1), a download opened after a backend change (1), earlier copies not cleared before a new open (1), a copy kept when no app opens it (1), a copy kept after returning to the list (1), a failed download leaving a partial file (1), a PDF offered as text (2).
+  - Not covered by a removal: the store's own check on a list answer after a backend change sits behind the same check in `api()`, so removing it alone fails nothing. The web build's `aria-checked` on the tick box cannot be seen by Jest (the phone renderer folds it into the native state); the browser checks cover it and failed before it was added.
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars`, `ALLOW_SAMPLE_SEED=true`, `POST /v1/dev/seed`), at 412 px and 1280 px, real multipart uploads and real Worker answers. **50 of 50 checks passed.**
+  - Import: a nine-line invented bank CSV (seven readable rows, one of which looks like a stored transaction, and one row with an unreadable date) into the sample NRE account. Counts and the INR totals were compared with sums worked out by the script at every step: before any untick, after unticking two rows, after a new preview with narrower dates (one unticked row outside them), after widening again (both still unticked), and with the duplicate skipped and the unreadable line acknowledged ("4 to import · 4 left out (3 rows, 1 unreadable line)"). The save sent `skipLines` 4, 6, 8, 9. The Worker's record read 4 added and 4 skipped, the four saved rows were in the account and the four left out were not. The same file again offered exactly the rows left out (3 to import, 4 already there).
+  - Stored statements: opened from History, facts and history shown, the text shown on screen (9 lines), the download compared byte for byte with the original, five stored copies shown as one file, an unknown id reported as not found, an unreachable Worker reported with nothing shown.
+  - Alerts: three invented alerts put into the local database (no provider, no AI). Home showed "3 alerts"; the screen listed kind, message and amount; "See the transaction" opened it; an alert whose transaction is not loaded had no link; a dismissal that could not reach the Worker changed nothing; a real dismissal sent one POST and the alert was gone from the screen, from the Worker's list and after a page reload; Home followed. With no backend set, both screens asked for it, Home had no row and nothing was sent.
+  - This run found one fault, fixed before committing: on the web the tick box did not say whether it was ticked to assistive technology.
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted afterwards; none is committed.
+- **No Android device or emulator was used.** "Open in another app" on the phone is covered only by Jest with a stand-in file system; the real download, the hand-over to a PDF viewer and the cache clean-up have not run on a device. PDF import was not exercised (it needs Workers AI on Cloudflare), so the PDF rule for unticked rows is covered by tests only.
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **Alerts:** there is no way to list dismissed alerts or to undo a dismissal, so a mistaken tap cannot be taken back. `POST /v1/alerts/:id/dismiss` answers `{ ok: true }` for an id that does not exist. The list stops at 100 with no total and no paging. An alert carries only ids, so when its transaction is not in the app's dataset there is nothing to show but the message.
+- **Vault:** `GET /v1/vault` returns one record per stored copy (each preview stores another copy of the same file) and stops at 200 records, so a file can drop off the list after enough previews. A listing of distinct files, or paging, would fix that; it is the same root as item 4 below (previews pile up). There is no operation to delete a stored file.
+- **PDF previews:** rows are numbered in the order Workers AI returns them, so a second preview of the same PDF may number them differently. Keeping the first reading for a re-preview of the same file (same SHA-256) would let per-row choices survive.
+- Unchanged from the earlier entries: items 2 to 8 under "What Codex needs to do" (item 3, one unreadable date hiding the date format, showed again in this browser run: the file had to be given its date format by hand), and the backend halves of findings 10 and 11.
+
+### Not possible until Codex is back (not built)
+
+Entering a balance later for an account made as unknown; renaming or removing a hand-made account; cash deletion; category merging; export and backup in the app (Codex's PR #18 is an operator tool and says not to expose it as a phone button); the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file.
+
+### Next (in the order Sankar set, one at a time)
+
+D categories and rules, E Ask AI, F the transaction editing controls that `PATCH /v1/transactions/:id` supports and the app does not expose yet.

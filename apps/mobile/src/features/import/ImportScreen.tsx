@@ -368,7 +368,22 @@ export function ImportScreen() {
         accessibilityLabel="Import a file or see earlier imports"
       />
       {tab === 'history' ? (
-        <ImportHistory />
+        <>
+          <HStack gap="sm" align="center" justify="space-between" wrap>
+            <Text variant="caption" tone="muted">
+              Imports that were saved, undone or could not be read.
+            </Text>
+            <Button
+              label="Stored statements"
+              icon="paperclip"
+              size="sm"
+              variant="ghost"
+              onPress={() => router.push('/vault')}
+              testID="import-open-vault"
+            />
+          </HStack>
+          <ImportHistory />
+        </>
       ) : (
         <>
           <Text variant="caption" tone="muted">
