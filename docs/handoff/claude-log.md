@@ -335,3 +335,87 @@ Entering a balance later for an account made as unknown; renaming or removing a 
 ### Next (in the order Sankar set, one at a time)
 
 D categories and rules, E Ask AI, F the transaction editing controls that `PATCH /v1/transactions/:id` supports and the app does not expose yet.
+
+## 2026-11-13: Blocks D and E (categories and rules, Ask AI)
+
+Started from `main` at `372d1fe` (PRs #18, #19 and #20 verified as merged on GitHub) on `claude/fervent-hypatia-vl2qsq`. One pull request with one commit per block; this log entry and the three authorized `AGENTS.md` lines are in the block E commit. Everything is built on routes that already exist in `backend/src/api/app.ts`; nothing of Codex's unmerged work is used. Changed: `apps/mobile/`, `packages/shared/src/api/index.ts` (additive types only), `AGENTS.md` (the three lines Sankar gave, word for word) and this log. No backend, connector, workflow, root-config, dependency or lockfile changes.
+
+### Shared types added (`packages/shared/src/api/index.ts`)
+
+For routes that exist and had no type, matching what the Worker sends: `CategoriesResponse` (GET /v1/categories), `CategoryResponse` (POST and PATCH /v1/categories), `CategoryPatchRequest` (the four keys PATCH takes), `RulesResponse` (GET /v1/rules), `RuleRunResponse` (POST /v1/rules/run). Existing `CreateCategoryRequest`, `RuleInput`, `RuleResponse`, `AiStatusResponse`, `AskRequest` and `AskResponse` are reused. Nothing renamed, removed or reshaped.
+
+### Block D: categories and rules
+
+Read first: the routes in `backend/src/api/app.ts` (schemas `conditionSchema`, `actionSchema`, `ruleSchema`, the category POST and PATCH schemas), `backend/src/services/rules.ts` (`runRules`), `packages/shared/src/policy/rules.ts` (`applyRules`, `conditionMatches`) and `backend/src/services/edits.ts` (how learned rules are written).
+
+- `apps/mobile/src/data/backend/scopedStore.ts` (new, shared app folder, additive): a value read from the Worker, kept in memory only, dropped the moment the backend changes; writes change the screen only from the Worker's answer; a list asked for before a confirmed write cannot undo it on screen. Used by categories, rules and the AI status.
+- `apps/mobile/src/features/categories/` (new) and route `src/app/categories/index.tsx`:
+  - The list is `GET /v1/categories`, grouped by the groups in the app's data, every group shown (empty ones too), archived categories in their own section with "Bring back".
+  - Tap a category: rename (`{ name }`, trimmed), "Leave out of budgets" (`{ excludeFromBudget }`), Archive (`{ archived: true }`). Up and down arrows send `{ order }` to each category whose value changes (two PATCHes for a move; values made strictly increasing so categories that share 999 still move). A failed PATCH stops the rest and reloads the list.
+  - "Add a category": name, an existing group, colour (12 slots), icon (the 40 the app can draw), leave out of budgets. Kind is the group's kind. Order is after the last category of the group. Sent only while the data on screen is this backend's (the group ids come from it).
+  - After a confirmed change the category is also put into the app's own data, so pickers and budgets see it at once; never into sample data.
+- `apps/mobile/src/features/rules/` (new) and routes `src/app/rules/index.tsx`, `src/app/rules/[id].tsx`:
+  - List (`GET /v1/rules`): name, "Off" and "Learned" badges, a one-line summary with names from the app's data, an on/off switch (PUT of the whole stored rule with `enabled` changed), "Add a rule", "Apply rules to stored transactions" (`POST /v1/rules/run`).
+  - Form (`/rules/new`, `/rules/<id>`): name, on, priority, every or any condition, conditions and actions. Offered exactly what the schema allows: name or the bank's name with contains, is exactly, starts with, matches the pattern, and upper/lower case exactly; amount is exactly, over, under, between; account, category, currency as one (`equals`) or several (`in`); actions set the category, rename, set the kind (all five kinds), add a tag (existing tags only), mark as reviewed, leave out of reports and budgets. Limits 1 to 20 conditions, 1 to 10 actions, 200 characters.
+  - Every save and run shows the Worker's count: "Saved "X". Rules changed N transactions." When N is above 0 the app's data is reloaded.
+  - Delete asks once more and says that what the rule changed stays.
+
+Where the screens are reached from (my choice): Settings, a new "Categories and rules" group above AI (`features/settings/sections/OrganizeSection.tsx`, one line in `SettingsScreen.tsx`).
+
+Defaults chosen (block D):
+
+- A name already used in the same group (archived ones included) is refused before sending, pointing to "Bring back" for an archived one. The Worker itself accepts duplicates.
+- Icon and colour are chosen only when adding, because PATCH cannot change them. Default icon `tag`, default colour the first slot the group does not use.
+- Reordering is one step up or down per tap. No drag.
+- Rule amounts are typed with two decimals (USD and INR both have two) and compared by the Worker as the size of the amount, in the transaction's own currency. A negative amount is refused with that reason; a stored rule with a negative amount (the sample learned Venmo rule has one) shows as it is, and its form asks for the size before it can be saved again.
+- A pattern that JavaScript cannot read is refused, since the Worker would treat it as never matching.
+- An action type the rule already has is not offered again (the Worker would ignore the second), except add a tag with another tag.
+- New rules use priority 100, as the Worker does. `?apply=false` on POST is not used: every save applies.
+- Rule forms and adding a category are closed while the data on screen is not this backend's, because the ids would be the sample data's.
+- Saving, adding and deleting ignore a second tap made before the first answer.
+
+### Block E: Ask AI
+
+Read first: `POST /v1/ai/ask`, `GET /v1/ai/status`, the error mapping in `app.ts` (409 `ai_disabled`, 503 `ai_unavailable`), `backend/src/ai/jobs/ask.ts` (what is sent to the AI) and `backend/src/ai/provider.ts`.
+
+- `apps/mobile/src/features/ask/` (new) and route `src/app/ask/index.tsx`.
+- Status card from `GET /v1/ai/status`: "AI is on, using Workers AI" or the other provider, a line when that provider has no key or binding on the Worker, "Today: N of 300 Workers AI calls used" (with: every AI job counts, the count starts again at midnight UTC; for another provider: the count does not cover it), and "Today's allowance is used up" at the limit. When AI is off: "AI is off", the Ask button is greyed and "Open Settings" is offered.
+- Question field (3 to 500 characters, trimmed), three example questions, Ask. The answer shows under its question, newest first; Clear removes them.
+- 409 `ai_disabled`: "AI is switched off on your Worker, so nothing was sent to any AI. To ask questions, turn on AI features in Settings, AI." The question stays in the field. 503 `ai_unavailable`: "The AI could not be reached, so there is no answer. The Worker said: ..." with the Worker's own reason (for example the daily allowance). Anything else: "No answer." and the plain error. The status is loaded again after every ask.
+- The screen says what is sent: account names and balances and six months of totals by category, never single transactions (from `ask.ts`).
+- Nothing is kept: questions and answers live only in the screen's state. No storage call, `autoComplete="off"` on the field, gone when the screen closes, cleared when the backend changes, and an answer for a backend that is no longer selected is dropped.
+- Ways in (my choice): an "Ask AI" row on Home in both layouts (only with a backend set) and an "Ask AI" row at the top of Settings, AI.
+
+Defaults chosen (block E): 90-second wait for an answer; one question at a time; Ask greyed only when the status says AI is off (if the status could not be loaded, asking is still allowed and a 409 is explained); the answer is selectable so it can be copied; nothing is offered to save a conversation (Sankar asked for that to wait).
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **1,139 tests** (shared 118, connectors 345, backend 250, deployment, runtime and recovery 46, mobile 380, up from 302). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192` in the cloud container; no config change.
+- New mobile tests, all with invented data: `data/backend/__tests__/scopedStore.test.ts` (5), `features/categories/__tests__/categories.test.ts` (9) and `categoriesScreen.test.tsx` (12), `features/rules/__tests__/rules.test.ts` (12) and `rulesScreen.test.tsx` (16), `features/ask/__tests__/ask.test.ts` (7) and `askScreen.test.tsx` (14), `features/settings/sections/__tests__/organize.test.tsx` (3), and the Home test checks the Ask AI row in both layouts.
+- Each new guard was removed once to confirm a test fails without it:
+  - Block D (17): a list asked for before a write undoing it (1 failure), a write answered for an old backend applied (1), a move carrying on after a refused PATCH (1), a category written into sample data (1), adding allowed with sample data on screen (1), a duplicate name sent (2), tied orders not moving (1), a broken pattern sent (1), a negative amount sent (1), a rule saved with sample data on screen (1), a repeated action sent (1), the data reloaded when nothing changed (1), a taken action type offered (1), a rule written into sample data (1; this one had no test at first, the test was added), double taps on Save the rule (1), Add (1) and Delete (1).
+  - Block E (11): answers kept after a backend change (1), a dropped answer reported as a failure (1), Ask enabled while AI is off (1), a short question sent (1), 409 not explained (2), 503 not explained (2), the status not reloaded after asking (2), a double tap sending twice (1), the provider note for other providers (1), the Home row in the safe-to-spend layout (1), the Home row without a backend (2).
+  - Not covered by a removal: the check inside Ask that AI is off sits behind the greyed button, so removing it alone fails nothing. A first version of "one question at a time" read a value from the last render and would not have stopped a fast double tap; it was replaced by one set at the moment of the tap, with a test.
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars`, `ALLOW_SAMPLE_SEED=true`, `POST /v1/dev/seed`, fresh database for each run), at 412 px and 1280 px. Every result was read back from the Worker with its own API. **98 of 98 checks passed** (block D 30 at each width, block E 19 at each width).
+  - Categories: rename stored trimmed with a body of `name` only; a duplicate name refused and not sent; left out of budgets; archived and brought back; Groceries moved down and the Worker's order read Restaurants, Groceries, Coffee, as on screen; "Bakery" added to Food with icon coffee, colour c7, kind expense, order 12.
+  - Rules: "Apply rules" in the app said "Rules changed 2 transactions." and an API run straight after changed 0; Payroll turned off and on with the whole rule in the PUT; a rule "Pho Corner" to Coffee: a broken pattern was refused with nothing sent, then the save said "Rules changed 12 transactions.", the number of Pho Corner rows the script worked out beforehand, and all 12 were Coffee on the Worker; the rule was edited (any condition, amount 5 to 19.99, tag Tax) and stored exactly; deleted after the second tap, and its changes stayed.
+  - Ask AI: status "AI is on, using Workers AI, Today: 0 of 300"; a 2-character question refused and not sent; a real question went to the local Worker, which answered 503 `ai_unavailable` ("Binding AI needs to be run remotely"), shown in plain words, and the count went to 1; AI switched off on the Worker with the screen still saying on: Ask gave the 409 text, the status reloaded to "AI is off", Ask was greyed and sent nothing, and the 409 did not count; switched on again; localStorage and sessionStorage held nothing of the question or answer and there were no IndexedDB databases; after leaving and reopening the screen nothing was shown; the Settings and Home rows were there.
+- **Only refusals were tested against the Worker for Ask AI.** The local Worker cannot run Workers AI, so every real `POST /v1/ai/ask` ended in 503. The one answer shown in the browser was played by the browser itself (an invented answer in place of the Worker's), to check how an answer is laid out and that it is not stored. A real answer from Workers AI, its wording, how long it takes and the 90-second wait have not been seen. The 409 path was tested for real.
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted afterwards; none is committed.
+- **No Android device or emulator was used.**
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **Categories:** no delete, no merge, no group editing (add, rename, reorder groups), and PATCH cannot change icon, colour, group or kind. There is no call that reorders several categories at once, so a move is two PATCHes and a failure between them leaves one moved. The Worker accepts a second category with the same name in a group and does not trim names. POST takes any string as `icon`.
+- **Rules:** a save (POST or PUT, including turning a rule off) runs every enabled rule over every stored transaction, and `applied` counts the changes of all rules, not of the one saved. A count of what a rule would change before saving (a dry run) would help: in the browser test one edit changed 101 transactions. Turning a rule off or deleting it does not undo what it changed. `DELETE /v1/rules/:id` answers 204 for an id that does not exist. The schema accepts `equals` with a list and `in` with a single value (the first never matches), a negative amount (the matcher compares sizes, so `gt -5000` matches everything; the sample learned Venmo rule has this), and a pattern that cannot be read (never matches). A learned rule is written again by the next category correction for its merchant, so an edit made in the app is replaced; the form says so.
+- **Tags:** the "add a tag" action can only use tags that already exist; there is no route to make one.
+- **AI:** a Workers AI call that fails still counts toward the daily limit (the count goes up before the call; seen locally, 0 to 1 after a 503). A failed Anthropic request (an SDK error) and a network failure to OpenAI or a compatible service are not turned into `ai_unavailable`, so the app can only say "Something went wrong on the server" (read in `provider.ts`, not run, since no keys may be used). There is no way to ask a follow-up with the earlier question as context.
+- Unchanged from earlier entries: items 2 to 8 under "What Codex needs to do", the backend halves of findings 10 and 11, and the alert, vault and PDF items of the previous entry.
+
+### Not possible until Codex's routes exist (not built)
+
+Entering a balance later for an account made as unknown; renaming or removing a hand-made account; cash deletion; category merging; export and backup in the app; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file.
+
+### Next (in the order Sankar set, one chat each)
+
+F: the transaction editing controls that `PATCH /v1/transactions/:id` supports and the app does not expose (name, date, amount, notes, kind, tags, exclude), plus making a cash account (`POST /v1/accounts/cash`), refreshing rates now (`POST /v1/fx/refresh`) and rejecting a suggested transfer (`POST /v1/transfer-links/:id/reject`). G: screens for the account editing routes, once Codex's contract for them is merged.

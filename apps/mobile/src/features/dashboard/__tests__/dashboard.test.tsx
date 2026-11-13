@@ -56,7 +56,7 @@ describe('dashboard layouts', () => {
   });
 });
 
-describe('the way to the alerts', () => {
+describe('the ways to the alerts and Ask AI', () => {
   afterEach(() => {
     setBackendConfigForTests({ url: '', token: '' });
     resetAlertsForTests();
@@ -65,6 +65,7 @@ describe('the way to the alerts', () => {
   it('is on Home in both layouts when a backend is set, and absent without one', async () => {
     const view = await render(inRoot(<DashboardScreen />));
     expect(screen.queryByTestId('alerts-entry')).toBeNull();
+    expect(screen.queryByTestId('ask-entry')).toBeNull();
     await view.unmount();
 
     const alert = {
@@ -83,11 +84,13 @@ describe('the way to the alerts', () => {
       setBackendConfigForTests({ url: 'https://api.demo.test', token: 'demo-token' });
       const grid = await render(inRoot(<DashboardScreen />));
       await waitFor(() => expect(screen.getByText('1 alert')).toBeTruthy());
+      expect(screen.getByTestId('ask-entry')).toBeTruthy();
       await grid.unmount();
       await act(() => updateSettings({ dashboardLayout: 'safe_to_spend' }));
       await render(inRoot(<DashboardScreen />));
       await waitFor(() => expect(screen.getByText('1 alert')).toBeTruthy());
       expect(screen.getByText('Safe to spend this month')).toBeTruthy();
+      expect(screen.getByTestId('ask-entry')).toBeTruthy();
     } finally {
       backend.restore();
     }

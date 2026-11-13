@@ -9,6 +9,7 @@ import { BackendSection } from './sections/BackendSection';
 import { BudgetsSection } from './sections/BudgetsSection';
 import { DisplaySection } from './sections/DisplaySection';
 import { MoneyPoliciesSection } from './sections/MoneyPoliciesSection';
+import { OrganizeSection } from './sections/OrganizeSection';
 
 /**
  * Settings. Each section lives in its own file under sections/ and belongs to
@@ -22,6 +23,7 @@ export function SettingsScreen() {
       <DisplaySection />
       <MoneyPoliciesSection />
       <BudgetsSection />
+      <OrganizeSection />
       <AiSection />
       <BackendSection />
       <Card>

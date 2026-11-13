@@ -2,6 +2,8 @@ import type { AiProvider } from '@manaclaude/shared';
 import { Icon } from '../../../design/components/Icon';
 import { ListRow } from '../../../design/components/ListRow';
 import { Switch } from '../../../design/components/Controls';
+import { isBackendReady, useBackendConfig } from '../../../data/backend/config';
+import { goTo } from '../../planning/navigate';
 import { updateSettings, useSettings } from '../../../data/settingsStore';
 import { SettingsGroup, SettingsRow } from '../SettingsRow';
 
@@ -28,8 +30,19 @@ const PROVIDERS: { value: AiProvider; label: string; note: string }[] = [
 /** AI switch, provider and MCP write tools (session B owns this section). */
 export function AiSection() {
   const settings = useSettings();
+  const backendReady = isBackendReady(useBackendConfig());
   return (
     <SettingsGroup title="AI">
+      {backendReady ? (
+        <ListRow
+          title="Ask AI"
+          subtitle="Ask about your money and see today's AI use"
+          leading={<Icon name="bot" tone="accent" />}
+          onPress={() => goTo('/ask')}
+          showChevron
+          testID="settings-ask"
+        />
+      ) : null}
       <SettingsRow
         label="AI features"
         description={

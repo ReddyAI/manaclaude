@@ -75,6 +75,8 @@ export interface IconButtonProps {
   variant?: 'ghost' | 'secondary' | 'primary';
   size?: ButtonSize;
   tone?: TextTone;
+  /** Greyed out and not pressable. */
+  disabled?: boolean;
   testID?: string;
 }
 
@@ -85,13 +87,16 @@ export function IconButton({
   variant = 'ghost',
   size = 'md',
   tone,
+  disabled = false,
   testID,
 }: IconButtonProps) {
   return (
     <PressableScale
       onPress={onPress}
+      disabled={disabled}
       pressHaptic="tap"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled }}
       testID={testID}
       hitSlop={8}
     >
@@ -99,7 +104,7 @@ export function IconButton({
         <Icon
           name={icon}
           size={size === 'sm' ? 'sm' : 'md'}
-          tone={tone ?? (variant === 'primary' ? 'onAccent' : 'default')}
+          tone={disabled ? 'faint' : (tone ?? (variant === 'primary' ? 'onAccent' : 'default'))}
         />
       </View>
     </PressableScale>

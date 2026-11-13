@@ -122,6 +122,24 @@ export type CreateCategoryRequest = Omit<Category, 'id' | 'order' | 'archived'> 
   order?: number;
 };
 
+/** GET /v1/categories: every category, archived ones included, by `order`. */
+export interface CategoriesResponse {
+  categories: Category[];
+}
+
+/** POST /v1/categories (201) and PATCH /v1/categories/:id */
+export interface CategoryResponse {
+  category: Category;
+}
+
+/** PATCH /v1/categories/:id. Only these keys are accepted; any other key is refused. */
+export interface CategoryPatchRequest {
+  name?: string;
+  archived?: boolean;
+  excludeFromBudget?: boolean;
+  order?: number;
+}
+
 /** POST /v1/rules, PUT /v1/rules/:id */
 export type RuleInput = Omit<Rule, 'id' | 'createdAt' | 'updatedAt' | 'source'>;
 
@@ -129,6 +147,17 @@ export interface RuleResponse {
   rule: Rule;
   /** Transactions changed when the rule was applied to existing rows. */
   applied: number;
+}
+
+/** GET /v1/rules, by priority. */
+export interface RulesResponse {
+  rules: Rule[];
+}
+
+/** POST /v1/rules/run: every enabled rule applied to every stored transaction. */
+export interface RuleRunResponse {
+  /** Transactions changed. */
+  changed: number;
 }
 
 // ---------------------------------------------------------------------------
