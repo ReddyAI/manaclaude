@@ -9,11 +9,16 @@ import { haptic } from '../../design/haptics';
 import { errorText } from '../../data/backend/client';
 import { refreshDataset } from '../../data/backend/sync';
 import { syncUntilDone } from './linkApi';
+import { sentence } from './types';
 
 /**
  * After a login is saved: fetch its data. A first sync with years of history
  * comes in parts; the counter shows how far it is. Leaving the screen is fine:
  * the backend's five-minute job finishes it.
+ *
+ * For a repair, this sync is the proof. The screen says "Repaired" only after
+ * a sync on the repaired login has worked; until then it is being checked,
+ * and if the sync fails the repair is reported as not confirmed.
  */
 export function SyncStep({
   connectionIds,
@@ -37,8 +42,13 @@ export function SyncStep({
             force: repaired,
           });
           total += report.summary?.inserted ?? 0;
-          if (report.outcome !== 'ok' && report.outcome !== 'skipped')
-            problems.push(report.error ?? 'The first sync did not finish.');
+          // A skipped sync proves nothing about a repaired login.
+          const worked = report.outcome === 'ok' || (!repaired && report.outcome === 'skipped');
+          if (!worked)
+            problems.push(
+              report.error ??
+                (repaired ? 'The sync did not finish.' : 'The first sync did not finish.'),
+            );
         } catch (e) {
           problems.push(errorText(e));
         }
@@ -57,16 +67,18 @@ export function SyncStep({
   return (
     <Card>
       <VStack gap="md">
-        <Text variant="headline">
+        <Text variant="headline" testID="sync-headline">
           {state === 'running'
             ? repaired
-              ? 'Repaired. Syncing...'
+              ? 'Checking the login with a sync...'
               : 'Linked. Fetching your history...'
             : state === 'done'
               ? repaired
                 ? 'Repaired and synced'
                 : 'All set'
-              : 'Saved, but the sync had a problem'}
+              : repaired
+                ? 'The repair is not confirmed'
+                : 'Saved, but the sync had a problem'}
         </Text>
         {state === 'running' ? <ActivityIndicator accessibilityLabel="Syncing" /> : null}
         <Text variant="body" tone="muted" testID="sync-progress">
@@ -74,7 +86,9 @@ export function SyncStep({
             ? inserted > 0
               ? `${inserted.toLocaleString()} transactions so far. A long history comes in parts; you can leave this screen and it keeps going.`
               : 'Talking to the bank. This can take a minute.'
-            : (message ?? `${inserted.toLocaleString()} transactions added.`)}
+            : state === 'problem' && repaired
+              ? `${sentence(message ?? 'The sync did not finish.')} The sync after the repair did not work, so the connection keeps its error. Try Repair again from Accounts.`
+              : (message ?? `${inserted.toLocaleString()} transactions added.`)}
         </Text>
         {state !== 'running' ? (
           <Button

@@ -8,6 +8,7 @@ import { isBackendReady } from '../../data/backend/config';
 import { refreshDataset } from '../../data/backend/sync';
 import { linkReturnUrl, openLinkPage } from './browser';
 import { linkApi, syncUntilDone } from './linkApi';
+import { sentence } from './types';
 
 /**
  * The Repair button (session D's planRepair decides how). A broken login is
@@ -30,8 +31,11 @@ export async function startRepair(connection: Connection): Promise<string | null
       if (Platform.OS === 'web') return 'Log in to Zerodha in the new tab, then tap Sync now.';
       if (back.result === 'error') return back.message ?? 'Zerodha did not finish the login.';
       if (back.result !== 'ok') return null;
-      await syncUntilDone(connection.id, () => {}, { force: true });
+      const report = await syncUntilDone(connection.id, () => {}, { force: true });
       await refreshDataset();
+      // Connected again only when a sync with the new login has worked.
+      if (report.outcome !== 'ok')
+        return `${sentence(report.error ?? 'The sync did not finish.')} The Zerodha login is not confirmed yet. Tap Repair to try again.`;
       return 'Zerodha is connected again.';
     } catch (e) {
       return errorText(e);

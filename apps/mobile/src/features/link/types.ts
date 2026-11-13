@@ -4,3 +4,9 @@ export interface FlowProps {
   connectionId?: string;
   onLinked: (connectionIds: string[], repaired: boolean) => void;
 }
+
+/** Ends a message with a full stop, so another sentence can follow it. */
+export function sentence(text: string): string {
+  const t = text.trim();
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}

@@ -10,38 +10,60 @@ import { HStack, VStack } from '../../design/components/Layout';
 import { Text } from '../../design/components/Text';
 import { errorText } from '../../data/backend/client';
 import { linkApi } from './linkApi';
+import {
+  findFinishedConnection,
+  pollSophtron,
+  sophtronConnectionsNow,
+  type Found,
+  type Missing,
+  type PollEnd,
+} from './sophtronPoll';
 import type { FlowProps } from './types';
 
 type Step =
   | { kind: 'choose' }
   | { kind: 'search' }
   | { kind: 'credentials'; institution: { id: string; name: string } }
-  | { kind: 'waiting'; linkId: string }
-  | { kind: 'mfa'; linkId: string; challenge: LinkChallenge };
-
-const POLL_MS = 3000;
-const POLL_LIMIT = 60;
+  | { kind: 'waiting'; linkId: string; round: number }
+  | { kind: 'mfa'; linkId: string; challenge: LinkChallenge }
+  /** Waiting stopped without an answer; the same sign-in can be checked again. */
+  | { kind: 'stalled'; linkId: string; message: string }
+  /** The Worker said done without naming the connection; the app is looking for it. */
+  | { kind: 'confirming'; linkId: string; round: number }
+  | { kind: 'unconfirmed'; linkId: string; why: Missing };
 
 /**
  * Sophtron: find the bank, sign in once (the password goes to Sophtron and is
  * not stored), answer any security question or code, done. Repair first tries
  * the same login again (the bank asks its question again); signing in anew is
  * the fallback.
+ *
+ * The app asks for the status one request at a time (sophtronPoll.ts). When
+ * the Worker says the sign-in is done but does not name the connection, the
+ * app reloads the data and looks for it; if it is not there, it says so and
+ * changes nothing.
  */
 export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
-  const [step, setStep] = useState<Step>(connectionId ? { kind: 'choose' } : { kind: 'search' });
+  const first: Step = connectionId ? { kind: 'choose' } : { kind: 'search' };
+  const [step, setStep] = useState<Step>(first);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // What was there before this sign-in, to recognise the connection it makes.
+  const [attempt, setAttempt] = useState<{
+    before: ReadonlySet<string> | null;
+    institutionName: string | null;
+  }>({ before: null, institutionName: null });
 
   const follow = (s: SophtronLinkStatus) => {
-    if (s.status === 'done' && s.connectionIds?.length)
-      onLinked(s.connectionIds, s.repaired ?? false);
-    else if (s.status === 'failed') {
+    if (s.status === 'done') {
+      if (s.connectionIds?.length) onLinked(s.connectionIds, s.repaired ?? false);
+      else setStep({ kind: 'confirming', linkId: s.linkId, round: 0 });
+    } else if (s.status === 'failed') {
       setError(s.message ?? 'The bank did not accept the sign-in.');
-      setStep(connectionId ? { kind: 'choose' } : { kind: 'search' });
+      setStep(first);
     } else if (s.status === 'mfa' && s.challenge)
       setStep({ kind: 'mfa', linkId: s.linkId, challenge: s.challenge });
-    else setStep({ kind: 'waiting', linkId: s.linkId });
+    else setStep((prev) => ({ kind: 'waiting', linkId: s.linkId, round: roundOf(prev) + 1 }));
   };
 
   const run = async (call: () => Promise<SophtronLinkStatus>) => {
@@ -53,6 +75,25 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
       setError(errorText(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const start = (body: Parameters<typeof linkApi.sophtronStart>[0]) => {
+    setAttempt({
+      before: sophtronConnectionsNow(),
+      institutionName: body.institutionName ?? null,
+    });
+    return run(() => linkApi.sophtronStart(body));
+  };
+
+  const pollEnded = (end: PollEnd) => {
+    if (end.kind === 'cancelled' || step.kind !== 'waiting') return;
+    if (end.kind === 'status') follow(end.status);
+    else if (end.kind === 'stalled')
+      setStep({ kind: 'stalled', linkId: step.linkId, message: end.message });
+    else {
+      setError(end.message);
+      setStep(first);
     }
   };
 
@@ -74,7 +115,7 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
             <Button
               label="Answer the bank's question"
               loading={busy}
-              onPress={() => run(() => linkApi.sophtronStart({ connectionId, refresh: true }))}
+              onPress={() => start({ connectionId, refresh: true })}
               testID="sophtron-refresh"
             />
             <Button
@@ -93,22 +134,20 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
           institution={step.institution}
           busy={busy}
           onSubmit={(username, password, pin) =>
-            run(() =>
-              linkApi.sophtronStart({
-                institutionId: step.institution.id,
-                institutionName: step.institution.name,
-                username,
-                password,
-                pin: pin || undefined,
-                connectionId,
-              }),
-            )
+            start({
+              institutionId: step.institution.id,
+              institutionName: step.institution.name,
+              username,
+              password,
+              pin: pin || undefined,
+              connectionId,
+            })
           }
           onBack={() => setStep({ kind: 'search' })}
         />
       ) : null}
       {step.kind === 'waiting' ? (
-        <Waiting linkId={step.linkId} onStatus={follow} onError={setError} />
+        <Waiting key={step.round} linkId={step.linkId} onEnd={pollEnded} />
       ) : null}
       {step.kind === 'mfa' ? (
         <Challenge
@@ -117,8 +156,75 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
           onAnswer={(answer) => run(() => linkApi.sophtronAnswer(step.linkId, answer))}
         />
       ) : null}
+      {step.kind === 'stalled' ? (
+        <Card>
+          <VStack gap="md">
+            <Text variant="body" testID="sophtron-stalled">
+              {step.message}
+            </Text>
+            <Button
+              label="Check again"
+              onPress={() => {
+                setError(null);
+                setStep({ kind: 'waiting', linkId: step.linkId, round: 0 });
+              }}
+              testID="sophtron-check-again"
+            />
+            <Button
+              label="Start over"
+              variant="ghost"
+              onPress={() => {
+                setError(null);
+                setStep(first);
+              }}
+              testID="sophtron-start-over"
+            />
+          </VStack>
+        </Card>
+      ) : null}
+      {step.kind === 'confirming' ? (
+        <Confirming
+          key={step.round}
+          target={{ connectionId, ...attempt }}
+          onFound={(found) => onLinked(found.connectionIds, found.repaired)}
+          onMissing={(why) => setStep({ kind: 'unconfirmed', linkId: step.linkId, why })}
+        />
+      ) : null}
+      {step.kind === 'unconfirmed' ? (
+        <Card>
+          <VStack gap="md">
+            <Text variant="headline">Not confirmed</Text>
+            <Text variant="body" testID="sophtron-unconfirmed">
+              {unconfirmedText(step.why, Boolean(connectionId))}
+            </Text>
+            <Button
+              label="Look again"
+              onPress={() => setStep({ kind: 'confirming', linkId: step.linkId, round: 0 })}
+              testID="sophtron-look-again"
+            />
+            <Button
+              label="Start over"
+              variant="ghost"
+              onPress={() => setStep(first)}
+              testID="sophtron-start-over"
+            />
+          </VStack>
+        </Card>
+      ) : null}
     </VStack>
   );
+}
+
+const roundOf = (step: Step): number =>
+  step.kind === 'waiting' || step.kind === 'confirming' ? step.round : 0;
+
+/** What the screen says when a finished sign-in cannot be matched to a connection. */
+function unconfirmedText(why: Missing, repair: boolean): string {
+  if (why === 'unreachable')
+    return 'Sophtron says the sign-in finished, but the app could not reload your data, so it cannot tell whether it was saved. Check your connection, then look again. Do not sign in again until you have looked.';
+  return repair
+    ? 'Sophtron says the sign-in finished, but this connection still shows a problem on your backend, so the repair is not confirmed. The connection and its error are left as they are. Look again in a moment, or sign in again.'
+    : 'Sophtron says the sign-in finished, but the app cannot find a new connection on your backend. It may not have been saved. Look again in a moment, and check Accounts before you sign in again, so the same bank is not linked twice.';
 }
 
 function SearchBank({ onPick }: { onPick: (i: { id: string; name: string }) => void }) {
@@ -246,50 +352,19 @@ function Credentials({
   );
 }
 
-function Waiting({
-  linkId,
-  onStatus,
-  onError,
-}: {
-  linkId: string;
-  onStatus: (s: SophtronLinkStatus) => void;
-  onError: (message: string) => void;
-}) {
-  const polls = useRef(0);
-  // Keep the latest callbacks without restarting the timer on every render.
-  const callbacks = useRef({ onStatus, onError });
+function Waiting({ linkId, onEnd }: { linkId: string; onEnd: (end: PollEnd) => void }) {
+  // Keep the latest callback without restarting the wait on every render.
+  const ended = useRef(onEnd);
   useEffect(() => {
-    callbacks.current = { onStatus, onError };
+    ended.current = onEnd;
   });
   useEffect(() => {
     let live = true;
-    const { onStatus: status, onError: fail } = {
-      onStatus: (s: SophtronLinkStatus) => callbacks.current.onStatus(s),
-      onError: (m: string) => callbacks.current.onError(m),
-    };
-    const timer = setInterval(() => {
-      polls.current += 1;
-      if (polls.current > POLL_LIMIT) {
-        clearInterval(timer);
-        fail('The bank is taking too long. Try again in a few minutes.');
-        return;
-      }
-      linkApi.sophtronStatus(linkId).then(
-        (s) => {
-          if (!live || s.status === 'pending') return;
-          clearInterval(timer);
-          status(s);
-        },
-        (e: unknown) => {
-          if (!live) return;
-          clearInterval(timer);
-          fail(errorText(e));
-        },
-      );
-    }, POLL_MS);
+    void pollSophtron(linkId, () => live).then((end) => {
+      if (live) ended.current(end);
+    });
     return () => {
       live = false;
-      clearInterval(timer);
     };
   }, [linkId]);
   return (
@@ -298,6 +373,44 @@ function Waiting({
         <ActivityIndicator accessibilityLabel="Signing in" />
         <Text variant="body" tone="muted" align="center">
           Signing in to your bank through Sophtron. This can take a minute.
+        </Text>
+      </VStack>
+    </Card>
+  );
+}
+
+type ConfirmTarget = Parameters<typeof findFinishedConnection>[0];
+
+function Confirming({
+  target,
+  onFound,
+  onMissing,
+}: {
+  target: ConfirmTarget;
+  onFound: (found: Found) => void;
+  onMissing: (why: Missing) => void;
+}) {
+  const latest = useRef({ target, onFound, onMissing });
+  useEffect(() => {
+    latest.current = { target, onFound, onMissing };
+  });
+  useEffect(() => {
+    let live = true;
+    void findFinishedConnection(latest.current.target, () => live).then((result) => {
+      if (!live) return;
+      if ('missing' in result) latest.current.onMissing(result.missing);
+      else latest.current.onFound(result);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return (
+    <Card>
+      <VStack gap="md" align="center">
+        <ActivityIndicator accessibilityLabel="Looking for the connection" />
+        <Text variant="body" tone="muted" align="center" testID="sophtron-confirming">
+          Sophtron finished the sign-in. Looking for the connection on your backend...
         </Text>
       </VStack>
     </Card>
