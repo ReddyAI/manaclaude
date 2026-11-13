@@ -21,6 +21,7 @@ import { linkManually } from '../../src/services/links';
 import { previewImport, commitImport, undoImport, discardImport } from '../../src/imports/service';
 import { uploadReceipt } from '../../src/receipts/service';
 import { loadCredentials, saveCredentials } from '../../src/sync/credentials';
+import { backfillMissingHistory } from '../../src/fx/service';
 import { loadDataset } from '../../src/services/dataset';
 import {
   backup,
@@ -174,6 +175,16 @@ beforeAll(async () => {
     .bind('invented-link-session', 'simplefin', 'done', now, now, now)
     .run();
   await saveCredentials(env, 'invented-connection', { token: 'invented-provider-token' });
+  // An interrupted FX owner plus previously committed progress must survive a backup.
+  await env.DB.prepare(
+    "INSERT INTO fx_backfill_progress VALUES ('INR', '2026-11-01', '2026-11-03')",
+  ).run();
+  await env.DB.prepare(
+    "INSERT INTO fx_rates VALUES ('USD', 'INR', 80, '2026-10-30T15:00:00.000Z', '2026-10-30', 'frankfurter_ecb'), ('USD', 'INR', 80, '2026-11-02T15:00:00.000Z', '2026-11-02', 'frankfurter_ecb')",
+  ).run();
+  await env.DB.prepare(
+    "INSERT INTO fx_backfill_scheduler VALUES (1, 'GBP', 'invented-abandoned-fx-lease', 1794484800000)",
+  ).run();
   const dump = await env.DB.prepare('PRAGMA miniflare_d1_export(?,?,?);')
     .bind(false, false)
     .raw<string[]>();
@@ -222,12 +233,12 @@ describe('private D1 and original-file recovery', () => {
       '--manifest-sha256',
       digest,
     ]);
-    expect(JSON.parse(stdout)).toEqual({ tables: 35, files: 4 });
+    expect(JSON.parse(stdout)).toEqual({ tables: 37, files: 4 });
   });
   it('restores all records, balances, notes, categories, splits, transfers and originals to new local D1/R2', async () => {
     const restored = join(root, 'restored');
     const result = await restoreLocal(bundle, digest, restored);
-    expect(result).toEqual({ tables: 35, files: 4 });
+    expect(result).toEqual({ tables: 37, files: 4 });
     const target = await getPlatformProxy<Env>({
       configPath: join(restored, 'wrangler.json'),
       remoteBindings: false,
@@ -273,6 +284,35 @@ describe('private D1 and original-file recovery', () => {
         expect(copy!.httpMetadata).toEqual(original!.httpMetadata);
         expect(copy!.customMetadata ?? {}).toEqual(original!.customMetadata ?? {});
       }
+      const fxCalls: string[] = [];
+      await backfillMissingHistory(
+        target.env,
+        async (url) => {
+          fxCalls.push(url);
+          const date = new URL(url).pathname.split('/').at(-1)!;
+          return Response.json({ amount: 1, base: 'USD', date, rates: { INR: 80 } });
+        },
+        { now: () => new Date('2026-11-13T12:00:00Z'), through: '2026-11-04' },
+      );
+      expect(fxCalls.map((url) => new URL(url).pathname)).toEqual([
+        '/v1/2026-11-03',
+        '/v1/2026-11-04',
+      ]);
+      expect(
+        await target.env.DB.prepare(
+          "SELECT next_date FROM fx_backfill_progress WHERE quote='INR'",
+        ).first('next_date'),
+      ).toBe('2026-11-05');
+      expect(
+        await target.env.DB.prepare('SELECT lease_token FROM fx_backfill_scheduler').first(
+          'lease_token',
+        ),
+      ).toBeNull();
+      expect(
+        await env.DB.prepare("SELECT next_date FROM fx_backfill_progress WHERE quote='INR'").first(
+          'next_date',
+        ),
+      ).toBe('2026-11-03');
       expect(JSON.parse(await readFile(join(restored, 'verified.json'), 'utf8')).scope).toBe(
         'local-restoration-only',
       );

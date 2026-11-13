@@ -12,8 +12,10 @@ import { bulkInsertSpecs, runSpecs } from '../db/bulk';
 import { selectAll } from '../db/table';
 import { fxRatesTable } from '../db/tables';
 
+import { FRANKFURTER_URL } from './backfill';
+
 export const OXR_LATEST_URL = 'https://openexchangerates.org/api/latest.json';
-export const FRANKFURTER_URL = 'https://api.frankfurter.dev/v1';
+export { backfillMissingHistory, FRANKFURTER_URL } from './backfill';
 
 type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -65,22 +67,6 @@ export async function backfillFrankfurter(
   );
   if (!res.ok) throw new Error(`Frankfurter returned HTTP ${res.status}`);
   return storeRates(env.DB, parseFrankfurter(await res.json(), quotes));
-}
-
-/** Backfills from the oldest transaction date that has no ECB rate yet. */
-export async function backfillMissingHistory(env: Env, doFetch: FetchFn = fetch): Promise<number> {
-  const oldestTxn = await env.DB.prepare('SELECT min(date) AS d FROM transactions').first<{
-    d: string | null;
-  }>();
-  const oldestRate = await env.DB.prepare(
-    "SELECT min(date) AS d FROM fx_rates WHERE source = 'frankfurter_ecb'",
-  ).first<{
-    d: string | null;
-  }>();
-  if (!oldestTxn?.d) return 0;
-  if (oldestRate?.d && oldestRate.d <= oldestTxn.d) return 0;
-  const to = oldestRate?.d ?? new Date().toISOString().slice(0, 10);
-  return backfillFrankfurter(env, oldestTxn.d, to, doFetch);
 }
 
 export function loadRates(db: D1Database): Promise<FxRate[]> {
