@@ -61,3 +61,119 @@ Tests added (all invented data):
 - Phase 2 (import review flow) waits on Codex's manual-account creation API (finding 7). Needed from that contract: route and body for creating a manual non-cash account (name, type, currency, optional mask), what it returns, and whether `POST /v1/imports` can create the destination as part of commit instead. The other Phase 2 fields are already documented in the Codex log's API table.
 - Shared API types for the import fields (`fromDate`, `toDate`, `accountMappings`, `currency`, `sourceFormat`, `dateRange`, `duplicateCandidates`, `requiresDateConfirmation`, `keepLines`, `warnings`) are not added yet; that is the first Phase 2 step and is authorized as additive shared edits.
 - Mobile parts of findings 10 (serialized Sophtron polling) and 11 (SnapTrade cancel is not a successful Repair) are Phase 3 and wait on Codex's completion contracts.
+
+## 2026-11-12 — Phase 2: import review flow (Monefy history and statements), without new backend work
+
+Started from `main` at `5009636` (PR #14 merged) on `claude/focused-heisenberg-3xmrry`. Sankar asked for Phase 2 to go ahead without waiting for Codex, and for a list of what Codex needs to do. This builds everything the merged backend (PR #12) already supports and prepares the one thing it does not (a new bank account for a file that names none). Changed: `apps/mobile/src/features/import/`, additive types in `packages/shared/src/api/index.ts` (authorized for this phase), and this log. No backend, connector, root-config, workflow or dependency changes.
+
+### What changed
+
+`packages/shared/src/api/index.ts` (additive only; backend typecheck and tests still pass):
+
+- `ImportPreview` gains optional `sourceFormat`, `duplicateCandidates`, `dateRange`, `requiresDateConfirmation` (the same names and shapes the backend already returns through its own `SafeImportPreview`).
+- `ImportCommitRequest.keepLines`, `ImportCommitResult.warnings`.
+- New: `ImportDuplicateCandidate`, `ImportDateRange`, `ImportPreviewOptions` (the multipart fields), `ImportErrorCode`, `ImportListResponse`, `ImportDetail`, `ImportUndoResult`.
+- `MANUAL_ACCOUNT_TYPES`, `ManualAccountType`, `ManualAccountRequest`, `ManualAccountResponse` for `POST /v1/accounts/manual`. First written as a proposal; replaced by the merged backend contract in the next entry.
+
+`apps/mobile/src/features/import/`:
+
+- `importApi.ts`: preview with all options, commit with `skipLines`/`keepLines`, `getImport`, `listImports`, `undoImport`, and `manualAccountsSupported()` / `createManualAccount()` for the proposed route.
+- `importFlow.ts` (pure rules, no screen): what a preview is asked for, which rows a save adds or leaves out, the reasons a save is not allowed yet, totals per account and currency, and which keep/skip answers survive a new preview.
+- `useImportFlow.ts`: the screen's state and actions (pick, preview, review, save, check an interrupted save, undo, make an account).
+- `pendingImport.ts`: remembers the one import whose save started but whose outcome was not seen, tied to the backend it was sent to.
+- Screen parts: `ImportScreen.tsx` (rebuilt, with Import and History tabs), `WhatToImportCard.tsx`, `DestinationCard.tsx`, `NewAccountForm.tsx`, `CsvColumnsCard.tsx`, `ReviewCards.tsx`, `PreviewCard.tsx`, `ImportHistory.tsx`, `labels.ts`.
+
+What the screen now does:
+
+- **Dates:** From and To fields, both days included, with chips for the last six months in the file. The preview says how many readable rows fall outside the dates.
+- **Accounts:** a file that names its accounts (Monefy, QIF with accounts, OFX) gets one line per account: an existing account, a new one made from the file, or left out. Only accounts in the same currency are offered. A file with no account inside gets one destination.
+- **Date order:** Monefy and QIF get Day first / Month first; bank CSVs get the candidate formats. When the file can be read two ways, Import stays off until one is chosen and a new preview is made.
+- **Currency:** asked only when the file has none and no destination supplies it.
+- **CSV layout:** lines above the header, header on or off, date column and date format, description column, one amount column (with a sign flip) or separate debit and credit columns.
+- **Possible duplicates:** the file's row next to the stored transaction(s), with Keep both or Skip the file's row for each, plus keep-all and skip-all. Import stays off until every one is answered.
+- **Unreadable lines:** listed with line numbers; the rest is saved only after a switch says to leave them out.
+- **Totals to compare:** rows, money in and money out per destination and currency, before and after the save. These are the file's own amounts, not the app's spending policy.
+- **Changed previews:** changing any choice marks the preview as old and turns Import off until it is updated. If transactions change during the review (HTTP 409 `import_preview_changed`, or new duplicates found at save time), the app makes a fresh preview and says so; only answers for unchanged pairs are kept.
+- **Interrupted saves:** if the answer to a save is lost, the app asks the Worker (`GET /v1/imports/:id`) instead of saving again: saved (counts read back), still saving, or nothing saved. If the Worker cannot be asked, it says so and offers Check again, never a second import. This survives closing the app.
+- **Save warnings:** shown with the result, with "the rows are saved; do not import this file again".
+- **History and undo:** saved, undone and unreadable imports are listed; a saved one can be undone after a second press, from History or straight from the result.
+
+### Defaults chosen
+
+- A preview is made only when the button is pressed (each preview stores the file in the vault). The app discards the preview it replaces.
+- "Leave out" for an account in the file needs no new preview; it is sent as `skipLines`.
+- Accounts offered as destinations: every visible account except property, vehicle and crypto (so cash wallets are offered for Monefy).
+- New account from a Monefy file keeps the backend's default: history only, balance zero, kept out of net worth.
+- The "New account" form (name, type, currency, last four digits) appears only when the Worker answers the proposed route. The app asks once per backend with an empty body, which cannot create anything. Until then the screen says the Worker needs an update and offers existing accounts.
+- A column layout saved from an earlier file of the same bank carries that file's count of skipped lines. The app re-reads the new file from its own first line (see problem 2 below).
+- Per-row untick in the preview list is not built; rows can be left out by account, by duplicate answer, or as unreadable lines.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **871 tests** (shared 118, connectors 345, backend 174, deployment/runtime 35, mobile 199, up from 163). As in Phase 1, ESLint needed `NODE_OPTIONS=--max-old-space-size=8192` in the cloud container. New mobile tests: `importFlow.test.ts` (15) and a rewritten `import.test.tsx` (24), all with invented data. Guards were removed in turn to confirm tests fail without them.
+- Web, phone width (412 px) and desktop width (1280 px), exported build against a local Worker seeded with the invented sample data, real multipart uploads:
+  - Monefy file with two accounts and ambiguous dates: confirmation required, one month selected (2 rows outside), one account mapped to an existing INR wallet and one made from the file, totals matched by hand (USD 3 rows in 125.50 out 28.50; INR 2 rows out 450.50), 5 saved, INR amounts unconverted, undo returned the transaction count to its start, import again added 5, a third run of the whole file showed 5 already there and 2 new.
+  - Bank CSV with two lines above the header, debit and credit columns, day-first dates and one broken line: columns and date format set by hand, broken line listed and left out, 3 saved with correct signs and dates.
+  - Second file of the same bank: saved layout reused without losing its first rows; a row with the same amount one day apart was shown as a possible duplicate and skipped.
+  - QIF with no currency or account, OFX naming an unknown account (made with its last four digits), and a repeat OFX (nothing new).
+  - Save answer lost and Worker unreachable: "Not sure this was saved"; after reopening, found saved and read back; one commit only.
+  - Another import landing in the account during review: fresh preview with a note, new duplicate had to be answered, then saved.
+- The Android JavaScript bundle builds (`expo export --platform android`). **Not run on an Android device or emulator** (none in the cloud session). PDF import was not exercised (it needs Workers AI on Cloudflare); its path through the screen is unchanged.
+
+### What Codex needs to do (highest impact first)
+
+1. **Manual account route.** Delivered by Codex in PR #16, with a different contract from the one first proposed here (a retry key and an explicit known-or-unknown balance; no mask, no name-based 409). The app now follows PR #16's contract; see the next entry.
+2. **Saved CSV layouts skip the wrong lines.** `backend/src/imports/service.ts` `parseFile`: a mapping saved under a header signature is reused with its stored `skipRows`, although the signature was computed at the request's `skipRows`. A second statement from the same bank with no lines above its header loses its first two lines (one of them a transaction) with no warning. Reproduced on a local Worker. Fix: when reusing a saved mapping, set `skipRows` to the request's value. The app works around it by previewing again with the corrected mapping.
+3. **One unreadable line hides the date format.** `packages/shared/src/import/csv.ts` `suggestCsvMapping` passes every date cell to `detectDateFormat`, which needs all of them to parse. A statement with one footer or broken line comes back as `needs_mapping` with `missing: ['date']`, and the person has to pick the format from fourteen choices. Fix: detect from the cells that parse (as the Monefy reader does) and report the others as line errors.
+4. **Previews that are never saved pile up.** Every preview stores the file in R2 and a row in `imports`; discard only changes the status. Also a record stuck in `committing` (lease expired, no retry) can never be discarded. Suggested: delete the R2 object on discard, expire old previews, and allow discarding a stale `committing` record.
+5. **Monefy coverage.** An account that holds two currencies is refused line by line, and transfer rows are refused. Both will matter for the real history. Needs verified examples, as already noted in the Codex log.
+6. **Skipping a duplicate loses the file's notes and category.** A way to merge them into the kept transaction, on confirmation.
+7. **Undo leaves accounts and categories the import made.** An operation to remove an import-made account that has no transactions left (also needed for Phase 5 account management).
+8. **Contracts for Phase 3** before the mobile screens: per-account history dates, attaching a provider account to an existing one, replayable Sophtron completion, and SnapTrade Repair that fails on cancel.
+
+Not Codex's, but outside what Claude may edit: `docs/setup.md` line 161 still describes the old three-step import.
+
+### Remaining mobile work in this phase
+
+- Android device run of the import journey (steps are in the PR).
+- The real migration: one small month first, compare counts and totals per account and currency, undo, import again, then widen. Sankar runs this with his own file; nothing from it goes into the repo.
+- Per-row untick in the preview, if wanted after the first real month.
+
+## 2026-11-13 — PR #15 aligned with the manual-account contract from PR #16
+
+Sankar merged Codex's PR #16 (`POST /v1/accounts/manual`) while PR #15 was open. Codex's log showed the account form in #15 sent a body the Worker refuses: no `idempotencyKey`, no `currentBalance`, a `mask` the route does not accept, and it told the user the balance starts at zero. Merged `main` at `3b2b187` into the branch and changed #15 to follow the contract in `codex-log.md` exactly. No backend files changed.
+
+### What changed
+
+- `packages/shared/src/api/index.ts`: `ManualAccountRequest` now has required `idempotencyKey` and `currentBalance` (an amount with `asOf`, or `null` for unknown), optional `subtype`, `openingBalance` and `includeInNetWorth`. Removed the proposed `mask`, `institutionName` and bare `balance`. `MANUAL_ACCOUNT_TYPES` is the backend's full list. New `ManualOpeningBalance`, `ManualCurrentBalance`, `ManualBalanceInfo`, `AccountWithManualBalance`; `ManualAccountResponse` is `{ account, replayed }`. The shapes match `backend/src/services/accounts.ts`.
+- `apps/mobile/src/features/import/NewAccountForm.tsx` (rewritten): name, type, kind (NRE, NRO, Demat, 401(k) and so on, per type), currency, then a required answer to "Do you know the balance today?". Unknown is sent as `null`. Known asks for the amount and its date, with a switch for net worth. An optional opening balance asks for an amount and date. Amounts go out as integer minor units. Nothing is assumed to be zero, and nothing is taken from the rows of a file.
+- `apps/mobile/src/features/import/pendingAccount.ts` (new): the whole original request, key and timestamps included, is stored before it is sent and kept until the outcome is known, tied to the backend it was sent to.
+- `apps/mobile/src/features/import/useImportFlow.ts`: 201 and a replayed 200 both select the account. No answer or a server error keeps the stored request and offers "Try again", which sends it unchanged. 409 (`idempotency_conflict`, `account_missing`) is never re-sent and the key is never swapped by the app; the person is told to look in Accounts and can forget the request. A 400 or 401 clears it, because nothing was made. A stored request from an earlier session is offered again when the screen opens. The name-based `account_exists` handling is gone.
+- `apps/mobile/src/features/import/DestinationCard.tsx`: "New account" is also offered for each account named in a Monefy or QIF file, with the name filled in and the currency fixed to the file's. While one creation is undecided, no other can be started.
+- `apps/mobile/src/data/manualBalance.ts` (new), `features/accounts/AccountsScreen.tsx`, `AccountDetailScreen.tsx`: an account with `manualBalance.currentKnown === false` shows "Balance unknown" in the list and "Unknown" on its page, never 0, and adds nothing to its group total. A hand-entered balance shows the date it was true; an opening reading is shown as a line of text.
+- `apps/mobile/src/design/components/Controls.tsx`: one line (`minWidth: 0` on the text input) so a field in a half-width column does not spill over its edge on the web.
+
+### Defaults chosen
+
+- The date entered for a known balance is sent as noon UTC of that day (`2026-11-01T12:00:00.000Z`), so it reads as the same calendar date in India and the US.
+- The form offers nine types (savings, checking, credit card, loan, mortgage, brokerage, retirement, other, other debt). The Worker also accepts crypto, property and vehicle; those are not statement accounts.
+- Kind is a fixed list per type, or none. No free-text kind.
+- Net worth: on by default for a known balance, with a switch; never sent for an unknown one (the Worker defaults it to off and refuses on).
+- For a liability the form asks for "amount owed" as a positive number, as the contract says.
+- The route check still sends an empty body once per backend (400 means the route exists, 404 means it does not). It is safe now that the form matches.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **928 tests** (shared 118, connectors 345, backend 222, deployment/runtime 35, mobile 208).
+- Mobile tests rewritten for the contract: exact set of fields sent, unknown as `null`, minor units and dates for known and opening balances, the balance question required, lost answer then the identical request again, a stored request after reopening, another backend's request ignored, conflict never re-sent, a refused request dropped, a new account for one Monefy source. New tests for the unknown-balance display. Two guards were removed in turn to confirm tests fail without them.
+- Web build against a local Worker running the merged backend (migration `0005` applied), invented data:
+  - Savings, NRE, INR, balance unknown, opening ₹200 on 2025-01-01: accepted with 201; stored as unknown, out of net worth, opening reading kept and not a transaction; selected as the destination; a CSV imported into it; balance still unknown afterwards.
+  - Known balance ₹450 dated 2026-11-01 with the answer dropped on purpose: "Not sure" shown; after reloading the page the stored request was offered and sent byte for byte the same; the Worker replayed it; exactly one account existed; balance and date as entered.
+  - Accounts list shows "Balance unknown"; the account page shows "Unknown" with the opening reading, and the known account shows its date.
+- Not run on an Android device or emulator.
+
+### Remaining
+
+- Items 2 to 8 of the previous entry's list for Codex are unchanged.
+- Editing a hand-made account later (entering a balance for one created as unknown, renaming, removing) has no backend operation yet; it is Phase 5 work on both sides.
+- Older accounts made by a Monefy import have no `manualBalance`, so they still show a balance of zero. Codex chose not to relabel them; a backend decision is needed if they should read as unknown too.

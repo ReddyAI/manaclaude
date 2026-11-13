@@ -1,117 +1,61 @@
-import {
-  formatMoney,
-  type CsvMapping,
-  type ImportCommitResult,
-  type ImportPreview,
-} from '@manaclaude/shared';
+import type { CurrencyCode } from '@manaclaude/shared';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { View } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { useMemo, useState } from 'react';
 import { Button } from '../../design/components/Button';
 import { Card } from '../../design/components/Card';
-import { Badge, Chip } from '../../design/components/Controls';
+import { SegmentedControl } from '../../design/components/Controls';
 import { Banner, EmptyState, SectionHeader } from '../../design/components/Decor';
 import { HStack, VStack } from '../../design/components/Layout';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
-import { haptic } from '../../design/haptics';
-import { errorText } from '../../data/backend/client';
 import { isBackendReady, useBackendConfig } from '../../data/backend/config';
-import { refreshDataset } from '../../data/backend/sync';
+import { useSettings } from '../../data/settingsStore';
 import { useFinance } from '../../data/store';
 import { BackAction } from '../planning/BackAction';
-import { commitImport, discardImport, previewImport, type PickedFile } from './importApi';
-import { pickStatementFile } from './pickFile';
+import { CsvColumnsCard } from './CsvColumnsCard';
+import { DestinationCard } from './DestinationCard';
+import { ImportHistory } from './ImportHistory';
+import { planImport, requestKey } from './importFlow';
+import { PreviewCard, TotalsTable } from './PreviewCard';
+import { DuplicateReviewCard, ParseErrorsCard } from './ReviewCards';
+import { useImportFlow } from './useImportFlow';
+import { WhatToImportCard } from './WhatToImportCard';
 
-const DECISION: Record<
-  string,
-  { label: string; tone: 'income' | 'neutral' | 'pending' | 'accent' }
-> = {
-  new: { label: 'New', tone: 'income' },
-  already_imported: { label: 'Already in', tone: 'neutral' },
-  existing: { label: 'Matches one', tone: 'neutral' },
-  needs_account: { label: 'New account', tone: 'pending' },
-};
-const SHOWN_ROWS = 60;
+type Tab = 'import' | 'history';
+const TABS = [
+  { value: 'import', label: 'Import' },
+  { value: 'history', label: 'History' },
+] as const;
 
 /**
- * Import a statement (session E2): India NRE and NRO accounts have no
- * connector, so their statements come in as files. Pick a CSV, OFX, QIF or PDF,
- * choose the account, look at the preview, confirm. Rows already imported or
- * already synced are left out; the original file stays in the statement vault.
+ * Import a statement or an app's history (Monefy, bank CSV, OFX, QIF, PDF).
+ * Pick a file, say which dates and where each account in it goes, read the
+ * preview, answer what needs an answer (date order, unreadable lines,
+ * possible duplicates), then import. Nothing is saved before that last
+ * press, the result can be undone, and every import is listed under History.
  */
 export function ImportScreen() {
   const config = useBackendConfig();
   const data = useFinance();
-  const [file, setFile] = useState<PickedFile | null>(null);
-  const [accountId, setAccountId] = useState<string | undefined>(undefined);
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [mapping, setMapping] = useState<CsvMapping | null>(null);
-  const [result, setResult] = useState<ImportCommitResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Accounts that get statements: banks, cards, loans and brokerages (not cash, crypto, property or vehicles).
-  const accounts = data.accounts.filter(
-    (a) =>
-      !a.hidden &&
-      [
-        'checking',
-        'savings',
-        'credit_card',
-        'loan',
-        'mortgage',
-        'brokerage',
-        'retirement',
-      ].includes(a.type),
+  const settings = useSettings();
+  const flow = useImportFlow();
+  const { state } = flow;
+  const { file, options, used, preview, review, busy, saved, unsure } = state;
+  const [tab, setTab] = useState<Tab>('import');
+  const [showColumns, setShowColumns] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+
+  const currencies = useMemo(
+    () => [
+      ...new Set<CurrencyCode>([
+        settings.primaryCurrency,
+        settings.secondaryCurrency,
+        'USD',
+        'INR',
+      ]),
+    ],
+    [settings.primaryCurrency, settings.secondaryCurrency],
   );
-
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await fn();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const pick = () =>
-    run(async () => {
-      const picked = await pickStatementFile();
-      if (!picked) return;
-      setFile(picked);
-      setPreview(null);
-      setMapping(null);
-      setResult(null);
-    });
-
-  const load = (m?: CsvMapping) =>
-    run(async () => {
-      if (!file) return;
-      const p = await previewImport(file, { accountId, mapping: m ?? mapping ?? undefined });
-      setPreview(p);
-      setMapping(p.mapping ?? p.csv?.suggestedMapping ?? null);
-    });
-
-  const confirm = () =>
-    run(async () => {
-      if (!preview) return;
-      const r = await commitImport(preview.importId);
-      setResult(r);
-      haptic('confirm');
-      await refreshDataset();
-    });
-
-  const reset = () => {
-    if (preview && !result) void discardImport(preview.importId).catch(() => {});
-    setFile(null);
-    setPreview(null);
-    setMapping(null);
-    setResult(null);
-  };
 
   if (!isBackendReady(config)) {
     return (
@@ -131,30 +75,283 @@ export function ImportScreen() {
     );
   }
 
-  const columnChips = (label: string, key: 'dateColumn' | 'descriptionColumn' | 'amountColumn') =>
-    preview?.csv && mapping ? (
-      <VStack gap="xs">
-        <Text variant="label" tone="muted">
-          {label}
-        </Text>
-        <HStack gap="xs" wrap>
-          {preview.csv.headers.map((h, i) => (
-            <Chip
-              key={`${key}-${i}`}
-              label={h || `Column ${i + 1}`}
-              selected={mapping[key] === i}
-              onPress={() =>
-                setMapping({
-                  ...mapping,
-                  [key]: i,
-                  ...(key === 'amountColumn' ? { amountMode: 'single' as const } : {}),
-                })
-              }
+  const plan = preview ? planImport(preview, options, used, review, data.accounts) : null;
+  const stale = preview !== null && requestKey(options) !== requestKey(used);
+  const csv = preview && preview.sourceFormat !== 'monefy' ? preview.csv : null;
+  const shownMapping = options.mapping ?? preview?.mapping ?? csv?.suggestedMapping ?? null;
+  const needsMapping = preview?.status === 'needs_mapping';
+  const working = busy !== null;
+
+  const body = () => {
+    if (saved) {
+      const { result } = saved;
+      const undone = state.undone !== null;
+      return (
+        <Card>
+          <VStack gap="md">
+            <Text variant="headline">{undone ? 'Import undone' : 'Imported'}</Text>
+            {undone ? (
+              <Text variant="body" tone="muted" testID="import-undone">
+                {`Removed ${state.undone} ${state.undone === 1 ? 'transaction' : 'transactions'} from ${saved.fileName}. The file stays in the vault. Accounts and categories the import made are still there.`}
+              </Text>
+            ) : (
+              <>
+                <Text variant="body" tone="muted" testID="import-result">
+                  {`${result.added} added, ${result.matched} already there, ${result.skipped} left out.${result.linked ? ` ${result.linked} linked as transfers.` : ''}`}
+                </Text>
+                {(result.warnings ?? []).map((w) => (
+                  <Banner key={w} tone="pending" icon="triangle-alert">
+                    <Text variant="caption" testID="import-save-warning">
+                      {`${w} The rows are saved; do not import this file again.`}
+                    </Text>
+                  </Banner>
+                ))}
+                <TotalsTable totals={saved.totals} />
+                {saved.totals.length === 0 ? (
+                  <Text variant="caption" tone="faint">
+                    The answer to the save was lost on the way, so these counts were read back from
+                    your Worker. The import is listed under History.
+                  </Text>
+                ) : null}
+              </>
+            )}
+            {!undone && confirmUndo ? (
+              <VStack gap="xs">
+                <Text variant="caption">
+                  {`Remove the ${result.added} ${result.added === 1 ? 'transaction' : 'transactions'} this import added?`}
+                </Text>
+                <HStack gap="sm">
+                  <Button
+                    label="Yes, remove them"
+                    size="sm"
+                    variant="danger"
+                    loading={busy === 'undo'}
+                    onPress={() => void flow.undo()}
+                    testID="import-undo-confirm"
+                  />
+                  <Button
+                    label="Keep"
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setConfirmUndo(false)}
+                  />
+                </HStack>
+              </VStack>
+            ) : null}
+            <HStack gap="sm" wrap>
+              <Button label="Back to accounts" onPress={() => router.replace('/accounts')} />
+              <Button
+                label="Import another"
+                variant="secondary"
+                onPress={() => {
+                  setConfirmUndo(false);
+                  flow.reset();
+                }}
+                testID="import-another"
+              />
+              {!undone && !confirmUndo ? (
+                <Button
+                  label="Undo this import"
+                  variant="ghost"
+                  onPress={() => setConfirmUndo(true)}
+                  testID="import-undo"
+                />
+              ) : null}
+            </HStack>
+          </VStack>
+        </Card>
+      );
+    }
+
+    if (unsure) {
+      return (
+        <Card>
+          <VStack gap="md" testID="import-unsure">
+            <Text variant="headline">
+              {unsure.state === 'saving' ? 'Still saving' : 'Not sure this was saved'}
+            </Text>
+            <Text variant="body" tone="muted">
+              {unsure.state === 'saving'
+                ? `Your Worker says the import of ${unsure.fileName} is being saved, or a save was cut off part way. A cut-off save keeps nothing. Check again in a minute. If it still says this after five minutes, nothing was saved and you can import again.`
+                : `The connection dropped while ${unsure.fileName} was being saved, and your Worker can't be reached to ask. Do not import the file again yet: check first, so nothing is added twice.`}
+            </Text>
+            <HStack gap="sm" wrap>
+              <Button
+                label="Check again"
+                loading={busy === 'check'}
+                onPress={() => void flow.check(unsure.importId, unsure.fileName)}
+                testID="import-check"
+              />
+              {unsure.state === 'saving' && preview?.importId === unsure.importId ? (
+                <Button
+                  label="Try saving again"
+                  variant="secondary"
+                  loading={busy === 'save'}
+                  onPress={() => void flow.save()}
+                  testID="import-retry"
+                />
+              ) : null}
+              <Button label="Start over" variant="ghost" onPress={flow.reset} />
+            </HStack>
+          </VStack>
+        </Card>
+      );
+    }
+
+    return (
+      <>
+        <SectionHeader title="1. File" />
+        <Card>
+          <VStack gap="md">
+            <Text variant="body">
+              {file ? file.name : 'Monefy or bank CSV, OFX, QFX, QIF or PDF'}
+            </Text>
+            <HStack gap="sm">
+              <Button
+                label={file ? 'Pick another' : 'Pick a file'}
+                icon="file-up"
+                variant={file ? 'secondary' : 'primary'}
+                loading={busy === 'pick'}
+                onPress={() => void flow.pick()}
+                testID="import-pick"
+              />
+            </HStack>
+          </VStack>
+        </Card>
+
+        {file ? (
+          <>
+            <SectionHeader title="2. Dates and how to read the file" />
+            <WhatToImportCard
+              options={options}
+              used={used}
+              preview={preview}
+              fileSpan={state.fileSpan}
+              currencies={currencies}
+              onChange={flow.setOptions}
             />
-          ))}
-        </HStack>
-      </VStack>
-    ) : null;
+
+            <SectionHeader title="3. Where it goes" />
+            <DestinationCard
+              options={options}
+              preview={preview}
+              accounts={data.accounts}
+              currencies={currencies}
+              manualAccounts={state.manualAccounts}
+              creating={busy === 'account'}
+              pendingAccount={state.pendingAccount}
+              onChange={flow.setOptions}
+              onCreateAccount={flow.createAccount}
+              onRetryAccount={() => void flow.retryAccount()}
+              onForgetAccount={() => void flow.forgetAccount()}
+            />
+
+            {csv && shownMapping ? (
+              needsMapping || showColumns ? (
+                <>
+                  <SectionHeader title="Columns in the file" />
+                  {needsMapping ? (
+                    <Text variant="caption" tone="pending">
+                      The columns could not be worked out. Choose which hold the date, the
+                      description and the money.
+                    </Text>
+                  ) : null}
+                  <CsvColumnsCard
+                    csv={csv}
+                    mapping={shownMapping}
+                    options={options}
+                    onChange={flow.setOptions}
+                  />
+                </>
+              ) : (
+                <HStack gap="sm" align="center" wrap>
+                  {state.savedLayout ? (
+                    <Text variant="caption" tone="faint" testID="import-saved-layout">
+                      Read with the column layout saved from an earlier file of this bank.
+                    </Text>
+                  ) : null}
+                  <Button
+                    label="Change the columns or skip lines at the top"
+                    size="sm"
+                    variant="ghost"
+                    icon="sliders-horizontal"
+                    onPress={() => setShowColumns(true)}
+                    testID="import-show-columns"
+                  />
+                </HStack>
+              )
+            ) : null}
+
+            <HStack gap="sm" align="center" wrap>
+              <Button
+                label={preview ? 'Update the preview' : 'Show the preview'}
+                variant={preview && !stale ? 'secondary' : 'primary'}
+                loading={busy === 'preview'}
+                disabled={working && busy !== 'preview'}
+                onPress={() => void flow.loadPreview()}
+                testID="import-preview"
+              />
+              {stale ? (
+                <Text variant="caption" tone="pending" testID="import-stale">
+                  The choices changed. The preview below is the old one.
+                </Text>
+              ) : null}
+            </HStack>
+          </>
+        ) : null}
+
+        {preview && plan && !needsMapping ? (
+          <>
+            <SectionHeader title="4. Preview" />
+            <PreviewCard
+              preview={preview}
+              plan={plan}
+              options={options}
+              review={review}
+              accounts={data.accounts}
+              dateOrderChosen={used.dayFirst !== null || used.mapping !== null}
+            />
+            <ParseErrorsCard preview={preview} review={review} onChange={flow.setReview} />
+            <DuplicateReviewCard
+              preview={preview}
+              review={review}
+              accounts={data.accounts}
+              transactions={data.transactions}
+              onDecide={flow.decide}
+            />
+            {plan.blockers.length > 0 ? (
+              <Card tone="sunken">
+                <VStack gap="xs" testID="import-blockers">
+                  <Text variant="label" tone="muted">
+                    Before you can import
+                  </Text>
+                  {plan.blockers.map((b) => (
+                    <Text key={b} variant="caption" tone="pending">
+                      {b}
+                    </Text>
+                  ))}
+                </VStack>
+              </Card>
+            ) : null}
+            <HStack gap="sm">
+              <Button
+                label={
+                  plan.importing.length > 0
+                    ? `Import ${plan.importing.length} ${plan.importing.length === 1 ? 'row' : 'rows'}`
+                    : 'Nothing to import'
+                }
+                disabled={plan.blockers.length > 0 || (working && busy !== 'save')}
+                loading={busy === 'save'}
+                onPress={() => void flow.save()}
+                testID="import-confirm"
+              />
+              <Button label="Cancel" variant="ghost" onPress={flow.reset} testID="import-cancel" />
+            </HStack>
+          </>
+        ) : null}
+      </>
+    );
+  };
 
   return (
     <Screen
@@ -162,204 +359,37 @@ export function ImportScreen() {
       actions={<BackAction fallback="/accounts" />}
       testID="screen-import"
     >
-      <Text variant="caption" tone="muted">
-        For India NRE and NRO accounts, or any bank without a connector. PDF statements are read by
-        the AI on your Worker; CSV, OFX and QIF files are read directly.
-      </Text>
-      {error ? (
-        <Banner tone="danger" icon="triangle-alert">
-          <Text variant="caption" testID="import-error">
-            {error}
-          </Text>
-        </Banner>
-      ) : null}
-
-      {result ? (
-        <Card>
-          <VStack gap="md">
-            <Text variant="headline">Imported</Text>
-            <Text variant="body" tone="muted" testID="import-result">
-              {`${result.added} added, ${result.matched} already there, ${result.skipped} skipped.${result.linked ? ` ${result.linked} linked as transfers.` : ''}`}
-            </Text>
-            <HStack gap="sm">
-              <Button label="Back to accounts" onPress={() => router.replace('/accounts')} />
-              <Button label="Import another" variant="secondary" onPress={reset} />
-            </HStack>
-          </VStack>
-        </Card>
+      <SegmentedControl
+        options={TABS}
+        value={tab}
+        onChange={setTab}
+        accessibilityLabel="Import a file or see earlier imports"
+      />
+      {tab === 'history' ? (
+        <ImportHistory />
       ) : (
         <>
-          <SectionHeader title="1. File" />
-          <Card>
-            <VStack gap="md">
-              <Text variant="body">{file ? file.name : 'CSV, OFX, QFX, QIF or PDF'}</Text>
-              <HStack gap="sm">
-                <Button
-                  label={file ? 'Pick another' : 'Pick a file'}
-                  icon="file-up"
-                  variant={file ? 'secondary' : 'primary'}
-                  onPress={pick}
-                  testID="import-pick"
-                />
-              </HStack>
-            </VStack>
-          </Card>
-
-          {file ? (
-            <>
-              <SectionHeader title="2. Account" />
-              <Card>
-                <VStack gap="sm">
-                  <HStack gap="xs" wrap>
-                    <Chip
-                      label="From the file"
-                      selected={accountId === undefined}
-                      onPress={() => setAccountId(undefined)}
-                    />
-                    {accounts.map((a) => (
-                      <Chip
-                        key={a.id}
-                        label={`${a.name}${a.mask ? ` ••${a.mask}` : ''}`}
-                        selected={accountId === a.id}
-                        onPress={() => setAccountId(a.id)}
-                        testID={`import-account-${a.id}`}
-                      />
-                    ))}
-                  </HStack>
-                  <Text variant="caption" tone="faint">
-                    From the file: the account number or name in the statement picks the account, or
-                    a new one is made.
-                  </Text>
-                  <Button
-                    label="Show the preview"
-                    loading={busy}
-                    onPress={() => void load()}
-                    testID="import-preview"
-                  />
-                </VStack>
-              </Card>
-            </>
+          <Text variant="caption" tone="muted">
+            For Monefy history, India NRE and NRO statements, or any bank without a connector.
+            Nothing is saved until you press Import, and an import can be undone.
+          </Text>
+          {state.error ? (
+            <Banner tone="danger" icon="triangle-alert">
+              <Text variant="caption" testID="import-error">
+                {state.error}
+              </Text>
+            </Banner>
           ) : null}
-
-          {preview ? (
-            <>
-              <SectionHeader title="3. Preview" />
-              {preview.status === 'needs_mapping' && preview.csv ? (
-                <Card>
-                  <VStack gap="md">
-                    <Text variant="body">
-                      Choose which columns hold the date, the description and the amount.
-                    </Text>
-                    {columnChips('Date', 'dateColumn')}
-                    {columnChips('Description', 'descriptionColumn')}
-                    {columnChips('Amount', 'amountColumn')}
-                    <Button
-                      label="Use these columns"
-                      loading={busy}
-                      onPress={() => void load(mapping ?? undefined)}
-                    />
-                  </VStack>
-                </Card>
-              ) : (
-                <Card padding="none">
-                  <View style={styles.summary}>
-                    <Text variant="bodyStrong" testID="import-counts">
-                      {`${preview.counts.new} new · ${preview.counts.alreadyImported + preview.counts.existing} already there${preview.counts.needsAccount ? ` · ${preview.counts.needsAccount} for a new account` : ''}`}
-                    </Text>
-                    {preview.periodStart && preview.periodEnd ? (
-                      <Text
-                        variant="caption"
-                        tone="muted"
-                      >{`${preview.periodStart} to ${preview.periodEnd}`}</Text>
-                    ) : null}
-                    {preview.statementCheck ? (
-                      <Text
-                        variant="caption"
-                        tone={preview.statementCheck.balances ? 'income' : 'pending'}
-                      >
-                        {preview.statementCheck.balances
-                          ? 'Opening balance plus these rows equals the closing balance.'
-                          : 'The rows do not add up to the closing balance. Check the rows before you confirm.'}
-                      </Text>
-                    ) : null}
-                    {[
-                      ...preview.warnings,
-                      ...preview.errors.map((e) => `Line ${e.line}: ${e.message}`),
-                    ]
-                      .slice(0, 5)
-                      .map((w) => (
-                        <Text key={w} variant="caption" tone="pending">
-                          {w}
-                        </Text>
-                      ))}
-                  </View>
-                  {preview.rows.slice(0, SHOWN_ROWS).map((r) => {
-                    const d = DECISION[r.decision] ?? DECISION.new!;
-                    return (
-                      <View key={`${r.line}-${r.date}`} style={styles.row}>
-                        <VStack gap="xxs" flex={1}>
-                          <Text variant="body" numberOfLines={1}>
-                            {r.rawName}
-                          </Text>
-                          <Text variant="caption" tone="muted">
-                            {r.date}
-                          </Text>
-                        </VStack>
-                        <VStack gap="xxs" align="flex-end">
-                          <Text variant="amount" tone={r.amount < 0 ? 'default' : 'income'}>
-                            {formatMoney(
-                              r.amount,
-                              r.currency ??
-                                data.accounts.find((a) => a.id === r.accountId)?.currency ??
-                                'INR',
-                            )}
-                          </Text>
-                          <Badge label={d.label} tone={d.tone} />
-                        </VStack>
-                      </View>
-                    );
-                  })}
-                  {preview.rows.length > SHOWN_ROWS ? (
-                    <Text variant="caption" tone="faint" style={styles.more}>
-                      {`and ${preview.rows.length - SHOWN_ROWS} more`}
-                    </Text>
-                  ) : null}
-                </Card>
-              )}
-              {preview.status === 'preview' ? (
-                <HStack gap="sm">
-                  <Button
-                    label={
-                      preview.counts.new + preview.counts.needsAccount > 0
-                        ? `Import ${preview.counts.new + preview.counts.needsAccount}`
-                        : 'Nothing new'
-                    }
-                    disabled={preview.counts.new + preview.counts.needsAccount === 0}
-                    loading={busy}
-                    onPress={confirm}
-                    testID="import-confirm"
-                  />
-                  <Button label="Cancel" variant="ghost" onPress={reset} />
-                </HStack>
-              ) : null}
-            </>
+          {state.notice ? (
+            <Banner tone="accent" icon="info">
+              <Text variant="caption" testID="import-notice">
+                {state.notice}
+              </Text>
+            </Banner>
           ) : null}
+          {body()}
         </>
       )}
     </Screen>
   );
 }
-
-const styles = StyleSheet.create((theme) => ({
-  summary: { gap: theme.space.xs, padding: theme.space.lg },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.md,
-    paddingHorizontal: theme.space.lg,
-    paddingVertical: theme.space.sm,
-    borderTopWidth: theme.size.hairline,
-    borderColor: theme.colors.border,
-  },
-  more: { padding: theme.space.lg },
-}));

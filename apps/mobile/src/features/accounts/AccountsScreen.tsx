@@ -17,6 +17,7 @@ import { MoneyText } from '../../design/components/MoneyText';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
+import { isBalanceUnknown } from '../../data/manualBalance';
 import { useFinance } from '../../data/store';
 import { useRefreshControl } from '../../data/backend/useRefreshControl';
 import { ConnectionsCard } from '../link/ConnectionsCard';
@@ -84,11 +85,17 @@ export function AccountsScreen() {
         leading={<Avatar label={a.institutionName ?? a.name} color={ACCOUNT_COLOR[a.type]} />}
         trailing={
           <VStack align="flex-end" gap="xxs">
-            <Amount
-              amount={liability ? -a.balance : a.balance}
-              currency={a.currency}
-              format={{ cents: 'auto' }}
-            />
+            {isBalanceUnknown(a) ? (
+              <Text variant="caption" tone="muted" testID={`account-unknown-${a.id}`}>
+                Balance unknown
+              </Text>
+            ) : (
+              <Amount
+                amount={liability ? -a.balance : a.balance}
+                currency={a.currency}
+                format={{ cents: 'auto' }}
+              />
+            )}
             {conn && conn.status !== 'healthy' ? (
               <Badge label={connectionHealth(conn).label} tone={connectionHealth(conn).tone} />
             ) : null}
@@ -161,11 +168,14 @@ export function AccountsScreen() {
           {GROUPS.map((g) => {
             const accounts = data.accounts.filter((a) => g.types.includes(a.type) && !a.hidden);
             if (accounts.length === 0) return null;
+            // An account whose balance nobody entered adds nothing to its group's total.
             const total = display.total(
-              accounts.map((a) => ({
-                amount: classifyAccountType(a.type) === 'liability' ? -a.balance : a.balance,
-                currency: a.currency,
-              })),
+              accounts
+                .filter((a) => !isBalanceUnknown(a))
+                .map((a) => ({
+                  amount: classifyAccountType(a.type) === 'liability' ? -a.balance : a.balance,
+                  currency: a.currency,
+                })),
             );
             return (
               <View key={g.title}>
