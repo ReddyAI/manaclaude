@@ -11,7 +11,7 @@
     "db:migrate:local": "wrangler d1 migrations apply manaclaude --local",
     "build": "wrangler deploy --dry-run --outdir dist",
     "smoke:mcp": "node scripts/mcp-smoke.mjs",
-    "typecheck": "tsc -p tsconfig.json && tsc -p deploy/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p deploy/tsconfig.json && tsc -p recovery/tsconfig.json",
     "test": "vitest run && vitest run -c vitest.deploy.config.ts",
     "deploy:prepare": "node deploy/prepare.ts"
   },
