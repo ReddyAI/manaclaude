@@ -32,6 +32,14 @@ import {
   type Review,
   type TotalLine,
 } from './importFlow';
+import type { ManualAccountDetails } from './NewAccountForm';
+import {
+  clearPendingAccount,
+  newCreationKey,
+  readPendingAccount,
+  rememberPendingAccount,
+  type PendingAccount,
+} from './pendingAccount';
 import { clearPendingImport, readPendingImport, rememberPendingImport } from './pendingImport';
 import { pickStatementFile } from './pickFile';
 
@@ -43,6 +51,15 @@ export interface Unsure {
   fileName: string;
   /** saving: the backend says a save is under way. unknown: the backend could not be asked. */
   state: 'saving' | 'unknown';
+}
+
+/** An account whose creation was sent without a clear answer coming back. */
+export interface UnsureAccount extends PendingAccount {
+  /**
+   * unsure: the answer never arrived; sending the same request again is safe.
+   * conflict: the Worker holds something else under this request's key, so it must not be sent again.
+   */
+  state: 'unsure' | 'conflict';
 }
 
 export interface Saved {
@@ -68,6 +85,7 @@ export interface FlowState {
   undone: number | null;
   /** The Worker can make a bank account by hand (POST /v1/accounts/manual). */
   manualAccounts: boolean;
+  pendingAccount: UnsureAccount | null;
   /** The preview was read with a column layout saved from an earlier file of the same bank. */
   savedLayout: boolean;
   /** First and last date in the whole file, known once a preview had no date limits. */
@@ -87,9 +105,16 @@ const START: FlowState = {
   unsure: null,
   undone: null,
   manualAccounts: false,
+  pendingAccount: null,
   savedLayout: false,
   fileSpan: null,
 };
+
+/** What a new file or "start over" does not wipe. */
+const keep = (s: FlowState) => ({
+  manualAccounts: s.manualAccounts,
+  pendingAccount: s.pendingAccount,
+});
 
 const CHANGED_NOTICE =
   'Your transactions changed while you were reviewing, so the preview was made again. Check it, then import.';
@@ -135,7 +160,7 @@ export function useImportFlow() {
       if (!picked) return;
       const old = ref.current.preview;
       if (old && !ref.current.saved) void discardImport(old.importId).catch(() => {});
-      set({ ...START, manualAccounts: ref.current.manualAccounts, file: picked });
+      set({ ...START, ...keep(ref.current), file: picked });
     } catch (e) {
       set({ error: errorText(e) });
     } finally {
@@ -331,31 +356,59 @@ export function useImportFlow() {
   const reset = useCallback(() => {
     const { preview, saved } = ref.current;
     if (preview && !saved) void discardImport(preview.importId).catch(() => {});
-    set({ ...START, manualAccounts: ref.current.manualAccounts });
+    set({ ...START, ...keep(ref.current) });
   }, [set]);
 
-  /** Makes a bank account by hand and selects it as the destination. Returns true when it worked. */
-  const createAccount = useCallback(
-    async (input: ManualAccountRequest): Promise<boolean> => {
+  /**
+   * Sends one account request and deals with every answer. The request is
+   * stored first and sent as it is, so that a retry after a lost answer gets
+   * the same account back instead of making a second one.
+   */
+  const sendAccount = useCallback(
+    async (pending: PendingAccount): Promise<boolean> => {
       set({ busy: 'account', error: null });
       try {
-        let id: string;
-        try {
-          id = (await createManualAccount(input)).id;
-          await refreshDataset();
-        } catch (e) {
-          if (errorCode(e) !== 'account_exists') throw e;
-          // Made already (perhaps by a first try whose answer was lost): use that one.
-          await refreshDataset();
-          const name = input.name.trim().toLowerCase();
-          const existing = getFinance().accounts.find((a) => a.name.trim().toLowerCase() === name);
-          if (!existing) throw e;
-          id = existing.id;
-        }
-        set({ options: { ...ref.current.options, accountId: id } });
+        const { account, replayed } = await createManualAccount(pending.request);
+        await clearPendingAccount();
+        await refreshDataset();
+        const { options, preview } = ref.current;
+        const named = pending.source !== null && preview !== null;
+        set({
+          pendingAccount: null,
+          options:
+            named && pending.source !== null
+              ? {
+                  ...options,
+                  sources: {
+                    ...options.sources,
+                    [pending.source]: { kind: 'account', accountId: account.id },
+                  },
+                }
+              : { ...options, accountId: account.id, currency: null },
+          notice: replayed
+            ? `"${account.name}" had already been made by your first try. It is selected now; no second account was made.`
+            : ref.current.notice,
+        });
         return true;
       } catch (e) {
-        set({ error: errorText(e) });
+        const status = errorStatus(e);
+        if (isSuperseded(e)) {
+          set({ error: errorText(e) });
+        } else if (status === 409) {
+          // The key is already tied to other details, or its account is gone.
+          // Never send it again and never swap the key without the person looking first.
+          set({
+            pendingAccount: { ...pending, state: 'conflict' },
+            error: `${errorText(e)} Check your accounts before making "${pending.request.name}" again.`,
+          });
+        } else if (status === 0 || status >= 500) {
+          // No answer, or the Worker failed part way: it may or may not exist.
+          set({ pendingAccount: { ...pending, state: 'unsure' } });
+        } else {
+          // Refused outright (bad details, wrong token): nothing was made.
+          await clearPendingAccount();
+          set({ pendingAccount: null, error: errorText(e) });
+        }
         return false;
       } finally {
         set({ busy: null });
@@ -364,10 +417,40 @@ export function useImportFlow() {
     [set],
   );
 
+  /** Makes a bank account by hand and selects it. `source` is the account in the file it is for, if any. */
+  const createAccount = useCallback(
+    async (details: ManualAccountDetails, source: string | null = null): Promise<boolean> => {
+      if (ref.current.pendingAccount || ref.current.busy) return false;
+      const request: ManualAccountRequest = { idempotencyKey: newCreationKey(), ...details };
+      const pending = { request, source };
+      await rememberPendingAccount(pending);
+      return sendAccount(pending);
+    },
+    [sendAccount],
+  );
+
+  /** Sends the stored request again, unchanged. */
+  const retryAccount = useCallback(async () => {
+    const pending = ref.current.pendingAccount;
+    if (!pending || pending.state !== 'unsure' || ref.current.busy) return;
+    await sendAccount({ request: pending.request, source: pending.source });
+  }, [sendAccount]);
+
+  /** The person looked and decided to drop the stored request. */
+  const forgetAccount = useCallback(async () => {
+    await clearPendingAccount();
+    set({ pendingAccount: null, error: null });
+  }, [set]);
+
   useEffect(() => {
     alive.current = true;
     if (isBackendReady()) {
       void manualAccountsSupported().then((manualAccounts) => set({ manualAccounts }));
+      // An account whose creation was cut off last time: offer to send the same request again.
+      void readPendingAccount().then((pending) => {
+        if (pending && !ref.current.pendingAccount)
+          set({ pendingAccount: { ...pending, state: 'unsure' } });
+      });
       // A save that was cut off last time: find out what became of it.
       void readPendingImport().then((pending) => {
         if (pending && !ref.current.file) void check(pending.importId, pending.fileName);
@@ -392,6 +475,8 @@ export function useImportFlow() {
     undo,
     reset,
     createAccount,
+    retryAccount,
+    forgetAccount,
   };
 }
 

@@ -239,8 +239,11 @@ export function ImportScreen() {
               currencies={currencies}
               manualAccounts={state.manualAccounts}
               creating={busy === 'account'}
+              pendingAccount={state.pendingAccount}
               onChange={flow.setOptions}
               onCreateAccount={flow.createAccount}
+              onRetryAccount={() => void flow.retryAccount()}
+              onForgetAccount={() => void flow.forgetAccount()}
             />
 
             {csv && shownMapping ? (

@@ -327,45 +327,93 @@ export interface ImportUndoResult {
 }
 
 // ---------------------------------------------------------------------------
-// Manual accounts (proposed; the Worker does not serve this route yet)
+// Manual accounts (POST /v1/accounts/manual)
 // ---------------------------------------------------------------------------
 
-/** Account types a person can create by hand as the destination of statements. */
+/** Every type the route accepts. Cash has its own route, POST /v1/accounts/cash. */
 export const MANUAL_ACCOUNT_TYPES = [
   'checking',
   'savings',
   'credit_card',
-  'loan',
-  'mortgage',
   'brokerage',
   'retirement',
+  'crypto',
+  'loan',
+  'mortgage',
+  'property',
+  'vehicle',
   'other_asset',
   'other_liability',
 ] as const satisfies readonly Account['type'][];
 
 export type ManualAccountType = (typeof MANUAL_ACCOUNT_TYPES)[number];
 
+/** A balance someone read off a statement in the past. Never a transaction. */
+export interface ManualOpeningBalance {
+  amount: MinorUnits;
+  date: LocalDate;
+}
+
+/** The balance now, with the moment it was true. */
+export interface ManualCurrentBalance {
+  amount: MinorUnits;
+  /** ISO UTC timestamp ending in Z. */
+  asOf: IsoDateTime;
+}
+
 /**
  * POST /v1/accounts/manual: an account with no connection, kept by hand and
- * by statement imports. The app checks for the route before offering it.
+ * by statement imports. Unknown keys are refused.
+ *
+ * Amounts are signed minor units in the account's currency, with the
+ * `Account.balance` signs: what is held for an asset, what is owed (as a
+ * positive number) for a liability.
  */
 export interface ManualAccountRequest {
-  /** 1 to 100 characters. A name already used by another account (ignoring case) is refused with 409 `account_exists`. */
+  /**
+   * 1 to 200 letters, digits, underscores or hyphens. Made once per account
+   * being created and kept with the request until the outcome is known: a
+   * retry sends the same key and the same body, and gets the same account.
+   */
+  idempotencyKey: string;
+  /** 1 to 100 characters after trimming. A name is a label; it never identifies an account. */
   name: string;
   type: ManualAccountType;
   currency: CurrencyCode;
-  /** Last four digits at most. */
-  mask?: string;
-  institutionName?: string;
-  /** Current balance in minor units, when known. Defaults to 0. */
-  balance?: MinorUnits;
-  /** Defaults to true. False for history-only accounts whose balance is unknown. */
+  /** For example 'nre', 'nro', 'demat', '401k'. Null or left out for none. */
+  subtype?: string | null;
+  openingBalance?: ManualOpeningBalance | null;
+  /** Required. Null means the balance is not known, which is different from zero. */
+  currentBalance: ManualCurrentBalance | null;
+  /** Defaults to true with a current balance, false without. True without one is refused. */
   includeInNetWorth?: boolean;
 }
 
-/** 201 with the stored account. */
+/** Where a hand-made account's balance came from. */
+export interface ManualBalanceInfo {
+  /**
+   * False: nobody has said what the balance is. `Account.balance` and
+   * `balanceAsOf` then hold placeholders (0 and the creation time) and must
+   * be shown as unknown, never as zero.
+   */
+  currentKnown: boolean;
+  openingBalance: ManualOpeningBalance | null;
+}
+
+/** An account as GET /v1/accounts and GET /v1/dataset return it. */
+export interface AccountWithManualBalance extends Account {
+  /** Only on accounts made through POST /v1/accounts/manual. */
+  manualBalance?: ManualBalanceInfo;
+}
+
+/**
+ * 201 for a new account, 200 with `replayed: true` when the same key and
+ * body were sent before. 409 `idempotency_conflict` when the key was used
+ * with other details; 409 `account_missing` when the key's account is gone.
+ */
 export interface ManualAccountResponse {
-  account: Account;
+  account: AccountWithManualBalance;
+  replayed: boolean;
 }
 
 // ---------------------------------------------------------------------------

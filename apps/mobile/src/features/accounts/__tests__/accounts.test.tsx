@@ -2,14 +2,16 @@ import { CONNECTOR_REGISTRY, withSlotUsage } from '@manaclaude/connectors/regist
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import { setBackendConfigForTests } from '../../../data/backend/config';
-import { getFinance } from '../../../data/store';
+import { getFinance, setFinance } from '../../../data/store';
+import { AccountDetailScreen } from '../AccountDetailScreen';
 import { AccountsScreen } from '../AccountsScreen';
 import { groupConnectors, slotsText, summarizeConnector } from '../health';
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), navigate: jest.fn(), back: jest.fn(), canGoBack: () => true },
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockParams,
 }));
+let mockParams: { id?: string } = {};
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(async () => null),
   setItemAsync: jest.fn(async () => {}),
@@ -109,5 +111,81 @@ describe('adding and repairing accounts', () => {
       pathname: '/link/[connector]',
       params: { connector: broken.connectorId, connectionId: broken.id },
     });
+  });
+});
+
+describe('accounts made by hand', () => {
+  const sample = getFinance();
+  const base = sample.accounts.find((a) => a.id === 'acc_nre')!;
+  const manual = (id: string, patch: object) => ({
+    ...base,
+    id,
+    connectionId: null,
+    includeInNetWorth: false,
+    ...patch,
+  });
+
+  afterEach(() => setFinance(sample));
+
+  it('shows an unknown balance as unknown, never as zero, and leaves it out of the group total', async () => {
+    const before = sample.accounts.filter((a) => ['checking', 'savings'].includes(a.type));
+    setFinance({
+      ...sample,
+      accounts: [
+        ...sample.accounts,
+        manual('acc_unknown', {
+          name: 'Orchard savings',
+          balance: 0,
+          manualBalance: { currentKnown: false, openingBalance: null },
+        }),
+      ],
+    });
+    await render(<AccountsScreen />);
+    expect(screen.getByTestId('account-unknown-acc_unknown').props.children).toBe(
+      'Balance unknown',
+    );
+    // Known accounts keep their amounts.
+    expect(screen.queryByTestId('account-unknown-acc_nre')).toBeNull();
+    expect(before.length).toBeGreaterThan(0);
+  });
+
+  it('says where a hand-entered balance came from on the account page', async () => {
+    setFinance({
+      ...sample,
+      accounts: [
+        ...sample.accounts,
+        manual('acc_unknown', {
+          name: 'Orchard savings',
+          balance: 0,
+          manualBalance: {
+            currentKnown: false,
+            openingBalance: { amount: 20_000, date: '2025-01-01' },
+          },
+        }),
+        manual('acc_known', {
+          name: 'Meadow savings',
+          balance: 45_000,
+          balanceAsOf: '2026-11-01T12:00:00.000Z',
+          includeInNetWorth: true,
+          manualBalance: { currentKnown: true, openingBalance: null },
+        }),
+      ],
+    });
+    mockParams = { id: 'acc_unknown' };
+    const first = await render(<AccountDetailScreen />);
+    expect(screen.getByTestId('account-balance-unknown')).toBeTruthy();
+    expect(screen.queryByTestId('account-balance')).toBeNull();
+    expect(screen.getByTestId('account-opening-balance').props.children).toBe(
+      'Opening balance ₹200.00 on 2025-01-01',
+    );
+    await first.unmount();
+
+    mockParams = { id: 'acc_known' };
+    await render(<AccountDetailScreen />);
+    expect(screen.getByTestId('account-balance')).toBeTruthy();
+    expect(screen.getByTestId('account-balance-as-of').props.children).toBe(
+      'Entered by hand, as of 2026-11-01',
+    );
+    expect(screen.queryByTestId('account-balance-unknown')).toBeNull();
   });
 });

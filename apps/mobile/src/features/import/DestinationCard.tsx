@@ -1,17 +1,15 @@
-import type {
-  Account,
-  CurrencyCode,
-  ImportPreview,
-  ManualAccountRequest,
-} from '@manaclaude/shared';
+import type { Account, CurrencyCode, ImportPreview } from '@manaclaude/shared';
 import { useState } from 'react';
+import { Button } from '../../design/components/Button';
 import { Card } from '../../design/components/Card';
 import { Chip } from '../../design/components/Controls';
+import { Banner } from '../../design/components/Decor';
 import { HStack, VStack, Divider } from '../../design/components/Layout';
 import { Text } from '../../design/components/Text';
 import { sourcesOf, type ImportOptions, type SourceChoice, type SourceInfo } from './importFlow';
 import { ACCOUNT_TYPE_LABEL } from './labels';
-import { NewAccountForm } from './NewAccountForm';
+import { NewAccountForm, type ManualAccountDetails } from './NewAccountForm';
+import type { UnsureAccount } from './useImportFlow';
 
 const accountLabel = (a: Account) => `${a.name}${a.mask ? ` ••${a.mask}` : ''}`;
 
@@ -40,8 +38,11 @@ export function DestinationCard({
   currencies,
   manualAccounts,
   creating,
+  pendingAccount,
   onChange,
   onCreateAccount,
+  onRetryAccount,
+  onForgetAccount,
 }: {
   options: ImportOptions;
   preview: ImportPreview | null;
@@ -49,10 +50,52 @@ export function DestinationCard({
   currencies: readonly CurrencyCode[];
   manualAccounts: boolean;
   creating: boolean;
+  /** An account whose creation got no clear answer. While it is there, no other account can be started. */
+  pendingAccount: UnsureAccount | null;
   onChange: (patch: Partial<ImportOptions>) => void;
-  onCreateAccount: (input: ManualAccountRequest) => Promise<boolean>;
+  /** `source` is the account in the file the new account is for; null for a file with one destination. */
+  onCreateAccount: (details: ManualAccountDetails, source: string | null) => Promise<boolean>;
+  onRetryAccount: () => void;
+  onForgetAccount: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
+  // Which form is open: an account named in the file, '' for the single destination, null for none.
+  const [adding, setAdding] = useState<string | null>(null);
+  const canAdd = manualAccounts && pendingAccount === null;
+  const pendingCard = pendingAccount ? (
+    <Banner tone="pending" icon="triangle-alert">
+      <VStack gap="xs" testID="import-account-pending">
+        <Text variant="caption">
+          {pendingAccount.state === 'unsure'
+            ? `Not sure the account "${pendingAccount.request.name}" was made: the answer did not arrive. Try again sends the same request, so it cannot make a second account.`
+            : `Your Worker already has a different request stored for "${pendingAccount.request.name}". Look in Accounts to see whether it is there before making it again.`}
+        </Text>
+        <HStack gap="sm" wrap>
+          {pendingAccount.state === 'unsure' ? (
+            <Button
+              label="Try again"
+              size="sm"
+              loading={creating}
+              onPress={onRetryAccount}
+              testID="import-account-retry"
+            />
+          ) : null}
+          <Button
+            label="Forget this request"
+            size="sm"
+            variant="ghost"
+            onPress={onForgetAccount}
+            testID="import-account-forget"
+          />
+        </HStack>
+        {pendingAccount.state === 'unsure' ? (
+          <Text variant="caption" tone="faint">
+            Forget it only after looking in Accounts. If the account was made and you make it again,
+            you will have two.
+          </Text>
+        ) : null}
+      </VStack>
+    </Banner>
+  ) : null;
   const usable = importableAccounts(accounts);
   const sources = preview ? sourcesOf(preview) : [];
 
@@ -62,6 +105,7 @@ export function DestinationCard({
     return (
       <Card>
         <VStack gap="md">
+          {pendingCard}
           <Text variant="caption" tone="muted">
             {sources.length === 1
               ? 'The file names one account. Choose where its rows go.'
@@ -109,6 +153,14 @@ export function DestinationCard({
                       testID={`import-source-${i}-${a.id}`}
                     />
                   ))}
+                  {canAdd && adding !== source.name ? (
+                    <Chip
+                      label="New account"
+                      icon="plus"
+                      onPress={() => setAdding(source.name)}
+                      testID={`import-source-${i}-new`}
+                    />
+                  ) : null}
                   <Chip
                     label="Leave out"
                     selected={choice.kind === 'skip'}
@@ -116,6 +168,18 @@ export function DestinationCard({
                     testID={`import-source-${i}-skip`}
                   />
                 </HStack>
+                {adding === source.name && canAdd ? (
+                  <NewAccountForm
+                    currencies={currencies}
+                    busy={creating}
+                    initialName={source.name}
+                    fixedCurrency={currency}
+                    onCancel={() => setAdding(null)}
+                    onCreate={(details) => {
+                      void onCreateAccount(details, source.name).then(() => setAdding(null));
+                    }}
+                  />
+                ) : null}
                 {fromFile ? (
                   <Text variant="caption" tone="faint">
                     {fromFile}
@@ -142,6 +206,7 @@ export function DestinationCard({
   return (
     <Card>
       <VStack gap="sm">
+        {pendingCard}
         <HStack gap="xs" wrap>
           <Chip
             label="From the file"
@@ -158,24 +223,22 @@ export function DestinationCard({
               testID={`import-account-${a.id}`}
             />
           ))}
-          {manualAccounts && !adding ? (
+          {canAdd && adding === null ? (
             <Chip
               label="New account"
               icon="plus"
-              onPress={() => setAdding(true)}
+              onPress={() => setAdding('')}
               testID="import-account-new"
             />
           ) : null}
         </HStack>
-        {adding ? (
+        {adding === '' && canAdd ? (
           <NewAccountForm
             currencies={currencies}
             busy={creating}
-            onCancel={() => setAdding(false)}
-            onCreate={(input) => {
-              void onCreateAccount(input).then((ok) => {
-                if (ok) setAdding(false);
-              });
+            onCancel={() => setAdding(null)}
+            onCreate={(details) => {
+              void onCreateAccount(details, null).then(() => setAdding(null));
             }}
           />
         ) : null}

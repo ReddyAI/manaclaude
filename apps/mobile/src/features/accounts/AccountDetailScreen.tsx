@@ -2,7 +2,7 @@ import { FlashList } from '@shopify/flash-list';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { classifyAccountType, type Transaction } from '@manaclaude/shared';
+import { classifyAccountType, formatMoney, type Transaction } from '@manaclaude/shared';
 import { StyleSheet } from 'react-native-unistyles';
 import { Badge } from '../../design/components/Controls';
 import { Card } from '../../design/components/Card';
@@ -11,6 +11,7 @@ import { HStack, VStack } from '../../design/components/Layout';
 import { IconButton } from '../../design/components/Button';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
+import { isBalanceUnknown, manualBalanceOf } from '../../data/manualBalance';
 import { useLookups, useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
@@ -60,6 +61,7 @@ export function AccountDetailScreen() {
 
   const liability = classifyAccountType(account.type) === 'liability';
   const health = connection ? connectionHealth(connection) : null;
+  const manual = manualBalanceOf(account);
 
   return (
     <Screen
@@ -88,13 +90,35 @@ export function AccountDetailScreen() {
                 <Text variant="label" tone="muted">
                   {liability ? 'Owed' : 'Balance'}
                 </Text>
-                <Amount
-                  amount={liability ? -account.balance : account.balance}
-                  currency={account.currency}
-                  size="hero"
-                  align="center"
-                  testID="account-balance"
-                />
+                {isBalanceUnknown(account) ? (
+                  <VStack gap="xxs" align="center">
+                    <Text variant="headline" testID="account-balance-unknown">
+                      Unknown
+                    </Text>
+                    <Text variant="caption" tone="muted" align="center">
+                      No balance has been entered for this account, so it is kept out of net worth.
+                      Imported rows do not change that.
+                    </Text>
+                  </VStack>
+                ) : (
+                  <Amount
+                    amount={liability ? -account.balance : account.balance}
+                    currency={account.currency}
+                    size="hero"
+                    align="center"
+                    testID="account-balance"
+                  />
+                )}
+                {manual?.currentKnown ? (
+                  <Text variant="caption" tone="muted" testID="account-balance-as-of">
+                    {`Entered by hand, as of ${account.balanceAsOf.slice(0, 10)}`}
+                  </Text>
+                ) : null}
+                {manual?.openingBalance ? (
+                  <Text variant="caption" tone="muted" testID="account-opening-balance">
+                    {`Opening balance ${formatMoney(manual.openingBalance.amount, account.currency)} on ${manual.openingBalance.date}`}
+                  </Text>
+                ) : null}
                 {health ? (
                   <HStack justify="center">
                     <Badge label={health.label} tone={health.tone} />

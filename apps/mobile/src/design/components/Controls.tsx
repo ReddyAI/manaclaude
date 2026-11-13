@@ -380,6 +380,8 @@ const styles = StyleSheet.create((theme) => ({
   }),
   input: {
     flex: 1,
+    // Lets the field shrink inside a half-width column on the web instead of spilling over its edge.
+    minWidth: 0,
     ...theme.type.body,
     color: theme.colors.text,
     paddingVertical: theme.space.sm,

@@ -73,7 +73,7 @@ Started from `main` at `5009636` (PR #14 merged) on `claude/focused-heisenberg-3
 - `ImportPreview` gains optional `sourceFormat`, `duplicateCandidates`, `dateRange`, `requiresDateConfirmation` (the same names and shapes the backend already returns through its own `SafeImportPreview`).
 - `ImportCommitRequest.keepLines`, `ImportCommitResult.warnings`.
 - New: `ImportDuplicateCandidate`, `ImportDateRange`, `ImportPreviewOptions` (the multipart fields), `ImportErrorCode`, `ImportListResponse`, `ImportDetail`, `ImportUndoResult`.
-- New and **proposed, not served by the Worker yet**: `MANUAL_ACCOUNT_TYPES`, `ManualAccountType`, `ManualAccountRequest`, `ManualAccountResponse` for `POST /v1/accounts/manual`.
+- `MANUAL_ACCOUNT_TYPES`, `ManualAccountType`, `ManualAccountRequest`, `ManualAccountResponse` for `POST /v1/accounts/manual`. First written as a proposal; replaced by the merged backend contract in the next entry.
 
 `apps/mobile/src/features/import/`:
 
@@ -122,7 +122,7 @@ What the screen now does:
 
 ### What Codex needs to do (highest impact first)
 
-1. **Manual account route.** `POST /v1/accounts/manual`, body `ManualAccountRequest` (`name` 1 to 100 chars, `type` one of `MANUAL_ACCOUNT_TYPES`, `currency`, optional `mask` of up to four digits, `institutionName`, `balance`, `includeInNetWorth`), answer 201 `{ account }`. A name already used (ignoring case) should answer 409 with code `account_exists`, so a retry after a lost answer cannot make two; the app then selects the existing one. An empty body must answer 400 (the app uses that to detect the route). If Codex prefers another path or shape, say so and the app changes two functions in `importApi.ts`.
+1. **Manual account route.** Delivered by Codex in PR #16, with a different contract from the one first proposed here (a retry key and an explicit known-or-unknown balance; no mask, no name-based 409). The app now follows PR #16's contract; see the next entry.
 2. **Saved CSV layouts skip the wrong lines.** `backend/src/imports/service.ts` `parseFile`: a mapping saved under a header signature is reused with its stored `skipRows`, although the signature was computed at the request's `skipRows`. A second statement from the same bank with no lines above its header loses its first two lines (one of them a transaction) with no warning. Reproduced on a local Worker. Fix: when reusing a saved mapping, set `skipRows` to the request's value. The app works around it by previewing again with the corrected mapping.
 3. **One unreadable line hides the date format.** `packages/shared/src/import/csv.ts` `suggestCsvMapping` passes every date cell to `detectDateFormat`, which needs all of them to parse. A statement with one footer or broken line comes back as `needs_mapping` with `missing: ['date']`, and the person has to pick the format from fourteen choices. Fix: detect from the cells that parse (as the Monefy reader does) and report the others as line errors.
 4. **Previews that are never saved pile up.** Every preview stores the file in R2 and a row in `imports`; discard only changes the status. Also a record stuck in `committing` (lease expired, no retry) can never be discarded. Suggested: delete the R2 object on discard, expire old previews, and allow discarding a stale `committing` record.
@@ -138,3 +138,42 @@ Not Codex's, but outside what Claude may edit: `docs/setup.md` line 161 still de
 - Android device run of the import journey (steps are in the PR).
 - The real migration: one small month first, compare counts and totals per account and currency, undo, import again, then widen. Sankar runs this with his own file; nothing from it goes into the repo.
 - Per-row untick in the preview, if wanted after the first real month.
+
+## 2026-11-13 — PR #15 aligned with the manual-account contract from PR #16
+
+Sankar merged Codex's PR #16 (`POST /v1/accounts/manual`) while PR #15 was open. Codex's log showed the account form in #15 sent a body the Worker refuses: no `idempotencyKey`, no `currentBalance`, a `mask` the route does not accept, and it told the user the balance starts at zero. Merged `main` at `3b2b187` into the branch and changed #15 to follow the contract in `codex-log.md` exactly. No backend files changed.
+
+### What changed
+
+- `packages/shared/src/api/index.ts`: `ManualAccountRequest` now has required `idempotencyKey` and `currentBalance` (an amount with `asOf`, or `null` for unknown), optional `subtype`, `openingBalance` and `includeInNetWorth`. Removed the proposed `mask`, `institutionName` and bare `balance`. `MANUAL_ACCOUNT_TYPES` is the backend's full list. New `ManualOpeningBalance`, `ManualCurrentBalance`, `ManualBalanceInfo`, `AccountWithManualBalance`; `ManualAccountResponse` is `{ account, replayed }`. The shapes match `backend/src/services/accounts.ts`.
+- `apps/mobile/src/features/import/NewAccountForm.tsx` (rewritten): name, type, kind (NRE, NRO, Demat, 401(k) and so on, per type), currency, then a required answer to "Do you know the balance today?". Unknown is sent as `null`. Known asks for the amount and its date, with a switch for net worth. An optional opening balance asks for an amount and date. Amounts go out as integer minor units. Nothing is assumed to be zero, and nothing is taken from the rows of a file.
+- `apps/mobile/src/features/import/pendingAccount.ts` (new): the whole original request, key and timestamps included, is stored before it is sent and kept until the outcome is known, tied to the backend it was sent to.
+- `apps/mobile/src/features/import/useImportFlow.ts`: 201 and a replayed 200 both select the account. No answer or a server error keeps the stored request and offers "Try again", which sends it unchanged. 409 (`idempotency_conflict`, `account_missing`) is never re-sent and the key is never swapped by the app; the person is told to look in Accounts and can forget the request. A 400 or 401 clears it, because nothing was made. A stored request from an earlier session is offered again when the screen opens. The name-based `account_exists` handling is gone.
+- `apps/mobile/src/features/import/DestinationCard.tsx`: "New account" is also offered for each account named in a Monefy or QIF file, with the name filled in and the currency fixed to the file's. While one creation is undecided, no other can be started.
+- `apps/mobile/src/data/manualBalance.ts` (new), `features/accounts/AccountsScreen.tsx`, `AccountDetailScreen.tsx`: an account with `manualBalance.currentKnown === false` shows "Balance unknown" in the list and "Unknown" on its page, never 0, and adds nothing to its group total. A hand-entered balance shows the date it was true; an opening reading is shown as a line of text.
+- `apps/mobile/src/design/components/Controls.tsx`: one line (`minWidth: 0` on the text input) so a field in a half-width column does not spill over its edge on the web.
+
+### Defaults chosen
+
+- The date entered for a known balance is sent as noon UTC of that day (`2026-11-01T12:00:00.000Z`), so it reads as the same calendar date in India and the US.
+- The form offers nine types (savings, checking, credit card, loan, mortgage, brokerage, retirement, other, other debt). The Worker also accepts crypto, property and vehicle; those are not statement accounts.
+- Kind is a fixed list per type, or none. No free-text kind.
+- Net worth: on by default for a known balance, with a switch; never sent for an unknown one (the Worker defaults it to off and refuses on).
+- For a liability the form asks for "amount owed" as a positive number, as the contract says.
+- The route check still sends an empty body once per backend (400 means the route exists, 404 means it does not). It is safe now that the form matches.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **928 tests** (shared 118, connectors 345, backend 222, deployment/runtime 35, mobile 208).
+- Mobile tests rewritten for the contract: exact set of fields sent, unknown as `null`, minor units and dates for known and opening balances, the balance question required, lost answer then the identical request again, a stored request after reopening, another backend's request ignored, conflict never re-sent, a refused request dropped, a new account for one Monefy source. New tests for the unknown-balance display. Two guards were removed in turn to confirm tests fail without them.
+- Web build against a local Worker running the merged backend (migration `0005` applied), invented data:
+  - Savings, NRE, INR, balance unknown, opening ₹200 on 2025-01-01: accepted with 201; stored as unknown, out of net worth, opening reading kept and not a transaction; selected as the destination; a CSV imported into it; balance still unknown afterwards.
+  - Known balance ₹450 dated 2026-11-01 with the answer dropped on purpose: "Not sure" shown; after reloading the page the stored request was offered and sent byte for byte the same; the Worker replayed it; exactly one account existed; balance and date as entered.
+  - Accounts list shows "Balance unknown"; the account page shows "Unknown" with the opening reading, and the known account shows its date.
+- Not run on an Android device or emulator.
+
+### Remaining
+
+- Items 2 to 8 of the previous entry's list for Codex are unchanged.
+- Editing a hand-made account later (entering a balance for one created as unknown, renaming, removing) has no backend operation yet; it is Phase 5 work on both sides.
+- Older accounts made by a Monefy import have no `manualBalance`, so they still show a balance of zero. Codex chose not to relabel them; a backend decision is needed if they should read as unknown too.

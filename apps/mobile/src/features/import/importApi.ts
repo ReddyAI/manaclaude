@@ -1,5 +1,4 @@
 import type {
-  Account,
   ImportCommitRequest,
   ImportCommitResult,
   ImportDetail,
@@ -104,16 +103,16 @@ export function errorStatus(e: unknown): number {
 }
 
 // -- manual accounts ---------------------------------------------------------------------
-// POST /v1/accounts/manual is a proposed route (shared ManualAccountRequest).
-// Until the Worker serves it, the app does not offer "New account" for files
-// that do not name their account.
+// POST /v1/accounts/manual (shared ManualAccountRequest). A Worker from before
+// that route does not have it, so the app asks first and offers "New account"
+// only when it is there.
 
 const supported = new Map<string, boolean>();
 
 /**
  * Does this Worker have the manual-account route? Asked once per backend with
  * an empty body, which can never create anything: a Worker without the route
- * answers 404 not_found, one with it answers 400 for the missing name.
+ * answers 404 not_found, one with it answers 400 because the body is not valid.
  */
 export async function manualAccountsSupported(): Promise<boolean> {
   const { scope } = getBackendConfig();
@@ -135,9 +134,13 @@ export async function manualAccountsSupported(): Promise<boolean> {
   }
 }
 
-export async function createManualAccount(input: ManualAccountRequest): Promise<Account> {
-  const res = await api<ManualAccountResponse>('POST', '/v1/accounts/manual', input);
-  return res.account;
+/**
+ * Makes the account, or returns the one an earlier send of the same request
+ * made (`replayed: true`). Always send a request again unchanged, with its
+ * original key: that is what makes a retry safe.
+ */
+export function createManualAccount(request: ManualAccountRequest): Promise<ManualAccountResponse> {
+  return api<ManualAccountResponse>('POST', '/v1/accounts/manual', request);
 }
 
 /** Tests: forget what was learned about the Worker. */

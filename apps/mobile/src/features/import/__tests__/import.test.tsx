@@ -597,7 +597,36 @@ describe('history', () => {
   });
 });
 
-describe('a new account for a file that names none', () => {
+describe('a new account made by hand', () => {
+  const create = createManualAccount as jest.Mock;
+  const made = (patch: object = {}) => ({
+    account: { id: 'acc_made', name: 'NRO Fixed', currency: 'INR' },
+    replayed: false,
+    ...patch,
+  });
+  const offline = () => new BackendError(0, 'offline', "The backend can't be reached.");
+  const stored = async () => {
+    const raw = await AsyncStorage.getItem('billionaire.pendingManualAccount');
+    return raw
+      ? (JSON.parse(raw) as { scope: string; source: string | null; request: object })
+      : null;
+  };
+
+  async function openForm() {
+    (manualAccountsSupported as jest.Mock).mockResolvedValue(true);
+    await render(<ImportScreen />);
+    await press('import-pick');
+    await waitFor(() => expect(screen.getByTestId('import-account-new')).toBeTruthy());
+    await press('import-account-new');
+  }
+  async function fillUnknown() {
+    await fireEvent.changeText(screen.getByTestId('new-account-name'), ' NRO Fixed ');
+    await press('new-account-type-savings');
+    await press('new-account-subtype-nro');
+    await press('new-account-currency-INR');
+    await press('new-account-balance-unknown');
+  }
+
   it('is not offered while the Worker has no route for it', async () => {
     await render(<ImportScreen />);
     await press('import-pick');
@@ -605,28 +634,193 @@ describe('a new account for a file that names none', () => {
     expect(screen.queryByTestId('import-account-new')).toBeNull();
   });
 
-  it('makes the account and selects it once the Worker supports it', async () => {
-    (manualAccountsSupported as jest.Mock).mockResolvedValue(true);
-    (createManualAccount as jest.Mock).mockResolvedValue({ id: 'acc_made', name: 'NRO Fixed' });
+  it('asks whether the balance is known, and sends unknown as null with a retry key', async () => {
+    create.mockResolvedValue(made());
     preview.mockResolvedValue(makePreview());
+    await openForm();
+    await fireEvent.changeText(screen.getByTestId('new-account-name'), ' NRO Fixed ');
+    await press('new-account-type-savings');
+    await press('new-account-subtype-nro');
+    await press('new-account-currency-INR');
+    // No balance choice yet: nothing can be sent, and zero is never assumed.
+    expect(disabled('new-account-create')).toBe(true);
+    expect(screen.getByTestId('new-account-problem').props.children).toMatch(
+      /whether you know the balance/,
+    );
+    await press('new-account-balance-unknown');
+    expect(screen.getByText(/show as unknown, not as zero/)).toBeTruthy();
+    await press('new-account-create');
+    await waitFor(() => expect(screen.queryByTestId('import-new-account')).toBeNull());
+
+    const request = create.mock.calls[0]![0] as Record<string, unknown>;
+    // Exactly the fields the Worker accepts: no mask, no bare balance, no institution.
+    expect(Object.keys(request).sort()).toEqual(
+      ['currency', 'currentBalance', 'idempotencyKey', 'name', 'subtype', 'type'].sort(),
+    );
+    expect(request).toMatchObject({
+      name: 'NRO Fixed',
+      type: 'savings',
+      subtype: 'nro',
+      currency: 'INR',
+      currentBalance: null,
+    });
+    expect(request.idempotencyKey).toMatch(/^[A-Za-z0-9_-]{8,200}$/);
+    expect(await stored()).toBeNull();
+    await press('import-preview');
+    await waitFor(() => expect(asked()).toEqual({ accountId: 'acc_made' }));
+  });
+
+  it('sends a known balance and an opening balance in minor units with their dates', async () => {
+    create.mockResolvedValue(made());
+    await openForm();
+    await fireEvent.changeText(screen.getByTestId('new-account-name'), 'Orchard savings');
+    await press('new-account-currency-INR');
+    await press('new-account-balance-known');
+    await fireEvent.changeText(screen.getByTestId('new-account-balance'), '450');
+    // The date starts as today (the fixed test clock).
+    expect(screen.getByTestId('new-account-balance-date').props.value).toBe('2026-11-05');
+    await fireEvent.changeText(screen.getByTestId('new-account-balance-date'), '2026-11-01');
+    await press('new-account-net-worth');
+    await press('new-account-has-opening');
+    await fireEvent.changeText(screen.getByTestId('new-account-opening'), '1,200.50');
+    await fireEvent.changeText(screen.getByTestId('new-account-opening-date'), '2026-12-01');
+    expect(screen.getByTestId('new-account-problem').props.children).toMatch(/can't be after/);
+    expect(disabled('new-account-create')).toBe(true);
+    await fireEvent.changeText(screen.getByTestId('new-account-opening-date'), '2025-01-01');
+    await press('new-account-create');
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const { idempotencyKey: _key, ...rest } = create.mock.calls[0]![0] as Record<string, unknown>;
+    expect(rest).toEqual({
+      name: 'Orchard savings',
+      type: 'savings',
+      currency: 'INR',
+      currentBalance: { amount: 45_000, asOf: '2026-11-01T12:00:00.000Z' },
+      openingBalance: { amount: 120_050, date: '2025-01-01' },
+      includeInNetWorth: false,
+    });
+  });
+
+  it('keeps the original request when the answer is lost and sends exactly that again', async () => {
+    create.mockRejectedValueOnce(offline()).mockResolvedValue(made({ replayed: true }));
+    await openForm();
+    await fillUnknown();
+    await press('new-account-create');
+    await waitFor(() => expect(screen.getByTestId('import-account-pending')).toBeTruthy());
+    expect(screen.getByText(/Not sure the account "NRO Fixed" was made/)).toBeTruthy();
+    // No second account can be started while the first is undecided.
+    expect(screen.queryByTestId('import-account-new')).toBeNull();
+    expect(screen.queryByTestId('import-new-account')).toBeNull();
+    const first = create.mock.calls[0]![0] as object;
+    expect(await stored()).toMatchObject({
+      scope: getBackendConfig().scope,
+      source: null,
+      request: first,
+    });
+
+    await press('import-account-retry');
+    await waitFor(() => expect(screen.queryByTestId('import-account-pending')).toBeNull());
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1]![0]).toEqual(first);
+    expect(screen.getByTestId('import-notice').props.children).toMatch(
+      /no second account was made/,
+    );
+    expect(await stored()).toBeNull();
+    expect(screen.getByTestId('import-account-new')).toBeTruthy();
+  });
+
+  const earlier = {
+    idempotencyKey: 'b1309553-5329-4772-b642-cae13ecf551a',
+    name: 'Orchard savings',
+    type: 'savings',
+    currency: 'INR',
+    currentBalance: { amount: 45_000, asOf: '2026-11-01T12:00:00.000Z' },
+  };
+
+  it('offers the same request again after the app was closed', async () => {
+    await AsyncStorage.setItem(
+      'billionaire.pendingManualAccount',
+      JSON.stringify({ scope: getBackendConfig().scope, source: null, request: earlier }),
+    );
+    create.mockResolvedValue(made({ replayed: true }));
+    (manualAccountsSupported as jest.Mock).mockResolvedValue(true);
+    await render(<ImportScreen />);
+    await press('import-pick');
+    await waitFor(() => expect(screen.getByTestId('import-account-pending')).toBeTruthy());
+    await press('import-account-retry');
+    await waitFor(() => expect(create).toHaveBeenCalledWith(earlier));
+  });
+
+  it('ignores a request that was stored for another backend', async () => {
+    await AsyncStorage.setItem(
+      'billionaire.pendingManualAccount',
+      JSON.stringify({ scope: 'another-backend', source: null, request: earlier }),
+    );
+    (manualAccountsSupported as jest.Mock).mockResolvedValue(true);
     await render(<ImportScreen />);
     await press('import-pick');
     await waitFor(() => expect(screen.getByTestId('import-account-new')).toBeTruthy());
-    await press('import-account-new');
-    expect(disabled('new-account-create')).toBe(true);
-    await fireEvent.changeText(screen.getByTestId('new-account-name'), ' NRO Fixed ');
-    await press('new-account-type-savings');
-    await press('new-account-currency-INR');
-    await fireEvent.changeText(screen.getByTestId('new-account-mask'), '4321');
+    expect(screen.queryByTestId('import-account-pending')).toBeNull();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('never re-sends or swaps the key by itself after a conflict', async () => {
+    create.mockRejectedValue(
+      new BackendError(
+        409,
+        'idempotency_conflict',
+        'This creation key was already used for different account details.',
+      ),
+    );
+    await openForm();
+    await fillUnknown();
+    await press('new-account-create');
+    await waitFor(() => expect(screen.getByTestId('import-account-pending')).toBeTruthy());
+    expect(screen.getByText(/already has a different request stored/)).toBeTruthy();
+    expect(screen.queryByTestId('import-account-retry')).toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(await stored()).not.toBeNull();
+    await press('import-account-forget');
+    await waitFor(() => expect(screen.getByTestId('import-account-new')).toBeTruthy());
+    expect(await stored()).toBeNull();
+  });
+
+  it('drops a request the Worker refused outright', async () => {
+    create.mockRejectedValue(
+      new BackendError(400, 'invalid_body', 'currency: use three uppercase letters.'),
+    );
+    await openForm();
+    await fillUnknown();
+    await press('new-account-create');
+    await waitFor(() => expect(screen.getByTestId('import-error')).toBeTruthy());
+    expect(screen.getByTestId('import-error').props.children).toMatch(/three uppercase letters/);
+    expect(screen.queryByTestId('import-account-pending')).toBeNull();
+    expect(await stored()).toBeNull();
+  });
+
+  it('makes an account for one account named in a Monefy file, in that currency, and maps it', async () => {
+    (manualAccountsSupported as jest.Mock).mockResolvedValue(true);
+    create.mockResolvedValue(
+      made({ account: { id: 'acc_made', name: 'Travel', currency: 'INR' } }),
+    );
+    preview.mockResolvedValue(monefyPreview());
+    await openWithPreview();
+    await press('import-source-1-new');
+    expect(screen.getByTestId('new-account-name').props.value).toBe('Travel');
+    expect(screen.getByText('INR, because the rows in the file are in INR.')).toBeTruthy();
+    expect(screen.queryByTestId('new-account-currency-USD')).toBeNull();
+    await press('new-account-type-other_asset');
+    await press('new-account-balance-unknown');
     await press('new-account-create');
     await waitFor(() => expect(screen.queryByTestId('import-new-account')).toBeNull());
-    expect(createManualAccount).toHaveBeenCalledWith({
-      name: 'NRO Fixed',
-      type: 'savings',
+    expect(create.mock.calls[0]![0]).toMatchObject({
+      name: 'Travel',
+      type: 'other_asset',
       currency: 'INR',
-      mask: '4321',
+      currentBalance: null,
     });
+    // The new account is the choice for that source; the old preview may not be saved.
+    expect(disabled('import-confirm')).toBe(true);
     await press('import-preview');
-    await waitFor(() => expect(asked()).toEqual({ accountId: 'acc_made' }));
+    await waitFor(() => expect(asked()).toEqual({ accountMappings: { Travel: 'acc_made' } }));
   });
 });
