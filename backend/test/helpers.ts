@@ -27,6 +27,13 @@ export const testEnv = workerEnv as unknown as Env & {
 export const db = testEnv.DB;
 
 const TABLES = [
+  'nightly_state',
+  'nightly_guard',
+  'nightly_names',
+  'nightly_rows',
+  'nightly_groups',
+  'nightly_categories',
+  'fx_latest_progress',
   'fx_backfill_progress',
   'fx_backfill_scheduler',
   'manual_account_details',

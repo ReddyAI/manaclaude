@@ -75,7 +75,7 @@ async function fetchDay(quote: string, date: string, fetcher: FetchFn, signal: A
 }
 
 /** One indexed minimum per source, one currency per invocation, cyclically. */
-async function nextQuote(db: D1Database, after: string): Promise<string | null> {
+export async function nextQuote(db: D1Database, after: string): Promise<string | null> {
   return db
     .prepare(
       `SELECT min(quote) FROM (

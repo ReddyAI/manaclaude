@@ -436,7 +436,7 @@ describe('bounded historical FX', () => {
       await waitOnExecutionContext(ctx);
       expect(await checkpoint()).toMatchObject({ next_date: '2026-11-05' });
       expect(f.calls).toHaveLength(4);
-      expect(meter.used()).toBe(status === 200 ? 9 : 7);
+      expect(meter.used()).toBe(status === 200 ? 11 : 10);
       expect(
         await db
           .prepare("SELECT rate FROM fx_rates WHERE source='openexchangerates' AND quote='INR'")
@@ -469,6 +469,6 @@ describe('bounded historical FX', () => {
     expect(f.calls).toHaveLength(4);
     expect(await checkpoint()).toMatchObject({ next_date: '2026-11-05' });
     console.warn('Invented daily invocation queries (AI disabled, small history)', meter.used());
-    expect(meter.used()).toBe(25);
+    expect(meter.used()).toBe(11);
   });
 });

@@ -3,6 +3,7 @@ import {
   normalizeDescription,
   type AiJobResponse,
   type Merchant,
+  type Transaction,
 } from '@manaclaude/shared';
 import type { Env } from '../../env';
 import { batchInChunks, insertStatement, selectAll, updateStatement } from '../../db/table';
@@ -44,11 +45,23 @@ function looksRaw(name: string): boolean {
  * Florist"), the AI for names that still look like bank codes. Builds the
  * merchants table with raw aliases. Never renames a transaction the user renamed.
  */
-export async function runMerchantCleanup(env: Env, deps: AiDeps = {}): Promise<AiJobResponse> {
+export interface MerchantScope {
+  transactions: Transaction[];
+  merchants: (names: string[]) => Promise<Merchant[]>;
+  touched: (merchants: Merchant[]) => void;
+  save: (statements: D1PreparedStatement[]) => Promise<void>;
+}
+
+export async function runMerchantCleanup(
+  env: Env,
+  deps: AiDeps = {},
+  scope?: MerchantScope,
+): Promise<AiJobResponse> {
   const db = env.DB;
   const settings = await getSettings(db);
   const txns = (
-    await selectAll(db, transactionsTable, 'merchant_id IS NULL AND is_split_parent = 0')
+    scope?.transactions ??
+    (await selectAll(db, transactionsTable, 'merchant_id IS NULL AND is_split_parent = 0'))
   ).filter((t) => t.rawName.trim().length > 0);
   if (txns.length === 0) return { job: 'merchants', changed: 0, usedAi: false, note: null };
   const raws = [...new Set(txns.map((t) => t.rawName))];
@@ -77,7 +90,9 @@ export async function runMerchantCleanup(env: Env, deps: AiDeps = {}): Promise<A
       }
     }
   }
-  const merchants = await selectAll(db, merchantsTable);
+  const merchants = scope
+    ? await scope.merchants([...cleaned.values()])
+    : await selectAll(db, merchantsTable);
   const byKey = new Map(merchants.map((m) => [normalizeDescription(m.name), m]));
   const now = nowIso();
   const statements: D1PreparedStatement[] = [];
@@ -110,7 +125,8 @@ export async function runMerchantCleanup(env: Env, deps: AiDeps = {}): Promise<A
       changed += 1;
     }
   }
-  await batchInChunks(db, [
+  scope?.touched([...touched.values()]);
+  await (scope?.save ?? ((statements) => batchInChunks(db, statements)))([
     ...[...touched.values()].map((m) => insertStatement(db, merchantsTable, m, 'upsert')),
     ...statements,
   ]);

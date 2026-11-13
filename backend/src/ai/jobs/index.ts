@@ -48,7 +48,7 @@ export async function runJob(
   }
 }
 
-/** Daily cron: merchant cleanup, categorization, recurring, alerts, and recaps when a period just ended. */
+/** Complete sweep for explicit callers/tests. Scheduled events use runNightlyStep instead. */
 export async function runDailyJobs(
   env: Env,
   today: string,
