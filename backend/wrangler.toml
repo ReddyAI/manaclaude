@@ -11,9 +11,10 @@ compatibility_flags = ["nodejs_compat"]
 # Every 5 minutes: connector syncs (unfinished first syncs first, then
 # connections not synced since 06:30 UTC), as many as one invocation's D1
 # query allowance takes. Hourly: Open Exchange Rates latest.json. Daily 06:30
-# UTC: ECB rates via Frankfurter, history backfill and the AI jobs.
+# UTC: ECB rates via Frankfurter and history backfill. At minutes 2,7,...57:
+# one durable nightly job step, isolated from sync and FX query allowances.
 [triggers]
-crons = ["*/5 * * * *", "0 * * * *", "30 6 * * *"]
+crons = ["*/5 * * * *", "0 * * * *", "30 6 * * *", "2-57/5 * * * *"]
 
 [vars]
 AI_TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"

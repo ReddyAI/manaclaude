@@ -10,6 +10,7 @@ import {
 import type { Env } from '../../env';
 import { batchInChunks, insertStatement, selectAll } from '../../db/table';
 import { recurringTable, transactionsTable } from '../../db/tables';
+import { bulkByIdsSpecs, toStatement } from '../../db/bulk';
 import { newId, nowIso } from '../../util/ids';
 import { cleanMerchantName, merchantKey } from '../merchant';
 
@@ -102,13 +103,23 @@ function nextDue(last: string, f: RecurringFrequency): string {
  * price history updated, and a non-variable series whose newest charge is at
  * least 1% above the previous one raises a price_increase alert.
  */
-export async function runRecurringDetection(env: Env): Promise<AiJobResponse> {
+export async function runRecurringDetection(
+  env: Env,
+  scope?: {
+    transactions: Transaction[];
+    existing: RecurringItem[];
+    touched?: (item: RecurringItem) => void;
+    save: (statements: D1PreparedStatement[]) => Promise<void>;
+  },
+): Promise<AiJobResponse> {
   const db = env.DB;
   const since = addDays(new Date().toISOString().slice(0, 10), -800);
-  const [txns, existing] = await Promise.all([
-    selectAll(db, transactionsTable, 'date >= ?', [since]),
-    selectAll(db, recurringTable),
-  ]);
+  const [txns, existing] = scope
+    ? [scope.transactions, scope.existing]
+    : await Promise.all([
+        selectAll(db, transactionsTable, 'date >= ?', [since]),
+        selectAll(db, recurringTable),
+      ]);
   const series = detectRecurringSeries(txns);
   const now = nowIso();
   const statements: D1PreparedStatement[] = [];
@@ -147,16 +158,17 @@ export async function runRecurringDetection(env: Env): Promise<AiJobResponse> {
       detectedBy: current?.detectedBy ?? 'rule',
       aiConfidence: Math.round(s.confidence * 100) / 100,
     };
+    scope?.touched?.(item);
     if (!current || JSON.stringify(current) !== JSON.stringify(item)) {
       statements.push(insertStatement(db, recurringTable, item, 'upsert'));
       changed += 1;
     }
     statements.push(
-      ...s.history.map((t) =>
-        db
-          .prepare('UPDATE transactions SET recurring_id = ? WHERE id = ? AND recurring_id IS NULL')
-          .bind(item.id, t.id),
-      ),
+      ...bulkByIdsSpecs(
+        'UPDATE transactions SET recurring_id = ? WHERE id IN (SELECT value FROM json_each(?)) AND recurring_id IS NULL',
+        s.history.map((t) => t.id),
+        [item.id],
+      ).map((s) => toStatement(db, s)),
     );
     const increase = (Math.abs(last.amount) - Math.abs(prev.amount)) / Math.abs(prev.amount);
     if (!s.isVariable || increase >= 0.05) {
@@ -181,6 +193,6 @@ export async function runRecurringDetection(env: Env): Promise<AiJobResponse> {
       }
     }
   }
-  await batchInChunks(db, statements);
+  await (scope?.save ?? ((statements) => batchInChunks(db, statements)))(statements);
   return { job: 'recurring', changed, usedAi: false, note: null };
 }

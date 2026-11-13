@@ -4,6 +4,8 @@ import {
   type AiJobResponse,
   type Id,
   type Transaction,
+  type Category,
+  type Merchant,
 } from '@manaclaude/shared';
 import type { Env } from '../../env';
 import { batchInChunks, selectAll, updateStatement } from '../../db/table';
@@ -43,6 +45,19 @@ const SCHEMA: JsonSchema = {
 export const LEARNED_CONFIDENCE = 0.95;
 const BATCH = 40;
 
+export interface CategorizeScope {
+  candidates: Transaction[];
+  activeLinks: Set<string>;
+  categories: Category[];
+  merchants: Merchant[];
+  examples: { normalized_name: string; raw_name: string; category_id: string; amount: number }[];
+  proposed?: (
+    values: Map<Id, { categoryId: Id; confidence: number }>,
+    authoritative: Set<Id>,
+  ) => void;
+  save: (statements: D1PreparedStatement[]) => Promise<void>;
+}
+
 export interface CategorizeOptions {
   /** Specific transactions (after an import or sync). */
   ids?: Id[];
@@ -62,11 +77,14 @@ export async function runCategorization(
   env: Env,
   options: CategorizeOptions = {},
   deps: AiDeps = {},
+  scope?: CategorizeScope,
 ): Promise<AiJobResponse> {
   const db = env.DB;
   const settings = await getSettings(db);
   let candidates: Transaction[];
-  if (options.ids) {
+  if (scope) {
+    candidates = scope.candidates;
+  } else if (options.ids) {
     candidates = [];
     for (let i = 0; i < options.ids.length; i += 90) {
       const chunk = options.ids.slice(i, i + 90);
@@ -88,11 +106,13 @@ export async function runCategorization(
       "is_split_parent = 0 AND (category_id IS NULL OR category_source = 'ai')",
     );
   }
-  const activeLinks = new Set(
-    (await selectAll(db, transferLinksTable))
-      .filter((l) => ACTIVE_TRANSFER_LINK_STATUSES.includes(l.status))
-      .map((l) => l.id),
-  );
+  const activeLinks =
+    scope?.activeLinks ??
+    new Set(
+      (await selectAll(db, transferLinksTable))
+        .filter((l) => ACTIVE_TRANSFER_LINK_STATUSES.includes(l.status))
+        .map((l) => l.id),
+    );
   candidates = candidates.filter(
     (t) =>
       t.amount !== 0 &&
@@ -101,15 +121,22 @@ export async function runCategorization(
   );
   if (candidates.length === 0) return { job: 'categorize', changed: 0, usedAi: false, note: null };
 
-  const [categories, merchants, examples] = await Promise.all([
-    selectAll(db, categoriesTable, 'archived = 0'),
-    selectAll(db, merchantsTable),
-    db
-      .prepare(
-        'SELECT normalized_name, raw_name, category_id, amount FROM ai_examples ORDER BY created_at DESC LIMIT 500',
-      )
-      .all<{ normalized_name: string; raw_name: string; category_id: string; amount: number }>(),
-  ]);
+  const [categories, merchants, examples] = scope
+    ? [scope.categories, scope.merchants, { results: scope.examples }]
+    : await Promise.all([
+        selectAll(db, categoriesTable, 'archived = 0'),
+        selectAll(db, merchantsTable),
+        db
+          .prepare(
+            'SELECT normalized_name, raw_name, category_id, amount FROM ai_examples ORDER BY created_at DESC LIMIT 500',
+          )
+          .all<{
+            normalized_name: string;
+            raw_name: string;
+            category_id: string;
+            amount: number;
+          }>(),
+      ]);
   const learned = new Map<string, string>();
   for (const e of examples.results)
     if (!learned.has(e.normalized_name)) learned.set(e.normalized_name, e.category_id);
@@ -120,11 +147,14 @@ export async function runCategorization(
 
   const proposals = new Map<Id, { categoryId: Id; confidence: number }>();
   const forAi: Transaction[] = [];
+  const authoritative = new Set<Id>();
   for (const t of candidates) {
     const fromLearned = learned.get(merchantKey(t.rawName));
     if (fromLearned) {
+      authoritative.add(t.id);
       proposals.set(t.id, { categoryId: fromLearned, confidence: LEARNED_CONFIDENCE });
     } else if (t.merchantId && merchantDefault.has(t.merchantId)) {
+      authoritative.add(t.id);
       proposals.set(t.id, { categoryId: merchantDefault.get(t.merchantId)!, confidence: 0.9 });
     } else if (!t.userEditedFields.includes('categoryId')) {
       forAi.push(t);
@@ -175,6 +205,7 @@ export async function runCategorization(
     }
   }
 
+  scope?.proposed?.(proposals, authoritative);
   const now = nowIso();
   const statements: D1PreparedStatement[] = [];
   const byId = new Map(candidates.map((t) => [t.id, t]));
@@ -207,6 +238,6 @@ export async function runCategorization(
       ),
     );
   }
-  await batchInChunks(db, statements);
+  await (scope?.save ?? ((statements) => batchInChunks(db, statements)))(statements);
   return { job: 'categorize', changed: statements.length, usedAi, note };
 }

@@ -2,12 +2,9 @@ import { addDays } from '@manaclaude/shared';
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
 import { createApp, type AppDeps } from './api/app';
 import type { Env } from './env';
-import { runDailyJobs } from './ai/jobs';
-import {
-  backfillMissingHistory,
-  fetchFrankfurterLatest,
-  fetchOpenExchangeRates,
-} from './fx/service';
+import { NIGHTLY_CRON, runNightlyStep } from './nightly';
+import { fetchScheduledLatest } from './fx/latest';
+import { backfillMissingHistory } from './fx/service';
 import { handleAuthorize } from './mcp/authorize';
 import { handleMcp } from './mcp/handler';
 import type { McpAuthProps } from './mcp/tools';
@@ -26,7 +23,7 @@ export const SYNC_CRON = '*/5 * * * *';
  * - /authorize, /token, /register, /.well-known/*  OAuth endpoints
  * - cron    every 5 minutes: connector syncs (unfinished first syncs, then connections due
  *           today), within one invocation's D1 allowance; hourly FX and bounded history;
- *           daily ECB rates, bounded history and AI jobs
+ *           daily ECB rates and bounded history; offset five-minute maintenance steps
  */
 export function createWorker(deps: AppDeps = {}) {
   const app = createApp(deps);
@@ -79,9 +76,15 @@ export function createWorker(deps: AppDeps = {}) {
     async scheduled(
       controller: ScheduledController,
       env: Env,
-      ctx: ExecutionContext,
+      _ctx: ExecutionContext,
     ): Promise<void> {
       const f = deps.fetch ?? fetch;
+      if (controller.cron === NIGHTLY_CRON) {
+        await runNightlyStep(env, new Date(controller.scheduledTime), deps).catch((e) =>
+          console.error('Nightly step failed', String(e)),
+        );
+        return;
+      }
       if (controller.cron === SYNC_CRON) {
         await syncDueConnections(env, {
           fetch: deps.fetch,
@@ -96,17 +99,16 @@ export function createWorker(deps: AppDeps = {}) {
           through: addDays(today, -1),
         }).catch((e) => console.error('FX backfill failed', String(e)));
       if (controller.cron === '0 * * * *') {
-        await fetchOpenExchangeRates(env, f).catch((e) =>
+        await fetchScheduledLatest(env, 'openexchangerates', f).catch((e) =>
           console.error('OXR fetch failed', String(e)),
         );
         await backfill();
         return;
       }
-      await fetchFrankfurterLatest(env, f).catch((e) =>
+      await fetchScheduledLatest(env, 'frankfurter_ecb', f).catch((e) =>
         console.error('Frankfurter fetch failed', String(e)),
       );
       await backfill();
-      ctx.waitUntil(runDailyJobs(env, today, deps).then(() => undefined));
     },
   };
 }

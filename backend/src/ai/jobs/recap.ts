@@ -58,7 +58,7 @@ export function lastCompletePeriod(period: Recap['kind'], today: LocalDate, week
   return periodRange('weekly', addDays(thisWeek.start, -7), weekStartsOn);
 }
 
-interface RecapFacts {
+export interface RecapFacts {
   currency: string;
   spending: number;
   income: number;
@@ -197,6 +197,40 @@ export async function generateRecap(
   };
   const startWorth = netWorthOn(accounts, snaps, rates, currency, addDays(range.start, -1));
   const endWorth = netWorthOn(accounts, snaps, rates, currency, range.end);
+  return finishRecap(
+    env,
+    {
+      kind,
+      range,
+      facts,
+      topCategories,
+      biggestTransactions: biggest.map((b) => ({ transactionId: b.t.id, amount: b.amount })),
+      netWorthChange: startWorth === null || endWorth === null ? null : endWorth - startWorth,
+    },
+    deps,
+  );
+}
+
+export interface RecapValues {
+  kind: Recap['kind'];
+  range: { start: string; end: string };
+  facts: RecapFacts;
+  topCategories: Recap['topCategories'];
+  biggestTransactions: Recap['biggestTransactions'];
+  netWorthChange: number | null;
+}
+
+/** Shared presentation/persistence for complete manual and paged scheduled facts. */
+export async function finishRecap(
+  env: Env,
+  values: RecapValues,
+  deps: AiDeps = {},
+  save?: (statement: D1PreparedStatement) => void,
+): Promise<Recap> {
+  const db = env.DB;
+  const { kind, range, facts, topCategories, biggestTransactions, netWorthChange } = values;
+  const currency = facts.currency;
+  const settings = await getSettings(db);
   const sentences = templateSentences(kind, facts);
   let headline = sentences[0]!;
   let highlights = sentences.slice(1);
@@ -233,23 +267,24 @@ export async function generateRecap(
     periodStart: range.start,
     periodEnd: range.end,
     currency,
-    spending: now.spending,
-    income: now.income,
-    previousSpending: prev.spending,
+    spending: facts.spending,
+    income: facts.income,
+    previousSpending: facts.previousSpending,
     topCategories,
-    biggestTransactions: biggest.map((b) => ({ transactionId: b.t.id, amount: b.amount })),
-    netWorthChange: startWorth === null || endWorth === null ? null : endWorth - startWorth,
+    biggestTransactions,
+    netWorthChange,
     headline,
     highlights,
     source,
     createdAt: nowIso(),
   };
-  await db
+  const statement = db
     .prepare(
       'INSERT INTO recaps (id, kind, period_start, period_end, data, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (kind, period_start) DO UPDATE SET data = excluded.data, period_end = excluded.period_end, created_at = excluded.created_at',
     )
-    .bind(recap.id, kind, range.start, range.end, JSON.stringify(recap), recap.createdAt)
-    .run();
+    .bind(recap.id, kind, range.start, range.end, JSON.stringify(recap), recap.createdAt);
+  if (save) save(statement);
+  else await statement.run();
   return recap;
 }
 

@@ -21,6 +21,7 @@ import { linkManually } from '../../src/services/links';
 import { previewImport, commitImport, undoImport, discardImport } from '../../src/imports/service';
 import { uploadReceipt } from '../../src/receipts/service';
 import { loadCredentials, saveCredentials } from '../../src/sync/credentials';
+import { runNightlyStep, type NightlyState } from '../../src/nightly';
 import { backfillMissingHistory } from '../../src/fx/service';
 import { loadDataset } from '../../src/services/dataset';
 import {
@@ -185,6 +186,17 @@ beforeAll(async () => {
   await env.DB.prepare(
     "INSERT INTO fx_backfill_scheduler VALUES (1, 'GBP', 'invented-abandoned-fx-lease', 1794484800000)",
   ).run();
+  const nightly: NightlyState = {
+    day: '2026-11-12',
+    phase: 'merchants',
+    after: '',
+    alert: null,
+    categorize: null,
+    recap: null,
+  };
+  await env.DB.prepare('INSERT INTO nightly_state VALUES (1, ?, ?, ?)')
+    .bind(JSON.stringify(nightly), 'invented-abandoned-nightly-lease', 1794484800000)
+    .run();
   const dump = await env.DB.prepare('PRAGMA miniflare_d1_export(?,?,?);')
     .bind(false, false)
     .raw<string[]>();
@@ -233,12 +245,12 @@ describe('private D1 and original-file recovery', () => {
       '--manifest-sha256',
       digest,
     ]);
-    expect(JSON.parse(stdout)).toEqual({ tables: 37, files: 4 });
+    expect(JSON.parse(stdout)).toEqual({ tables: 44, files: 4 });
   });
   it('restores all records, balances, notes, categories, splits, transfers and originals to new local D1/R2', async () => {
     const restored = join(root, 'restored');
     const result = await restoreLocal(bundle, digest, restored);
-    expect(result).toEqual({ tables: 37, files: 4 });
+    expect(result).toEqual({ tables: 44, files: 4 });
     const target = await getPlatformProxy<Env>({
       configPath: join(restored, 'wrangler.json'),
       remoteBindings: false,
@@ -313,6 +325,20 @@ describe('private D1 and original-file recovery', () => {
           'next_date',
         ),
       ).toBe('2026-11-03');
+      const savedNightly = await env.DB.prepare('SELECT state FROM nightly_state').first<string>(
+        'state',
+      );
+      await runNightlyStep(target.env, new Date('2026-11-13T06:32:00Z'), {
+        now: () => new Date('2026-11-13T12:00:00Z'),
+      });
+      const resumed = await target.env.DB.prepare(
+        'SELECT state, lease_token FROM nightly_state',
+      ).first<{ state: string; lease_token: string | null }>();
+      expect(JSON.parse(resumed!.state).after).not.toBe('');
+      expect(resumed!.lease_token).toBeNull();
+      expect(await env.DB.prepare('SELECT state FROM nightly_state').first('state')).toBe(
+        savedNightly,
+      );
       expect(JSON.parse(await readFile(join(restored, 'verified.json'), 'utf8')).scope).toBe(
         'local-restoration-only',
       );
