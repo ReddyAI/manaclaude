@@ -36,7 +36,7 @@ export function isSuperseded(e: unknown): boolean {
   return e instanceof BackendError && e.superseded;
 }
 
-function supersededError(): BackendError {
+export function supersededError(): BackendError {
   return new BackendError(
     0,
     'superseded',

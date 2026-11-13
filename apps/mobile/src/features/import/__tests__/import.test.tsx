@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import type { CsvMapping, ImportCommitResult } from '@manaclaude/shared';
+import { formatMoney, type CsvMapping, type ImportCommitResult } from '@manaclaude/shared';
 import { createSampleData } from '@manaclaude/shared/sample';
+import { router } from 'expo-router';
 import { BackendError } from '../../../data/backend/client';
 import { getBackendConfig, setBackendConfigForTests } from '../../../data/backend/config';
 import { getFinance, setFinance } from '../../../data/store';
@@ -300,6 +301,199 @@ describe('review before saving', () => {
   });
 });
 
+describe('single rows left out by hand', () => {
+  const ticked = (line: number) =>
+    Boolean(screen.getByTestId(`import-row-tick-${line}`).props.accessibilityState?.checked);
+  const counts = () => screen.getByTestId('import-counts').props.children as string;
+  const inr = (minor: number) => formatMoney(minor, 'INR');
+
+  it('leaves one row out, with counts and totals to match, and puts it back', async () => {
+    preview.mockResolvedValue(makePreview({ rows: [row(2), row(3), row(4, { amount: 500_00 })] }));
+    commit.mockResolvedValue(saved({ added: 2, skipped: 1 }));
+    await openWithPreview();
+    expect(counts()).toBe('3 to import');
+    expect(ticked(3)).toBe(true);
+    expect(screen.getByText(`3 rows · in ${inr(500_00)} · out ${inr(2_500_00)}`)).toBeTruthy();
+
+    await press('import-row-tick-3');
+    expect(ticked(3)).toBe(false);
+    expect(counts()).toBe('2 to import · 1 left out');
+    expect(screen.getByText(`2 rows · in ${inr(500_00)} · out ${inr(1_250_00)}`)).toBeTruthy();
+    expect(screen.getByText('Import 2 rows')).toBeTruthy();
+    expect(screen.getByTestId('import-left-out-by-hand').props.children).toMatch(
+      /^1 row left out by you/,
+    );
+
+    await press('import-put-rows-back');
+    expect(ticked(3)).toBe(true);
+    expect(counts()).toBe('3 to import');
+
+    await press('import-row-tick-4');
+    await press('import-confirm');
+    await waitFor(() => expect(screen.getByTestId('import-result')).toBeTruthy());
+    expect(commit).toHaveBeenCalledWith('imp_1', { skipLines: [4], keepLines: [] });
+    // The totals shown with the result are the ones that were sent: without line 4.
+    expect(screen.getByText(`2 rows · in ${inr(0)} · out ${inr(2_500_00)}`)).toBeTruthy();
+  });
+
+  it('keeps a row left out through a new preview, and only sends lines that are in it', async () => {
+    const all = [row(2), row(3, { date: '2026-10-20' }), row(4)];
+    preview.mockResolvedValue(makePreview({ rows: all }));
+    commit.mockResolvedValue(saved());
+    await openWithPreview();
+    await press('import-row-tick-2');
+    await press('import-row-tick-3');
+    expect(counts()).toBe('1 to import · 2 left out');
+
+    // Narrower dates: line 3 falls outside them and is not in the new preview.
+    preview.mockResolvedValue(
+      makePreview({
+        importId: 'imp_2',
+        rows: [all[0]!, all[2]!],
+        dateRange: { from: null, to: '2026-10-15', excluded: 1 },
+      }),
+    );
+    await fireEvent.changeText(screen.getByTestId('import-to'), '2026-10-15');
+    expect(disabled('import-confirm')).toBe(true);
+    await press('import-preview');
+    await waitFor(() => expect(screen.getByTestId('import-excluded')).toBeTruthy());
+    expect(ticked(2)).toBe(false);
+    expect(counts()).toBe('1 to import · 1 left out');
+    expect(screen.getByText(`1 row · in ${inr(0)} · out ${inr(1_250_00)}`)).toBeTruthy();
+
+    // Wider again: line 3 is back in the file's rows, and still left out.
+    preview.mockResolvedValue(makePreview({ importId: 'imp_3', rows: all }));
+    await fireEvent.changeText(screen.getByTestId('import-to'), '');
+    await press('import-preview');
+    await waitFor(() => expect(screen.queryByTestId('import-excluded')).toBeNull());
+    expect([ticked(2), ticked(3), ticked(4)]).toEqual([false, false, true]);
+    expect(counts()).toBe('1 to import · 2 left out');
+    await press('import-confirm');
+    await waitFor(() => expect(screen.getByTestId('import-result')).toBeTruthy());
+    expect(commit).toHaveBeenCalledWith('imp_3', { skipLines: [2, 3], keepLines: [] });
+  });
+
+  it('is sent together with duplicate answers and unreadable lines, each line once', async () => {
+    const stored = getFinance().transactions.find((t) => t.accountId === 'acc_checking')!;
+    const usd = { accountId: 'acc_checking', currency: 'USD' };
+    preview.mockResolvedValue(
+      makePreview({
+        rows: [
+          row(2, { ...usd, amount: stored.amount, date: stored.date }),
+          row(3, { ...usd, amount: stored.amount, date: stored.date }),
+          row(4, usd),
+          row(5, usd),
+          row(6, { ...usd, decision: 'already_imported' }),
+        ],
+        duplicateCandidates: [
+          { line: 2, transactionIds: [stored.id] },
+          { line: 3, transactionIds: [stored.id] },
+        ],
+        errors: [{ line: 9, message: 'No amount on this row.' }],
+      }),
+    );
+    commit.mockResolvedValue(saved({ added: 2, matched: 1, skipped: 3 }));
+    await openWithPreview();
+    // Rows with a question of their own, or already stored, have no tick box.
+    expect(screen.queryByTestId('import-row-tick-2')).toBeNull();
+    expect(screen.queryByTestId('import-row-tick-6')).toBeNull();
+    await press('import-row-tick-5');
+    expect(disabled('import-confirm')).toBe(true);
+    await press('import-keep-2');
+    await press('import-skip-3');
+    await press('import-skip-errors');
+    expect(counts()).toBe('2 to import · 1 already there · 3 left out (2 rows, 1 unreadable line)');
+    expect(disabled('import-confirm')).toBe(false);
+    await press('import-confirm');
+    await waitFor(() => expect(screen.getByTestId('import-result')).toBeTruthy());
+    expect(commit).toHaveBeenCalledWith('imp_1', { skipLines: [3, 5, 9], keepLines: [2] });
+    expect(screen.getByText('2 added, 1 already there, 3 left out.')).toBeTruthy();
+  });
+
+  it('stays left out when transactions change during the review, even as a possible duplicate', async () => {
+    const usd = { accountId: 'acc_checking', currency: 'USD' };
+    const rows = [row(2, usd), row(3, usd), row(4, usd)];
+    preview.mockResolvedValue(makePreview({ rows }));
+    commit
+      .mockRejectedValueOnce(
+        new BackendError(409, 'import_preview_changed', 'Transactions changed. Preview again.'),
+      )
+      .mockResolvedValue(saved({ added: 2, skipped: 1 }));
+    await openWithPreview();
+    await press('import-row-tick-3');
+    // A sync added something that looks like line 3 while the review was open.
+    preview.mockResolvedValue(
+      makePreview({
+        importId: 'imp_2',
+        rows,
+        duplicateCandidates: [{ line: 3, transactionIds: ['txn_new_from_sync'] }],
+      }),
+    );
+    await press('import-confirm');
+    await waitFor(() =>
+      expect(screen.getByTestId('import-notice').props.children).toMatch(/changed while you/),
+    );
+    // The row has its own question now; having been left out, it counts as "skip".
+    expect(screen.queryByTestId('import-row-tick-3')).toBeNull();
+    expect(screen.getByText('Will be left out')).toBeTruthy();
+    expect(counts()).toBe('2 to import · 1 left out');
+    expect(disabled('import-confirm')).toBe(false);
+
+    // Answering "keep both" brings it back in...
+    await press('import-keep-3');
+    expect(counts()).toBe('3 to import');
+    // ...and "skip" leaves it out again.
+    await press('import-skip-3');
+    await press('import-confirm');
+    await waitFor(() => expect(screen.getByTestId('import-result')).toBeTruthy());
+    expect(commit).toHaveBeenLastCalledWith('imp_2', { skipLines: [3], keepLines: [] });
+  });
+
+  it('puts a row back, and says so, when a PDF is read again and its rows moved', async () => {
+    const pdf = { format: 'pdf' as const, fileName: 'statement.pdf' };
+    preview.mockResolvedValue(makePreview({ ...pdf, rows: [row(2), row(3), row(4)] }));
+    await openWithPreview();
+    await press('import-row-tick-2');
+    await press('import-row-tick-3');
+    preview.mockResolvedValue(
+      makePreview({
+        ...pdf,
+        importId: 'imp_2',
+        rows: [row(2), row(3, { rawName: 'Row 4' }), row(4, { rawName: 'Row 3' })],
+        dateRange: { from: '2026-10-01', to: null, excluded: 0 },
+      }),
+    );
+    await fireEvent.changeText(screen.getByTestId('import-from'), '2026-10-01');
+    await press('import-preview');
+    await waitFor(() => expect(screen.getByTestId('import-notice')).toBeTruthy());
+    expect(screen.getByTestId('import-notice').props.children).toMatch(
+      /^1 row you left out was read differently this time, so it is back in the import/,
+    );
+    expect([ticked(2), ticked(3), ticked(4)]).toEqual([false, true, true]);
+    expect(counts()).toBe('2 to import · 1 left out');
+  });
+
+  it('shows more rows on request, with counts for the whole file', async () => {
+    const many = Array.from({ length: 170 }, (_, i) => row(i + 2));
+    preview.mockResolvedValue(makePreview({ rows: many }));
+    commit.mockResolvedValue(saved({ added: 169, skipped: 1 }));
+    await openWithPreview();
+    expect(counts()).toBe('170 to import');
+    expect(screen.getByTestId('import-rows-shown').props.children).toMatch(/^Showing 60 of 170/);
+    expect(screen.queryByTestId('import-row-tick-150')).toBeNull();
+    await press('import-more-rows');
+    expect(screen.getByTestId('import-row-tick-150')).toBeTruthy();
+    expect(screen.getByText('Show 10 more')).toBeTruthy();
+    await press('import-row-tick-150');
+    expect(counts()).toBe('169 to import · 1 left out');
+    await press('import-more-rows');
+    expect(screen.queryByTestId('import-more-rows')).toBeNull();
+    await press('import-confirm');
+    await waitFor(() => expect(screen.getByTestId('import-result')).toBeTruthy());
+    expect(commit).toHaveBeenCalledWith('imp_1', { skipLines: [150], keepLines: [] });
+  });
+});
+
 describe('bank CSV layout', () => {
   const mapping: CsvMapping = {
     delimiter: ',',
@@ -594,6 +788,23 @@ describe('history', () => {
     expect(screen.getByTestId('import-history-note').props.children).toMatch(
       /Removed 12 transactions from october.csv/,
     );
+  });
+
+  it('leads to the stored file of an import, and to all stored statements', async () => {
+    (listImports as jest.Mock).mockResolvedValue([
+      record({ id: 'imp_3', fileName: 'october.csv' }),
+      record({ id: 'imp_1', fileName: 'september.csv', status: 'undone' }),
+    ]);
+    await render(<ImportScreen />);
+    await fireEvent.press(screen.getByText('History'));
+    await waitFor(() => expect(screen.getByText('october.csv')).toBeTruthy());
+    await press('import-file-imp_1');
+    expect(router.push).toHaveBeenLastCalledWith({
+      pathname: '/vault/[id]',
+      params: { id: 'imp_1' },
+    });
+    await press('import-open-vault');
+    expect(router.push).toHaveBeenLastCalledWith('/vault');
   });
 });
 

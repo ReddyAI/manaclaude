@@ -1,4 +1,5 @@
 import type { ImportRecord } from '@manaclaude/shared';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
@@ -62,6 +63,17 @@ export function ImportHistory() {
       setBusy(null);
     }
   };
+
+  /** The stored original of an import, on its own page. */
+  const seeFile = (r: ImportRecord) => (
+    <Button
+      label="See the file"
+      size="sm"
+      variant="ghost"
+      onPress={() => router.push({ pathname: '/vault/[id]', params: { id: r.id } })}
+      testID={`import-file-${r.id}`}
+    />
+  );
 
   return (
     <VStack gap="md" testID="import-history">
@@ -151,9 +163,12 @@ export function ImportHistory() {
                       onPress={() => setAsking(r.id)}
                       testID={`import-undo-${r.id}`}
                     />
+                    {seeFile(r)}
                   </HStack>
                 )
-              ) : null}
+              ) : (
+                <HStack gap="sm">{seeFile(r)}</HStack>
+              )}
             </View>
           ))}
         </Card>

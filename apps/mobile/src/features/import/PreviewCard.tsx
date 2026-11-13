@@ -1,19 +1,26 @@
 import { formatMoney, type Account, type ImportPreview } from '@manaclaude/shared';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
+import { Button } from '../../design/components/Button';
 import { Card } from '../../design/components/Card';
 import { Badge, type BadgeTone } from '../../design/components/Controls';
-import { VStack } from '../../design/components/Layout';
+import { Icon } from '../../design/components/Icon';
+import { HStack, VStack } from '../../design/components/Layout';
+import { PressableScale } from '../../design/components/PressableScale';
 import { Text } from '../../design/components/Text';
 import {
   commitLines,
+  rowChoices,
   type ImportOptions,
   type ImportPlan,
   type Review,
   type TotalLine,
 } from './importFlow';
 
+/** Rows listed at first, and how many each "show more" adds. A long file is not drawn all at once. */
 const SHOWN_ROWS = 60;
+const MORE_ROWS = 100;
 
 /** Rows, money in and money out per account and currency: the numbers to hold against the source. */
 export function TotalsTable({ totals }: { totals: readonly TotalLine[] }) {
@@ -34,7 +41,23 @@ export function TotalsTable({ totals }: { totals: readonly TotalLine[] }) {
   );
 }
 
-/** What a save would do: the counts, the totals to compare, the backend's notes and the first rows. */
+/** "3 left out", and what they are when unreadable lines are among them: the same number the save reports. */
+export function leftOutText(
+  plan: Pick<ImportPlan, 'leftOut' | 'unreadableLeftOut'>,
+): string | null {
+  const total = plan.leftOut + plan.unreadableLeftOut;
+  if (total === 0) return null;
+  if (plan.unreadableLeftOut === 0) return `${total} left out`;
+  const rows = `${plan.leftOut} ${plan.leftOut === 1 ? 'row' : 'rows'}`;
+  const lines = `${plan.unreadableLeftOut} unreadable ${plan.unreadableLeftOut === 1 ? 'line' : 'lines'}`;
+  return `${total} left out (${plan.leftOut > 0 ? `${rows}, ` : ''}${lines})`;
+}
+
+/**
+ * What a save would do: the counts, the totals to compare, the backend's
+ * notes and the rows. Each row that is not settled elsewhere has a tick box:
+ * untick it to leave that one row out.
+ */
 export function PreviewCard({
   preview,
   plan,
@@ -42,6 +65,8 @@ export function PreviewCard({
   review,
   accounts,
   dateOrderChosen,
+  onLeaveOut,
+  onPutRowsBack,
 }: {
   preview: ImportPreview;
   plan: ImportPlan;
@@ -50,8 +75,13 @@ export function PreviewCard({
   options: ImportOptions;
   review: Review;
   accounts: readonly Account[];
+  /** Leave one row out (true) or put it back (false). */
+  onLeaveOut: (line: number, out: boolean) => void;
+  onPutRowsBack: () => void;
 }) {
+  const [shown, setShown] = useState(SHOWN_ROWS);
   const skipped = new Set(commitLines(preview, options, review).skipLines);
+  const choices = rowChoices(preview, options, review);
   const candidates = new Set((preview.duplicateCandidates ?? []).map((c) => c.line));
   const creatable = new Set(preview.accountsToCreate.map((a) => a.name));
   const excluded = preview.dateRange?.excluded ?? 0;
@@ -62,7 +92,7 @@ export function PreviewCard({
   const parts = [
     `${plan.importing.length} to import`,
     plan.alreadyThere ? `${plan.alreadyThere} already there` : null,
-    plan.leftOut ? `${plan.leftOut} left out` : null,
+    leftOutText(plan),
     plan.unplaced ? `${plan.unplaced} with no account` : null,
   ].filter(Boolean);
 
@@ -118,32 +148,88 @@ export function PreviewCard({
             Compare them with the totals in the app or statement the file came from.
           </Text>
         ) : null}
+        {choices.size > 0 ? (
+          <HStack gap="sm" align="center" justify="space-between" wrap>
+            <Text
+              variant="caption"
+              tone="muted"
+              style={styles.hint}
+              testID="import-left-out-by-hand"
+            >
+              {plan.leftOutByHand > 0
+                ? `${plan.leftOutByHand} ${plan.leftOutByHand === 1 ? 'row' : 'rows'} left out by you. The counts and totals above are without ${plan.leftOutByHand === 1 ? 'it' : 'them'}.`
+                : 'Untick a row to leave it out. The counts and totals above follow.'}
+            </Text>
+            {plan.leftOutByHand > 0 ? (
+              <Button
+                label={plan.leftOutByHand === 1 ? 'Put it back' : 'Put them back'}
+                size="sm"
+                variant="ghost"
+                onPress={onPutRowsBack}
+                testID="import-put-rows-back"
+              />
+            ) : null}
+          </HStack>
+        ) : null}
       </View>
-      {preview.rows.slice(0, SHOWN_ROWS).map((r) => (
-        <View key={`${r.line}-${r.date}`} style={styles.row}>
-          <VStack gap="xxs" flex={1}>
-            <Text variant="body" numberOfLines={1}>
-              {r.rawName || r.categoryName || 'No description'}
-            </Text>
-            <Text variant="caption" tone="muted" numberOfLines={1}>
-              {[r.date, r.accountName, r.categoryName].filter(Boolean).join(' · ')}
-            </Text>
-          </VStack>
-          <VStack gap="xxs" align="flex-end">
-            <Text variant="amount" tone={r.amount < 0 ? 'default' : 'income'}>
-              {formatMoney(
-                r.amount,
-                r.currency ?? accounts.find((a) => a.id === r.accountId)?.currency ?? 'USD',
-              )}
-            </Text>
-            {badge(r.line, r.decision, r.accountName)}
-          </VStack>
-        </View>
-      ))}
-      {preview.rows.length > SHOWN_ROWS ? (
-        <Text variant="caption" tone="faint" style={styles.more}>
-          {`and ${preview.rows.length - SHOWN_ROWS} more`}
-        </Text>
+      {preview.rows.slice(0, shown).map((r) => {
+        const choice = choices.get(r.line);
+        const name = r.rawName || r.categoryName || 'No description';
+        const out = skipped.has(r.line);
+        return (
+          <View key={`${r.line}-${r.date}`} style={styles.row} testID={`import-row-${r.line}`}>
+            {choice ? (
+              <PressableScale
+                onPress={() => onLeaveOut(r.line, choice === 'in')}
+                pressHaptic="tap"
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: choice === 'in' }}
+                // The web build reads the state from this one.
+                aria-checked={choice === 'in'}
+                accessibilityLabel={`Import line ${r.line}: ${name}`}
+                style={styles.tickArea}
+                testID={`import-row-tick-${r.line}`}
+              >
+                <View style={styles.tick(choice === 'in')}>
+                  {choice === 'in' ? <Icon name="check" size="xs" tone="onAccent" /> : null}
+                </View>
+              </PressableScale>
+            ) : choices.size > 0 ? (
+              <View style={styles.tickArea} />
+            ) : null}
+            <VStack gap="xxs" flex={1}>
+              <Text variant="body" tone={out ? 'muted' : 'default'} numberOfLines={1}>
+                {name}
+              </Text>
+              <Text variant="caption" tone="muted" numberOfLines={1}>
+                {[r.date, r.accountName, r.categoryName].filter(Boolean).join(' · ')}
+              </Text>
+            </VStack>
+            <VStack gap="xxs" align="flex-end">
+              <Text variant="amount" tone={out ? 'muted' : r.amount < 0 ? 'default' : 'income'}>
+                {formatMoney(
+                  r.amount,
+                  r.currency ?? accounts.find((a) => a.id === r.accountId)?.currency ?? 'USD',
+                )}
+              </Text>
+              {badge(r.line, r.decision, r.accountName)}
+            </VStack>
+          </View>
+        );
+      })}
+      {preview.rows.length > shown ? (
+        <HStack gap="sm" align="center" justify="space-between" wrap style={styles.more}>
+          <Text variant="caption" tone="faint" testID="import-rows-shown">
+            {`Showing ${shown} of ${preview.rows.length} rows. The counts and totals are for all of them.`}
+          </Text>
+          <Button
+            label={`Show ${Math.min(MORE_ROWS, preview.rows.length - shown)} more`}
+            size="sm"
+            variant="secondary"
+            onPress={() => setShown(shown + MORE_ROWS)}
+            testID="import-more-rows"
+          />
+        </HStack>
       ) : null}
     </Card>
   );
@@ -167,4 +253,21 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
   },
   more: { padding: theme.space.lg },
+  hint: { flex: 1 },
+  tickArea: {
+    width: theme.size.touchTarget,
+    minHeight: theme.size.touchTarget,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  tick: (on: boolean) => ({
+    width: theme.size.iconMd,
+    height: theme.size.iconMd,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: theme.radius.sm,
+    borderWidth: theme.size.borderWidth,
+    borderColor: on ? theme.colors.accent : theme.colors.borderStrong,
+    backgroundColor: on ? theme.colors.accent : theme.colors.surface,
+  }),
 }));

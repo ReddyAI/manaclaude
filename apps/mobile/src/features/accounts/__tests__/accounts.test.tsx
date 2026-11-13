@@ -102,6 +102,13 @@ describe('adding and repairing accounts', () => {
     expect(router.push).toHaveBeenCalledWith('/link');
   });
 
+  it('leads to the stored statements from the Connectors tab', async () => {
+    await render(<AccountsScreen />);
+    await fireEvent.press(screen.getByLabelText('Connectors'));
+    await fireEvent.press(screen.getByTestId('open-vault'));
+    expect(router.push).toHaveBeenCalledWith('/vault');
+  });
+
   it('Repair opens the repair flow for the same connection (planRepair)', async () => {
     setBackendConfigForTests({ url: 'https://api.demo.test', token: 'demo-token' });
     await render(<AccountsScreen />);

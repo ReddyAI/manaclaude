@@ -156,9 +156,18 @@ Make read-only keys. Never allow trading, transfers or withdrawals on a key you 
 
 In the app: +, Coinbase or WazirX, paste both parts, Check and save. The app checks the key with the exchange before saving it.
 
-### India NRE and NRO statements
+### Monefy history and India NRE and NRO statements
 
-These accounts have no connector. Download the statement from the bank's website as PDF or CSV. In the app: Accounts, Connectors, Import a statement (or +, Import a statement), pick the file, choose the NRE or NRO account (or let the file decide), look at the preview and press Import. Rows that are already there are left out, so importing an overlapping statement again is safe. PDF statements are read by Workers AI on your Worker.
+These have no connector, so they come in as files: a Monefy CSV export, or a statement downloaded from the bank's website as CSV, OFX, QIF or PDF. In the app: Accounts, Import a statement (or +, Import a statement).
+
+1. Pick the file and press Show the preview.
+2. Choose the dates to import (both days are included). Start with one month.
+3. Choose where each account in the file goes: one of your accounts, a new account, or left out. A bank statement that names no account needs one picked or made. A new account asks whether you know today's balance; if you don't, it shows as unknown and stays out of net worth.
+4. If the app says the dates can be read two ways, choose day first or month first. For a bank CSV you can also set the columns and skip lines above the header.
+5. Read the preview. Compare the totals per account and currency with the source. Answer each possible duplicate (keep both, or skip the file's row) and decide whether to leave out any lines that could not be read.
+6. Press Import. Nothing is saved before that.
+
+Importing the same file again adds nothing. A row that looks like one already in the account from another source is shown for you to decide; it is never dropped or doubled without your answer. Every import is listed under History and can be undone there; undo removes its transactions and keeps the file. PDF statements are read by Workers AI on your Worker.
 
 ### Plaid (later, only when you say so)
 

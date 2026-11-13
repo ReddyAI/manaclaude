@@ -1,19 +1,25 @@
 import { createSampleData } from '@manaclaude/shared/sample';
 import {
   carryDecisions,
+  carryLeftOut,
   commitLines,
   dateProblem,
+  duplicateAnswer,
   EMPTY_OPTIONS,
   EMPTY_REVIEW,
+  markOf,
   needsDateConfirmation,
   planImport,
   requestKey,
   resultFromRecord,
+  rowChoices,
   rowSpan,
   sourcesOf,
   toRequest,
   type ImportOptions,
+  type Review,
 } from '../importFlow';
+import { leftOutText } from '../PreviewCard';
 import { makePreview, monefyPreview, record, row } from './fixtures';
 
 const accounts = createSampleData().accounts;
@@ -133,7 +139,7 @@ describe('what a save would do', () => {
     });
     const none = planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, EMPTY_REVIEW, accounts);
     expect(none.blockers).toEqual(['2 possible duplicates need a choice: keep or skip.']);
-    const review = { decisions: { 2: 'keep' as const, 3: 'skip' as const }, skipErrors: false };
+    const review = { ...EMPTY_REVIEW, decisions: { 2: 'keep' as const, 3: 'skip' as const } };
     expect(commitLines(preview, EMPTY_OPTIONS, review)).toEqual({ skipLines: [3], keepLines: [2] });
     const done = planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, review, accounts);
     expect(done.blockers).toEqual([]);
@@ -143,8 +149,8 @@ describe('what a save would do', () => {
   it('never both keeps and skips a line', () => {
     const preview = monefyPreview({ duplicateCandidates: [{ line: 2, transactionIds: ['t1'] }] });
     const lines = commitLines(preview, opts({ sources: { Pocket: { kind: 'skip' } } }), {
+      ...EMPTY_REVIEW,
       decisions: { 2: 'keep' },
-      skipErrors: false,
     });
     expect(lines.keepLines).toEqual([]);
     expect(lines.skipLines).toContain(2);
@@ -155,7 +161,7 @@ describe('what a save would do', () => {
     expect(
       planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, EMPTY_REVIEW, accounts).blockers,
     ).toEqual(['1 line could not be read. Fix the file, or choose to leave it out.']);
-    const review = { decisions: {}, skipErrors: true };
+    const review = { ...EMPTY_REVIEW, skipErrors: true };
     expect(planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, review, accounts).blockers).toEqual(
       [],
     );
@@ -206,6 +212,184 @@ describe('what a save would do', () => {
         EMPTY_OPTIONS,
       ),
     ).toBe(false);
+  });
+});
+
+describe('single rows left out by hand', () => {
+  /** A review with these rows of `preview` unticked. */
+  const without = (preview: ReturnType<typeof makePreview>, lines: number[]): Review => ({
+    ...EMPTY_REVIEW,
+    leftOut: Object.fromEntries(
+      lines.map((line) => [line, markOf(preview.rows.find((r) => r.line === line)!)]),
+    ),
+  });
+
+  it('sends the row as a skipped line and takes it out of the counts and totals', () => {
+    const preview = monefyPreview();
+    const review = without(preview, [5]);
+    expect(commitLines(preview, EMPTY_OPTIONS, review)).toEqual({ skipLines: [5], keepLines: [] });
+    const plan = planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, review, accounts);
+    expect(plan.importing.map((r) => r.line)).toEqual([2, 3, 4]);
+    expect([plan.leftOut, plan.leftOutByHand]).toEqual([1, 1]);
+    // Line 5 was the only money coming in to Pocket.
+    expect(plan.totals.find((t) => t.label === 'Pocket')).toMatchObject({
+      count: 2,
+      moneyIn: 0,
+      moneyOut: 28_50,
+    });
+    expect(plan.blockers).toEqual([]);
+  });
+
+  it('says nothing is left to import when every row is unticked', () => {
+    const preview = makePreview({ rows: [row(2), row(3)] });
+    const plan = planImport(
+      preview,
+      EMPTY_OPTIONS,
+      EMPTY_OPTIONS,
+      without(preview, [2, 3]),
+      accounts,
+    );
+    expect(plan.importing).toEqual([]);
+    expect(plan.totals).toEqual([]);
+    expect(plan.blockers).toEqual(['Nothing new to import.']);
+  });
+
+  it('lets a row with no account be left out, which clears that reason not to save', () => {
+    const preview = makePreview({
+      rows: [row(2), row(3, { accountId: null, decision: 'needs_account' })],
+    });
+    expect(
+      planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, EMPTY_REVIEW, accounts).blockers,
+    ).toEqual(['1 row has no account yet. Choose where they go.']);
+    const plan = planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, without(preview, [3]), accounts);
+    expect(plan.blockers).toEqual([]);
+    expect(plan.unplaced).toBe(0);
+  });
+
+  it('counts each line once next to duplicate answers, unreadable lines and an account left out', () => {
+    const preview = monefyPreview({
+      rows: [
+        ...monefyPreview().rows,
+        row(6, { accountName: 'Travel', accountId: null, decision: 'needs_account' }),
+        row(7, { accountName: 'Travel', accountId: null, decision: 'needs_account' }),
+        row(8, { accountName: 'Travel', accountId: null, decision: 'already_imported' }),
+      ],
+      duplicateCandidates: [
+        { line: 4, transactionIds: ['t1'] },
+        { line: 6, transactionIds: ['t2'] },
+      ],
+      errors: [{ line: 11, message: 'No amount on this row.' }],
+    });
+    const options = opts({ sources: { Pocket: { kind: 'skip' } } });
+    const review: Review = {
+      decisions: { 4: 'keep', 6: 'skip' },
+      skipErrors: true,
+      // Line 2 belongs to the account that is left out as a whole; line 7 does not.
+      leftOut: without(preview, [2, 7]).leftOut,
+    };
+    const lines = commitLines(preview, options, review);
+    expect(lines).toEqual({ skipLines: [2, 3, 5, 6, 7, 11], keepLines: [4] });
+    const plan = planImport(preview, options, EMPTY_OPTIONS, review, accounts);
+    expect(plan.importing.map((r) => r.line)).toEqual([4]);
+    expect(plan.alreadyThere).toBe(1);
+    expect(plan.leftOut).toBe(5);
+    expect(plan.leftOutByHand).toBe(1);
+    expect(plan.unreadableLeftOut).toBe(1);
+    // What the screen says is left out is what the save will report as left out.
+    expect(plan.leftOut + plan.unreadableLeftOut).toBe(lines.skipLines.length);
+    expect(leftOutText(plan)).toBe('6 left out (5 rows, 1 unreadable line)');
+    expect(plan.totals).toEqual([
+      expect.objectContaining({ label: 'Travel', count: 1, moneyIn: 0, moneyOut: 270_00 }),
+    ]);
+    expect(plan.blockers).toEqual([]);
+  });
+
+  it('words the left-out count', () => {
+    expect(leftOutText({ leftOut: 0, unreadableLeftOut: 0 })).toBeNull();
+    expect(leftOutText({ leftOut: 3, unreadableLeftOut: 0 })).toBe('3 left out');
+    expect(leftOutText({ leftOut: 0, unreadableLeftOut: 2 })).toBe(
+      '2 left out (2 unreadable lines)',
+    );
+    expect(leftOutText({ leftOut: 1, unreadableLeftOut: 1 })).toBe(
+      '2 left out (1 row, 1 unreadable line)',
+    );
+  });
+
+  it('treats an unticked row that is a possible duplicate as answered with skip', () => {
+    const preview = makePreview({
+      rows: [row(2), row(3)],
+      duplicateCandidates: [{ line: 2, transactionIds: ['t1'] }],
+    });
+    const review = without(preview, [2]);
+    expect(duplicateAnswer(review, 2)).toBe('skip');
+    expect(duplicateAnswer(EMPTY_REVIEW, 2)).toBeUndefined();
+    const plan = planImport(preview, EMPTY_OPTIONS, EMPTY_OPTIONS, review, accounts);
+    expect(plan.undecided).toEqual([]);
+    expect(plan.blockers).toEqual([]);
+    // An untick outranks an older "keep" for the same line: it is never both kept and skipped.
+    expect(commitLines(preview, EMPTY_OPTIONS, { ...review, decisions: { 2: 'keep' } })).toEqual({
+      skipLines: [2],
+      keepLines: [],
+    });
+  });
+
+  it('offers a tick box only for rows that are not settled somewhere else', () => {
+    const preview = monefyPreview({
+      rows: [
+        ...monefyPreview().rows,
+        row(6, { accountName: 'Travel', accountId: null, decision: 'already_imported' }),
+        row(7, { accountName: 'Travel', accountId: null, decision: 'needs_account' }),
+      ],
+      duplicateCandidates: [{ line: 7, transactionIds: ['t1'] }],
+    });
+    const options = opts({ sources: { Pocket: { kind: 'skip' } } });
+    // Pocket (2, 3, 5) is left out as an account, 6 is already stored, 7 has its own question.
+    expect([...rowChoices(preview, options, EMPTY_REVIEW)]).toEqual([[4, 'in']]);
+    expect([...rowChoices(preview, options, without(preview, [4]))]).toEqual([[4, 'out']]);
+    expect([...rowChoices(preview, EMPTY_OPTIONS, EMPTY_REVIEW).keys()]).toEqual([2, 3, 4, 5]);
+  });
+
+  it('ignores a left-out line that is not a row of this preview', () => {
+    const wide = makePreview({ rows: [row(2), row(3), row(4)] });
+    const narrow = makePreview({ rows: [row(2), row(4)] });
+    const review = without(wide, [3]);
+    expect(commitLines(narrow, EMPTY_OPTIONS, review).skipLines).toEqual([]);
+    const plan = planImport(narrow, EMPTY_OPTIONS, EMPTY_OPTIONS, review, accounts);
+    expect([plan.leftOut, plan.leftOutByHand, plan.importing.length]).toEqual([0, 0, 2]);
+  });
+});
+
+describe('rows left out by hand, after a new preview of the same file', () => {
+  const before = makePreview({ rows: [row(2), row(3), row(4)] });
+  const leftOut = { 3: markOf(before.rows[1]!) };
+
+  it('keeps the row left out when it is still there, and while it is outside the dates', () => {
+    expect(carryLeftOut(before, leftOut)).toEqual({ leftOut, putBack: [] });
+    // Narrowed dates: line 3 is not in the preview. It is remembered for when it returns.
+    const narrow = makePreview({ rows: [row(2), row(4)] });
+    expect(carryLeftOut(narrow, leftOut)).toEqual({ leftOut, putBack: [] });
+  });
+
+  it('keeps a CSV line left out when the same line is read another way', () => {
+    // Another date order: the same line of the file, now with another date.
+    const reread = makePreview({ rows: [row(2), row(3, { date: '2026-03-10' }), row(4)] });
+    const carried = carryLeftOut(reread, leftOut);
+    expect(carried.putBack).toEqual([]);
+    expect(carried.leftOut).toEqual({ 3: markOf(reread.rows[1]!) });
+    expect(commitLines(reread, EMPTY_OPTIONS, { ...EMPTY_REVIEW, ...carried }).skipLines).toEqual([
+      3,
+    ]);
+  });
+
+  it('puts a PDF row back when another row now has its number, and says which', () => {
+    const same = makePreview({ format: 'pdf', rows: [row(2), row(3), row(4)] });
+    expect(carryLeftOut(same, leftOut)).toEqual({ leftOut, putBack: [] });
+    // The statement was read again and the rows came back in another order.
+    const shuffled = makePreview({
+      format: 'pdf',
+      rows: [row(2), row(3, { rawName: 'Row 4', amount: -99_00 }), row(4, { rawName: 'Row 3' })],
+    });
+    expect(carryLeftOut(shuffled, leftOut)).toEqual({ leftOut: {}, putBack: [3] });
   });
 });
 
