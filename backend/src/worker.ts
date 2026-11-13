@@ -1,3 +1,4 @@
+import { addDays } from '@manaclaude/shared';
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
 import { createApp, type AppDeps } from './api/app';
 import type { Env } from './env';
@@ -24,8 +25,8 @@ export const SYNC_CRON = '*/5 * * * *';
  * - /mcp    remote MCP server, Streamable HTTP, OAuth 2.1 (workers-oauth-provider)
  * - /authorize, /token, /register, /.well-known/*  OAuth endpoints
  * - cron    every 5 minutes: connector syncs (unfinished first syncs, then connections due
- *           today), within one invocation's D1 allowance; hourly FX; daily ECB rates,
- *           backfill and AI jobs
+ *           today), within one invocation's D1 allowance; hourly FX and bounded history;
+ *           daily ECB rates, bounded history and AI jobs
  */
 export function createWorker(deps: AppDeps = {}) {
   const app = createApp(deps);
@@ -88,19 +89,23 @@ export function createWorker(deps: AppDeps = {}) {
         }).catch((e) => console.error('Connector syncs failed', String(e)));
         return;
       }
+      const today = new Date(controller.scheduledTime).toISOString().slice(0, 10);
+      const backfill = () =>
+        backfillMissingHistory(env, f, {
+          now: deps.now,
+          through: addDays(today, -1),
+        }).catch((e) => console.error('FX backfill failed', String(e)));
       if (controller.cron === '0 * * * *') {
         await fetchOpenExchangeRates(env, f).catch((e) =>
           console.error('OXR fetch failed', String(e)),
         );
+        await backfill();
         return;
       }
-      const today = new Date(controller.scheduledTime).toISOString().slice(0, 10);
       await fetchFrankfurterLatest(env, f).catch((e) =>
         console.error('Frankfurter fetch failed', String(e)),
       );
-      await backfillMissingHistory(env, f).catch((e) =>
-        console.error('FX backfill failed', String(e)),
-      );
+      await backfill();
       ctx.waitUntil(runDailyJobs(env, today, deps).then(() => undefined));
     },
   };

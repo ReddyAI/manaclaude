@@ -27,6 +27,8 @@ export const testEnv = workerEnv as unknown as Env & {
 export const db = testEnv.DB;
 
 const TABLES = [
+  'fx_backfill_progress',
+  'fx_backfill_scheduler',
   'manual_account_details',
   'sync_retries',
   'transactions',
