@@ -5,7 +5,7 @@ import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop } from 're
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { haptic } from '../../haptics';
 import { Text } from '../Text';
-import { arcPath, areaPath, extent, linePath, nearestIndex, toPoints } from './paths';
+import { arcPath, areaPath, bandPath, extent, linePath, nearestIndex, toPoints } from './paths';
 
 /**
  * Chart wrapper and charts. Colours, sizes and motion come from the theme;
@@ -33,6 +33,8 @@ export interface LineChartProps {
   values: readonly number[];
   /** Optional comparison series (last month), drawn dashed and muted. */
   compare?: readonly number[];
+  /** A shaded range drawn behind the line, for example the 10th to 90th percentile. */
+  band?: { low: readonly number[]; high: readonly number[] };
   /** Number of x slots; lets "this month so far" stop part-way across. */
   slots?: number;
   role?: ChartRole;
@@ -48,6 +50,7 @@ export interface LineChartProps {
 export function LineChart({
   values,
   compare,
+  band,
   slots,
   role = 'netWorth',
   height = 'regular',
@@ -68,17 +71,28 @@ export function LineChart({
 
   const geometry = useMemo(() => {
     if (width === 0) return null;
-    const domain = extent(compare ? [values, compare] : [values]);
+    const domain = extent([
+      values,
+      ...(compare ? [compare] : []),
+      ...(band ? [band.low, band.high] : []),
+    ]);
     const pts = toPoints(values, width, h, domain, total, pad, pad);
     const cmp = compare ? toPoints(compare, width, h, domain, total, pad, pad) : null;
+    const range = band
+      ? bandPath(
+          toPoints(band.high, width, h, domain, total, pad, pad),
+          toPoints(band.low, width, h, domain, total, pad, pad),
+        )
+      : '';
     return {
       pts,
       cmp,
       line: linePath(pts),
       fill: areaPath(pts, h),
       cmpLine: cmp ? linePath(cmp) : '',
+      range,
     };
-  }, [width, h, values, compare, total, pad]);
+  }, [width, h, values, compare, band, total, pad]);
 
   const update = (x: number) => {
     if (!geometry) return;
@@ -134,6 +148,14 @@ export function LineChart({
                 strokeWidth={2}
                 strokeDasharray="4 5"
                 fill="none"
+              />
+            ) : null}
+            {geometry.range ? (
+              <Path
+                d={geometry.range}
+                fill={color}
+                fillOpacity={theme.scheme === 'dark' ? 0.22 : 0.14}
+                testID={testID ? `${testID}-band` : undefined}
               />
             ) : null}
             {area ? <Path d={geometry.fill} fill={`url(#${gradientId})`} /> : null}

@@ -9,7 +9,6 @@ import {
   projectFire,
   toMajor,
   type Goal,
-  type PlanningAssumptions,
 } from '@manaclaude/shared';
 import { StyleSheet } from 'react-native-unistyles';
 import { Card } from '../../design/components/Card';
@@ -28,11 +27,16 @@ import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { noRateText } from '../networth/leftOut';
 import { BackAction } from './BackAction';
 import { goalStatus, leftOutText } from './goalStatus';
-import { updatePlanning, usePlanning } from './usePlanning';
+import { chanceText, MONTE_CARLO_RUNS, runMonteCarlo } from './monteCarlo';
+import { updatePlanning, usePlanning, type Planning } from './usePlanning';
 
 type Field =
   | { key: 'currentAge' | 'retirementAge'; label: string; kind: 'int' }
-  | { key: 'annualReturn' | 'inflation' | 'withdrawalRate'; label: string; kind: 'percent' }
+  | {
+      key: 'annualReturn' | 'inflation' | 'withdrawalRate' | 'volatility';
+      label: string;
+      kind: 'percent';
+    }
   | { key: 'monthlyContribution' | 'annualExpenses'; label: string; kind: 'money' };
 
 const FIELDS: Field[] = [
@@ -40,12 +44,18 @@ const FIELDS: Field[] = [
   { key: 'retirementAge', label: 'Retire at age', kind: 'int' },
   { key: 'annualReturn', label: 'Yearly return (%)', kind: 'percent' },
   { key: 'inflation', label: 'Inflation (%)', kind: 'percent' },
+  { key: 'volatility', label: 'Yearly swings, volatility (%)', kind: 'percent' },
   { key: 'monthlyContribution', label: 'Saved each month', kind: 'money' },
   { key: 'annualExpenses', label: 'Yearly spending in retirement', kind: 'money' },
   { key: 'withdrawalRate', label: 'Withdrawal rate (%)', kind: 'percent' },
 ];
 
-function show(field: Field, p: PlanningAssumptions): string {
+/** 0.07 -> "7%", 0.035 -> "3.5%" */
+function pctText(v: number): string {
+  return `${Math.round(v * 1000) / 10}%`;
+}
+
+function show(field: Field, p: Planning): string {
   const v = p[field.key];
   if (field.kind === 'percent') return String(Math.round(v * 10_000) / 100);
   if (field.kind === 'money') return String(toMajor(v, p.currency));
@@ -53,7 +63,7 @@ function show(field: Field, p: PlanningAssumptions): string {
 }
 
 /** One number the user can type. Commits when editing ends; bad input snaps back. */
-function AssumptionField({ field, planning }: { field: Field; planning: PlanningAssumptions }) {
+function AssumptionField({ field, planning }: { field: Field; planning: Planning }) {
   const [text, setText] = useState(show(field, planning));
   const commit = () => {
     const n = Number(text);
@@ -233,12 +243,30 @@ export function PlanningScreen() {
     [startingSavings, planning],
   );
 
+  const range = useMemo(
+    () =>
+      runMonteCarlo({
+        currentSavings: startingSavings,
+        monthlyContribution: planning.monthlyContribution,
+        annualReturn: planning.annualReturn,
+        inflation: planning.inflation,
+        volatility: planning.volatility,
+        currentAge: planning.currentAge,
+        retirementAge: planning.retirementAge,
+        target: result.target,
+        years: Math.max(0, result.points.length - 1),
+      }),
+    [startingSavings, planning, result.target, result.points.length],
+  );
+
   const toChart = (amount: number) =>
     toMajor(display.convert(amount, planning.currency, currency) ?? 0, currency);
   const series = result.points.map((p) => toChart(basis === 'real' ? p.real : p.nominal));
   const targetLine = result.points.map((p) =>
     toChart(basis === 'real' ? result.target : result.target * (1 + planning.inflation) ** p.year),
   );
+  const toBasis = (real: number, year: number) =>
+    toChart(basis === 'real' ? real : Math.round(real * (1 + planning.inflation) ** year));
   const first = result.points[0];
   const last = result.points[result.points.length - 1];
 
@@ -363,6 +391,61 @@ export function PlanningScreen() {
               format={{ cents: 'never' }}
             />
           </HStack>
+        </VStack>
+      </Card>
+
+      <Card>
+        <VStack gap="sm" testID="mc-card">
+          <Text variant="label" tone="muted">
+            Range of outcomes
+          </Text>
+          <HStack justify="space-between" align="flex-end" wrap>
+            <Text variant="body" tone="muted">
+              {`Chance of reaching the target by age ${planning.retirementAge}`}
+            </Text>
+            <Text variant="headline" numeric testID="mc-chance">
+              {chanceText(range.chance)}
+            </Text>
+          </HStack>
+          <LineChart
+            values={range.p50.map(toBasis)}
+            band={{ low: range.p10.map(toBasis), high: range.p90.map(toBasis) }}
+            compare={targetLine}
+            role="netWorth"
+            area={false}
+            accessibilityLabel={`Middle projection with the 10th to 90th percentile range, against the target. ${chanceText(range.chance)} chance of reaching the target by age ${planning.retirementAge}.`}
+            testID="mc-chart"
+          />
+          <HStack justify="space-between">
+            <Text variant="caption" tone="muted">{`Age ${first?.age ?? ''}`}</Text>
+            <Text variant="caption" tone="muted">{`Age ${last?.age ?? ''}`}</Text>
+          </HStack>
+          <Text variant="caption" tone="muted">
+            {`At age ${planning.retirementAge}, in today's money:`}
+          </Text>
+          {(
+            [
+              ['p10', '1 in 10 runs end below'],
+              ['p50', 'Half end below'],
+              ['p90', '1 in 10 runs end above'],
+            ] as const
+          ).map(([key, label]) => (
+            <HStack key={key} justify="space-between">
+              <Text variant="body" tone="muted">
+                {label}
+              </Text>
+              <Amount
+                amount={range.atRetirement[key]}
+                currency={planning.currency}
+                size="small"
+                format={{ cents: 'never' }}
+                testID={`mc-${key}`}
+              />
+            </HStack>
+          ))}
+          <Text variant="caption" tone="muted" testID="mc-note">
+            {`An estimate, not a promise. ${MONTE_CARLO_RUNS.toLocaleString('en-US')} simulated markets, each year drawn around a ${pctText(planning.annualReturn)} return with ${pctText(planning.volatility)} swings, less ${pctText(planning.inflation)} inflation. Real markets can do worse than any of them. The shaded band holds the middle 8 in 10 runs; the dashed line is the target.`}
+          </Text>
         </VStack>
       </Card>
 
