@@ -1,4 +1,5 @@
 import type { LinkChallenge, SophtronLinkStatus } from '@manaclaude/shared';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
@@ -8,29 +9,37 @@ import { Chip, TextField } from '../../design/components/Controls';
 import { ListRow } from '../../design/components/ListRow';
 import { HStack, VStack } from '../../design/components/Layout';
 import { Text } from '../../design/components/Text';
-import { errorText } from '../../data/backend/client';
+import { BackendError, errorText, isSuperseded } from '../../data/backend/client';
+import { refreshDataset } from '../../data/backend/sync';
 import { linkApi } from './linkApi';
 import {
-  findFinishedConnection,
+  doneConnection,
+  isRateLimited,
+  isResultUnavailable,
+  outcomeUnknown,
   pollSophtron,
-  sophtronConnectionsNow,
-  type Found,
-  type Missing,
+  sophtronTiming,
   type PollEnd,
 } from './sophtronPoll';
 import type { FlowProps } from './types';
+
+/** Why the app can't say how a sign-in ended. */
+type Unconfirmed =
+  /** The answer to start never arrived: a sign-in may have begun with no linkId to ask about. */
+  | 'start_lost'
+  /** The Worker can't confirm the result (409 link_result_unavailable, or a "done" without the connection). */
+  | 'result_unavailable';
 
 type Step =
   | { kind: 'choose' }
   | { kind: 'search' }
   | { kind: 'credentials'; institution: { id: string; name: string } }
-  | { kind: 'waiting'; linkId: string; round: number }
+  | { kind: 'waiting'; linkId: string; round: number; firstWaitMs?: number }
   | { kind: 'mfa'; linkId: string; challenge: LinkChallenge }
   /** Waiting stopped without an answer; the same sign-in can be checked again. */
   | { kind: 'stalled'; linkId: string; message: string }
-  /** The Worker said done without naming the connection; the app is looking for it. */
-  | { kind: 'confirming'; linkId: string; round: number }
-  | { kind: 'unconfirmed'; linkId: string; why: Missing };
+  /** Accounts is reloaded (null while it loads) and nothing is started by itself. */
+  | { kind: 'unconfirmed'; why: Unconfirmed; reloaded: boolean | null };
 
 /**
  * Sophtron: find the bank, sign in once (the password goes to Sophtron and is
@@ -38,26 +47,47 @@ type Step =
  * the same login again (the bank asks its question again); signing in anew is
  * the fallback.
  *
- * The app asks for the status one request at a time (sophtronPoll.ts). When
- * the Worker says the sign-in is done but does not name the connection, the
- * app reloads the data and looks for it; if it is not there, it says so and
- * changes nothing.
+ * The linkId from start is kept for the whole sign-in. Every later question
+ * is about that linkId (sophtronPoll.ts): after a lost answer the app asks
+ * again about the same sign-in and never sends start again by itself. When
+ * the outcome can't be known, the app reloads Accounts and waits for you to
+ * decide.
  */
 export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
   const first: Step = connectionId ? { kind: 'choose' } : { kind: 'search' };
   const [step, setStep] = useState<Step>(first);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // What was there before this sign-in, to recognise the connection it makes.
-  const [attempt, setAttempt] = useState<{
-    before: ReadonlySet<string> | null;
-    institutionName: string | null;
-  }>({ before: null, institutionName: null });
+  const [bank, setBank] = useState<string | null>(null);
+  // One start or answer at a time, even with two quick taps.
+  const sending = useRef(false);
+  const mounted = useRef(true);
+  const reloads = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const unconfirmed = (why: Unconfirmed) => {
+    const mine = ++reloads.current;
+    setError(null);
+    setNotice(null);
+    setStep({ kind: 'unconfirmed', why, reloaded: null });
+    void refreshDataset().then((ok) => {
+      if (!mounted.current || reloads.current !== mine) return;
+      setStep((s) => (s.kind === 'unconfirmed' ? { ...s, reloaded: ok } : s));
+    });
+  };
 
   const follow = (s: SophtronLinkStatus) => {
+    setNotice(null);
     if (s.status === 'done') {
-      if (s.connectionIds?.length) onLinked(s.connectionIds, s.repaired ?? false);
-      else setStep({ kind: 'confirming', linkId: s.linkId, round: 0 });
+      const found = doneConnection(s, connectionId);
+      if (found) onLinked(found.connectionIds, found.repaired);
+      else unconfirmed('result_unavailable');
     } else if (s.status === 'failed') {
       setError(s.message ?? 'The bank did not accept the sign-in.');
       setStep(first);
@@ -66,32 +96,67 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
     else setStep((prev) => ({ kind: 'waiting', linkId: s.linkId, round: roundOf(prev) + 1 }));
   };
 
-  const run = async (call: () => Promise<SophtronLinkStatus>) => {
+  const once = async (work: () => Promise<void>) => {
+    if (sending.current) return;
+    sending.current = true;
     setBusy(true);
     setError(null);
     try {
-      follow(await call());
-    } catch (e) {
-      setError(errorText(e));
+      await work();
     } finally {
-      setBusy(false);
+      sending.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
-  const start = (body: Parameters<typeof linkApi.sophtronStart>[0]) => {
-    setAttempt({
-      before: sophtronConnectionsNow(),
-      institutionName: body.institutionName ?? null,
+  // Start has no retry key: an answer that did not arrive is never sent again.
+  const start = (body: Parameters<typeof linkApi.sophtronStart>[0]) =>
+    once(async () => {
+      setBank(body.institutionName ?? null);
+      try {
+        follow(await linkApi.sophtronStart(body));
+      } catch (e) {
+        if (isResultUnavailable(e)) unconfirmed('result_unavailable');
+        else if (outcomeUnknown(e) || isRateLimited(e)) unconfirmed('start_lost');
+        else setError(errorText(e));
+      }
     });
-    return run(() => linkApi.sophtronStart(body));
-  };
+
+  // An answer has no retry key either. When its outcome is not known, ask
+  // about the same sign-in before asking for another answer.
+  const answer = (linkId: string, a: Parameters<typeof linkApi.sophtronAnswer>[1]) =>
+    once(async () => {
+      try {
+        follow(await linkApi.sophtronAnswer(linkId, a));
+      } catch (e) {
+        if (isSuperseded(e)) {
+          setError(errorText(e));
+          setStep(first);
+        } else if (isResultUnavailable(e)) unconfirmed('result_unavailable');
+        else if (answerRefused(e)) setError(errorText(e));
+        else {
+          setNotice(
+            'Your answer may or may not have reached the bank. Checking this sign-in before asking for anything again...',
+          );
+          setStep((prev) => ({
+            kind: 'waiting',
+            linkId,
+            round: roundOf(prev) + 1,
+            firstWaitMs: isRateLimited(e) ? sophtronTiming.rateLimitWaitMs : undefined,
+          }));
+        }
+      }
+    });
 
   const pollEnded = (end: PollEnd) => {
     if (end.kind === 'cancelled' || step.kind !== 'waiting') return;
     if (end.kind === 'status') follow(end.status);
-    else if (end.kind === 'stalled')
+    else if (end.kind === 'unavailable') unconfirmed('result_unavailable');
+    else if (end.kind === 'stalled') {
+      setNotice(null);
       setStep({ kind: 'stalled', linkId: step.linkId, message: end.message });
-    else {
+    } else {
+      setNotice(null);
       setError(end.message);
       setStep(first);
     }
@@ -102,6 +167,11 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
       {error ? (
         <Text variant="body" tone="danger" testID="link-error">
           {error}
+        </Text>
+      ) : null}
+      {notice ? (
+        <Text variant="body" tone="muted" testID="sophtron-notice">
+          {notice}
         </Text>
       ) : null}
       {step.kind === 'choose' ? (
@@ -115,7 +185,7 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
             <Button
               label="Answer the bank's question"
               loading={busy}
-              onPress={() => start({ connectionId, refresh: true })}
+              onPress={() => void start({ connectionId, refresh: true })}
               testID="sophtron-refresh"
             />
             <Button
@@ -134,7 +204,7 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
           institution={step.institution}
           busy={busy}
           onSubmit={(username, password, pin) =>
-            start({
+            void start({
               institutionId: step.institution.id,
               institutionName: step.institution.name,
               username,
@@ -147,13 +217,19 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
         />
       ) : null}
       {step.kind === 'waiting' ? (
-        <Waiting key={step.round} linkId={step.linkId} onEnd={pollEnded} />
+        <Waiting
+          key={step.round}
+          linkId={step.linkId}
+          firstWaitMs={step.firstWaitMs}
+          onEnd={pollEnded}
+        />
       ) : null}
       {step.kind === 'mfa' ? (
         <Challenge
+          key={step.linkId + JSON.stringify(step.challenge)}
           challenge={step.challenge}
           busy={busy}
-          onAnswer={(answer) => run(() => linkApi.sophtronAnswer(step.linkId, answer))}
+          onAnswer={(a) => void answer(step.linkId, a)}
         />
       ) : null}
       {step.kind === 'stalled' ? (
@@ -182,14 +258,6 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
           </VStack>
         </Card>
       ) : null}
-      {step.kind === 'confirming' ? (
-        <Confirming
-          key={step.round}
-          target={{ connectionId, ...attempt }}
-          onFound={(found) => onLinked(found.connectionIds, found.repaired)}
-          onMissing={(why) => setStep({ kind: 'unconfirmed', linkId: step.linkId, why })}
-        />
-      ) : null}
       {step.kind === 'unconfirmed' ? (
         <Card>
           <VStack gap="md">
@@ -197,17 +265,45 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
             <Text variant="body" testID="sophtron-unconfirmed">
               {unconfirmedText(step.why, Boolean(connectionId))}
             </Text>
-            <Button
-              label="Look again"
-              onPress={() => setStep({ kind: 'confirming', linkId: step.linkId, round: 0 })}
-              testID="sophtron-look-again"
-            />
-            <Button
-              label="Start over"
-              variant="ghost"
-              onPress={() => setStep(first)}
-              testID="sophtron-start-over"
-            />
+            {step.reloaded === null ? (
+              <HStack gap="sm">
+                <ActivityIndicator accessibilityLabel="Reloading Accounts" />
+                <Text variant="body" tone="muted">
+                  Reloading Accounts from your Worker...
+                </Text>
+              </HStack>
+            ) : (
+              <Text variant="body" testID="sophtron-reloaded">
+                {reloadedText(step.reloaded, Boolean(connectionId), bank)}
+              </Text>
+            )}
+            {step.reloaded === false ? (
+              <Button
+                label="Reload Accounts"
+                onPress={() => unconfirmed(step.why)}
+                testID="sophtron-reload"
+              />
+            ) : null}
+            {step.reloaded ? (
+              <Button
+                label="Open Accounts"
+                variant="secondary"
+                onPress={() => router.push('/accounts')}
+                testID="sophtron-open-accounts"
+              />
+            ) : null}
+            {/* A new sign-in only once Accounts is up to date, and only on your own tap. */}
+            {step.reloaded ? (
+              <Button
+                label="Start over"
+                variant="ghost"
+                onPress={() => {
+                  setError(null);
+                  setStep(first);
+                }}
+                testID="sophtron-start-over"
+              />
+            ) : null}
           </VStack>
         </Card>
       ) : null}
@@ -215,16 +311,36 @@ export function SophtronFlow({ connectionId, onLinked }: FlowProps) {
   );
 }
 
-const roundOf = (step: Step): number =>
-  step.kind === 'waiting' || step.kind === 'confirming' ? step.round : 0;
+const roundOf = (step: Step): number => (step.kind === 'waiting' ? step.round : 0);
 
-/** What the screen says when a finished sign-in cannot be matched to a connection. */
-function unconfirmedText(why: Missing, repair: boolean): string {
-  if (why === 'unreachable')
-    return 'Sophtron says the sign-in finished, but the app could not reload your data, so it cannot tell whether it was saved. Check your connection, then look again. Do not sign in again until you have looked.';
+/** The Worker refused the answer outright (bad input, wrong token): it was not used. */
+function answerRefused(e: unknown): boolean {
+  return (
+    e instanceof BackendError &&
+    e.status >= 400 &&
+    e.status < 500 &&
+    e.status !== 404 &&
+    e.status !== 429
+  );
+}
+
+/** What the screen says when the app can't tell how a sign-in ended. */
+function unconfirmedText(why: Unconfirmed, repair: boolean): string {
+  if (why === 'start_lost')
+    return repair
+      ? "The answer from your Worker didn't arrive, so the repair may have started at the bank anyway. Nothing was sent again."
+      : "The answer from your Worker didn't arrive, so a sign-in may have started at the bank anyway. Nothing was sent again.";
   return repair
-    ? 'Sophtron says the sign-in finished, but this connection still shows a problem on your backend, so the repair is not confirmed. The connection and its error are left as they are. Look again in a moment, or sign in again.'
-    : 'Sophtron says the sign-in finished, but the app cannot find a new connection on your backend. It may not have been saved. Look again in a moment, and check Accounts before you sign in again, so the same bank is not linked twice.';
+    ? "Your Worker can't confirm how this repair ended, so the app has not marked anything repaired and has not started another sign-in."
+    : "Your Worker can't confirm how this sign-in ended, so the app has not linked anything and has not started another sign-in.";
+}
+
+function reloadedText(reloaded: boolean, repair: boolean, bank: string | null): string {
+  if (!reloaded)
+    return 'Accounts could not be reloaded. Check your connection and reload before you sign in again.';
+  if (repair)
+    return 'Accounts has been reloaded. If this connection no longer shows a problem there, the repair went through. Start over only if it still needs repair.';
+  return `Accounts has been reloaded. If ${bank ? `"${bank}"` : 'the bank'} is there, the sign-in was saved. Start over only if it is not, so the bank is not linked twice.`;
 }
 
 function SearchBank({ onPick }: { onPick: (i: { id: string; name: string }) => void }) {
@@ -352,15 +468,25 @@ function Credentials({
   );
 }
 
-function Waiting({ linkId, onEnd }: { linkId: string; onEnd: (end: PollEnd) => void }) {
+function Waiting({
+  linkId,
+  firstWaitMs,
+  onEnd,
+}: {
+  linkId: string;
+  firstWaitMs?: number;
+  onEnd: (end: PollEnd) => void;
+}) {
   // Keep the latest callback without restarting the wait on every render.
   const ended = useRef(onEnd);
+  // Read once: a new wait is a new round (the component's key).
+  const firstWait = useRef(firstWaitMs);
   useEffect(() => {
     ended.current = onEnd;
   });
   useEffect(() => {
     let live = true;
-    void pollSophtron(linkId, () => live).then((end) => {
+    void pollSophtron(linkId, () => live, { firstWaitMs: firstWait.current }).then((end) => {
       if (live) ended.current(end);
     });
     return () => {
@@ -373,44 +499,6 @@ function Waiting({ linkId, onEnd }: { linkId: string; onEnd: (end: PollEnd) => v
         <ActivityIndicator accessibilityLabel="Signing in" />
         <Text variant="body" tone="muted" align="center">
           Signing in to your bank through Sophtron. This can take a minute.
-        </Text>
-      </VStack>
-    </Card>
-  );
-}
-
-type ConfirmTarget = Parameters<typeof findFinishedConnection>[0];
-
-function Confirming({
-  target,
-  onFound,
-  onMissing,
-}: {
-  target: ConfirmTarget;
-  onFound: (found: Found) => void;
-  onMissing: (why: Missing) => void;
-}) {
-  const latest = useRef({ target, onFound, onMissing });
-  useEffect(() => {
-    latest.current = { target, onFound, onMissing };
-  });
-  useEffect(() => {
-    let live = true;
-    void findFinishedConnection(latest.current.target, () => live).then((result) => {
-      if (!live) return;
-      if ('missing' in result) latest.current.onMissing(result.missing);
-      else latest.current.onFound(result);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  return (
-    <Card>
-      <VStack gap="md" align="center">
-        <ActivityIndicator accessibilityLabel="Looking for the connection" />
-        <Text variant="body" tone="muted" align="center" testID="sophtron-confirming">
-          Sophtron finished the sign-in. Looking for the connection on your backend...
         </Text>
       </VStack>
     </Card>
