@@ -14,6 +14,9 @@ export const PLANTED = {
   chfHolding: 'VTI',
   /** A bill in CHF by plant.sql (block O). */
   chfBill: 'Xfinity internet',
+  /** An INR cash expense older than the oldest INR rate (block V). */
+  oldInrExpense: 'E2E old chai stall',
+  oldInrDaysAgo: 220,
   /** Two unlinked halves of a transfer, by plant.sql. */
   transferOut: 'txn_e2e_move_out',
   transferIn: 'txn_e2e_move_in',
@@ -50,6 +53,14 @@ export async function seedAndPlant(runDir: string, worker: LocalWorker): Promise
     name: PLANTED.chfExpense,
     accountId: account.id,
     date: utcToday(),
+  });
+  const old = new Date(Date.now() - PLANTED.oldInrDaysAgo * 86_400_000).toISOString().slice(0, 10);
+  await call(worker, 'POST', '/v1/cash', {
+    amount: -5_000,
+    currency: 'INR',
+    name: PLANTED.oldInrExpense,
+    accountId: 'acc_cash_inr',
+    date: old,
   });
   await call(worker, 'PUT', '/v1/budgets', {
     categoryId: PLANTED.chfBudgetCategory,

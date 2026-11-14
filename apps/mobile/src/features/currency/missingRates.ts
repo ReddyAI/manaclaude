@@ -80,3 +80,8 @@ export function selectedNoRateText(count: number, to: CurrencyCode): string | nu
     ? `1 is not in the total: no exchange rate to ${to}.`
     : `${count} are not in the total: no exchange rate to ${to}.`;
 }
+
+/** A currency the Worker has no rate for at all (Settings, Exchange rates). */
+export function currencyNoRateText(from: CurrencyCode, to: CurrencyCode): string {
+  return `${from}: there is no ${from} to ${to} exchange rate yet, so totals leave out amounts in ${from}. ${REFRESH}`;
+}

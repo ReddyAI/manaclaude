@@ -36,12 +36,14 @@ The local Worker's sample rates cover USD, INR and EUR only, so CHF has no rate:
 
 - a CHF cash wallet "Zurich wallet" with a CHF expense "Migros" today, and a CHF budget on "Fees" this month;
 - VTI held, bought and priced in CHF, and the "Xfinity internet" bill in CHF;
-- two unlinked halves of a transfer between Everyday Checking and High-Yield Savings.
+- two unlinked halves of a transfer between Everyday Checking and High-Yield Savings;
+- an INR cash expense "E2E old chai stall" from 220 days ago, older than the oldest sample INR rate (150 days).
 
 ## Files
 
 - `screens.spec.ts`: every main screen loads.
 - `missing-rates.spec.ts`: the lines from blocks L, M, O and R that name what a total leaves out.
 - `actions.spec.ts`: adding an account by hand, Look for transfers now, Run AI jobs now, the File layouts tab.
+- `rates.spec.ts`: Settings, Exchange rates gives each currency's range of day rates, says when the oldest INR transaction is older than the oldest INR rate, and names CHF as having no rate (block V).
 - `layout.spec.ts`: in all three looks, light and dark, five screens have no text below WCAG AA contrast, nothing cut off or overlapping, no sideways scrolling and no control without a name (block U).
 - `audit.spec.ts`: the full screen-by-screen check of block U, every screen and sheet in every look and scheme. It only runs with `E2E_AUDIT=1` (`E2E_AUDIT=1 npm run e2e -w @manaclaude/mobile -- audit`), takes about 25 minutes, never fails on a finding, and writes screenshots and `audit.json` per look under `E2E_OUT_DIR/audit/`. `harness/audit.ts` holds the checks both use.
