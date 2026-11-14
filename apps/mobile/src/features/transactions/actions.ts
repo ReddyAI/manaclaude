@@ -1,6 +1,8 @@
 import {
   todayLocal,
+  type Account,
   type CashResponse,
+  type CashTransactionDeleteResponse,
   type ReceiptLineItem,
   type ReceiptResponse,
   type SplitLineInput,
@@ -8,11 +10,18 @@ import {
   type TransactionPatchRequest,
   type TransactionResponse,
 } from '@manaclaude/shared';
-import { api } from '../../data/backend/client';
-import { mergeTransactions, persist, rememberReceiptUri } from '../../data/backend/sync';
+import { api, BackendError, errorText, isSuperseded } from '../../data/backend/client';
+import {
+  canSaveToBackend,
+  mergeTransactions,
+  persist,
+  rememberReceiptUri,
+  scheduleRefresh,
+} from '../../data/backend/sync';
 import { fileForm, imageTypeOf } from '../../data/backend/upload';
 import { getFinance, updateFinance } from '../../data/store';
 import { applyAddCash, type CashEntry } from './cash';
+import { applyCashDelete, cashDeleteErrorText, reversedText } from './cashDelete';
 import {
   applyAttachReceipt,
   applyRemoveReceipt,
@@ -340,4 +349,84 @@ export function addCashTransaction(
     );
   }
   return id;
+}
+
+// Deleting a hand-entered cash entry -------------------------------------------
+
+export type CashDeleteOutcome =
+  | { kind: 'deleted'; text: string; receipts: number }
+  /** Nothing was deleted; `text` says why. */
+  | { kind: 'refused'; text: string }
+  /** The answer was lost and the check after it failed: check again before anything else. */
+  | { kind: 'unsure'; text: string };
+
+const txnPath = (id: string) => `/v1/transactions/${encodeURIComponent(id)}`;
+
+/** Receipts that pointed at the entry; the Worker keeps them, waiting for a transaction. */
+const receiptsOf = (id: string) =>
+  getFinance().receipts.filter((r) => r.matchedTransactionId === id).length;
+
+function dropCashEntry(id: string, account: Account | null): void {
+  if (canSaveToBackend()) updateFinance((d) => applyCashDelete(d, id, account, nowIso()));
+  scheduleRefresh();
+}
+
+/**
+ * DELETE /v1/transactions/:id. Waits for the Worker; nothing changes on screen
+ * before it answers. After a lost answer the entry is read again
+ * (checkCashDeleted); the delete is never sent again by itself. Null when the
+ * backend changed meanwhile.
+ */
+export async function deleteCashEntry(id: string): Promise<CashDeleteOutcome | null> {
+  const receipts = receiptsOf(id);
+  try {
+    const res = await api<CashTransactionDeleteResponse>('DELETE', txnPath(id));
+    dropCashEntry(id, res.account);
+    return {
+      kind: 'deleted',
+      text: `Deleted. ${reversedText(res.reversedBalanceAmount, res.account)}`,
+      receipts,
+    };
+  } catch (e) {
+    if (isSuperseded(e)) return null;
+    if (e instanceof BackendError && e.status === 404) {
+      dropCashEntry(id, null);
+      return { kind: 'deleted', text: 'This entry is no longer on your Worker.', receipts };
+    }
+    if (e instanceof BackendError && (e.offline || e.status >= 500))
+      return checkCashDeleted(id, receipts);
+    if (e instanceof BackendError && e.status === 409) {
+      if (e.code === 'account_changed') scheduleRefresh();
+      return { kind: 'refused', text: cashDeleteErrorText(e.code) ?? errorText(e) };
+    }
+    return { kind: 'refused', text: errorText(e) };
+  }
+}
+
+/** After a lost answer: GET the entry. 404 means it is gone; otherwise it was not deleted. */
+export async function checkCashDeleted(
+  id: string,
+  receipts = receiptsOf(id),
+): Promise<CashDeleteOutcome | null> {
+  try {
+    await api<TransactionResponse>('GET', txnPath(id));
+    return {
+      kind: 'refused',
+      text: "Your Worker's answer was lost, and the entry is still there, so it was not deleted. Try again if you still want to delete it.",
+    };
+  } catch (e) {
+    if (isSuperseded(e)) return null;
+    if (e instanceof BackendError && e.status === 404) {
+      dropCashEntry(id, null);
+      return {
+        kind: 'deleted',
+        text: "Deleted. Your Worker's answer was lost, so how far the cash balance moved is not known here. Pull down on Accounts to see the balance.",
+        receipts,
+      };
+    }
+    return {
+      kind: 'unsure',
+      text: `Your Worker did not answer, so it is not known whether the entry was deleted. Check again before doing anything else. ${errorText(e)}`,
+    };
+  }
 }

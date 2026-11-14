@@ -451,6 +451,117 @@ export interface ManualAccountResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Account editing and removal (unconnected accounts), cash entry deletion
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /v1/accounts/:id and the 200 of PATCH /v1/accounts/:id. `version` is an
+ * opaque 64-hex token for the whole account state; keep it with the form's
+ * values and send it back as `expectedVersion`.
+ */
+export interface AccountDetailResponse {
+  account: AccountWithManualBalance;
+  version: string;
+}
+
+/**
+ * PATCH /v1/accounts/:id. At least one change besides `expectedVersion`;
+ * omitted keys keep their values; unknown keys are refused. Only for accounts
+ * with no `connectionId` and no `externalId` (409 `account_connected`).
+ * Cash cannot change to or from another kind, and an account with holdings or
+ * investment activity cannot change kind (409 `account_kind_conflict`). A
+ * stale version or a change during the write is 409 `account_changed`.
+ */
+export interface AccountPatchRequest {
+  expectedVersion: string;
+  /** Trimmed, 1 to 100 characters. */
+  name?: string;
+  type?: Account['type'];
+  /**
+   * Null means unknown; it forces the account out of net worth (sending
+   * `includeInNetWorth: true` with it is refused). Omitting
+   * `includeInNetWorth` keeps the current switch, also when unknown becomes known.
+   */
+  currentBalance?: ManualCurrentBalance | null;
+  includeInNetWorth?: boolean;
+}
+
+/** Why GET /v1/accounts/:id/deletion-preview says an account cannot be removed. */
+export type AccountDeletionBlocker =
+  | 'account_connected'
+  | 'account_not_empty'
+  | 'account_in_use'
+  | 'import_in_progress'
+  | 'account_delete_too_large';
+
+/** Counts include split rows, hidden records, disabled rules and cancelled recurring items. */
+export interface AccountDeletionCounts {
+  transactions: number;
+  balanceSnapshots: number;
+  holdings: number;
+  investmentActivities: number;
+  recurringItems: number;
+  goals: number;
+  rules: number;
+  /** Imports that point at the account; detached on removal, never deleted. */
+  imports: number;
+  /** Saved layouts that point at the account; detached on removal. */
+  savedLayouts: number;
+  /** Imports being saved right now, across the whole database. */
+  savingImports: number;
+}
+
+/**
+ * Null for a non-cash account. For cash: where quick cash entries and ATM
+ * cash go after the removal, or that a new wallet is made on the next use.
+ */
+export interface DefaultCashAfterDeletion {
+  wasDefault: boolean;
+  nextAccountId: Id | null;
+  createsOnNextUse: boolean;
+}
+
+/** GET /v1/accounts/:id/deletion-preview. Changes nothing; a blocked preview is still 200. */
+export interface AccountDeletionPreview {
+  accountId: Id;
+  account: AccountWithManualBalance;
+  /** Opaque 64-hex token DELETE needs. It does not reserve or lock the account. */
+  previewToken: string;
+  allowed: boolean;
+  blockers: AccountDeletionBlocker[];
+  counts: AccountDeletionCounts;
+  /** What removal would do if allowed, not work already done. */
+  removes: { accounts: 1; balanceSnapshots: number; manualBalance: boolean };
+  detaches: { imports: number; savedLayouts: number };
+  defaultCash: DefaultCashAfterDeletion | null;
+}
+
+/**
+ * DELETE /v1/accounts/:id. 409 `account_delete_refused` when a blocker is
+ * present; 409 `account_changed` when the token is stale. No undo.
+ */
+export interface AccountDeleteRequest {
+  previewToken: string;
+}
+
+export interface AccountDeleteResponse {
+  deletedAccountId: Id;
+  defaultCash: DefaultCashAfterDeletion | null;
+}
+
+/**
+ * DELETE /v1/transactions/:id: a hand-entered cash entry only. 409
+ * `cash_delete_refused` (not eligible), `cash_balance_unknown` (set the cash
+ * balance first), `cash_balance_overflow`, `account_changed`.
+ */
+export interface CashTransactionDeleteResponse {
+  deletedTransactionId: Id;
+  /** Signed amount subtracted from the cash balance (0 for unknown or reset balances). */
+  reversedBalanceAmount: MinorUnits;
+  account: AccountWithManualBalance;
+}
+
+// ---------------------------------------------------------------------------
 // Receipts
 // ---------------------------------------------------------------------------
 

@@ -13,7 +13,8 @@ import { haptic } from '../../design/haptics';
 import { useFinance } from '../../data/store';
 import type { Lookups } from '../../data/selectors';
 import { Amount } from '../currency/Amount';
-import { setCategory, setReviewed, undoSplit } from './actions';
+import { setCategory, setReviewed, undoSplit, type CashDeleteOutcome } from './actions';
+import { CashDeleteSection } from './CashDeleteSection';
 import { CategoryPicker } from './CategoryPicker';
 import { activeLink, suggestedLink, transferTitle } from './display';
 import { kindLabel } from './edit';
@@ -38,9 +39,15 @@ export function TransactionDetailSheet({
   const data = useFinance();
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [deleted, setDeleted] = useState<{
+    id: string;
+    outcome: Extract<CashDeleteOutcome, { kind: 'deleted' }>;
+  } | null>(null);
+  const gone = deleted && txn && deleted.id === txn.id ? deleted.outcome : null;
   const current = txn ? (lookups.transactionsById.get(txn.id) ?? txn) : null;
   // The edit form belongs to the transaction it was opened on.
-  if (!current && editing) setEditing(false);
+  if ((!current || gone) && editing) setEditing(false);
+  if ((!current || gone) && picking) setPicking(false);
   const link = current ? activeLink(current, lookups) : null;
   const suggestion = current ? suggestedLink(current, lookups) : null;
   const children = current?.isSplitParent
@@ -58,11 +65,35 @@ export function TransactionDetailSheet({
       <BottomSheet
         visible={current !== null}
         onClose={onClose}
-        title={current ? (link ? transferTitle(link, lookups) : current.name) : ''}
+        title={
+          gone
+            ? 'Cash entry deleted'
+            : current
+              ? link
+                ? transferTitle(link, lookups)
+                : current.name
+              : ''
+        }
         scrollable
         testID="transaction-detail"
       >
-        {current ? (
+        {gone ? (
+          <VStack gap="md" style={styles.body} testID="cash-deleted">
+            <Text variant="body" testID="cash-deleted-text">
+              {gone.text}
+            </Text>
+            {gone.receipts > 0 ? (
+              <VStack gap="sm">
+                <Text variant="body" tone="muted">
+                  {gone.receipts === 1
+                    ? 'Its receipt is kept and now waits to be attached to another transaction.'
+                    : `Its ${gone.receipts} receipts are kept and now wait to be attached to another transaction.`}
+                </Text>
+              </VStack>
+            ) : null}
+            <Button label="Done" onPress={onClose} fullWidth testID="cash-deleted-done" />
+          </VStack>
+        ) : current ? (
           <VStack gap="md" style={styles.body}>
             <VStack gap="xs" align="center">
               <Amount
@@ -195,6 +226,11 @@ export function TransactionDetailSheet({
               <ReceiptSection txn={current} receipt={receipt} />
             ) : null}
 
+            <CashDeleteSection
+              txn={current}
+              onDeleted={(outcome) => setDeleted({ id: current.id, outcome })}
+            />
+
             <Button
               label={current.reviewed ? 'Mark as not reviewed' : 'Mark reviewed'}
               icon={current.reviewed ? undefined : 'check'}
@@ -209,10 +245,10 @@ export function TransactionDetailSheet({
           </VStack>
         ) : null}
       </BottomSheet>
-      {current ? (
+      {current && !gone ? (
         <EditTransactionSheet txn={current} visible={editing} onClose={() => setEditing(false)} />
       ) : null}
-      {current ? (
+      {current && !gone ? (
         <CategoryPicker
           visible={picking}
           onClose={() => setPicking(false)}
