@@ -31,6 +31,8 @@ export interface NetWorthBreakdown {
   liabilities: MinorUnits;
   netWorth: MinorUnits;
   currency: CurrencyCode;
+  /** Accounts net worth would count, but with no rate to `currency`: they add nothing. */
+  noRate: Account[];
 }
 
 /**
@@ -40,6 +42,19 @@ export interface NetWorthBreakdown {
  */
 export function countsInNetWorth(a: Account): boolean {
   return a.includeInNetWorth && !isBalanceUnknown(a);
+}
+
+/**
+ * Accounts among `accounts` whose balance can't be converted to `currency`
+ * with the latest rates. A total in that currency leaves them out, so a
+ * screen showing the total names them.
+ */
+export function accountsWithoutRate(
+  accounts: readonly Account[],
+  currency: CurrencyCode,
+  rates: FinanceDataset['fxRates'],
+): Account[] {
+  return accounts.filter((a) => convertAmount(a.balance, a.currency, currency, rates) === null);
 }
 
 /** Net worth now, converting every balance with the latest rate. */
@@ -52,7 +67,12 @@ export function currentNetWorth(data: FinanceDataset, currency: CurrencyCode): N
     if (classifyAccountType(a.type) === 'liability') liabilities += v;
     else assets += v;
   }
-  return { assets, liabilities, netWorth: assets - liabilities, currency };
+  const noRate = accountsWithoutRate(
+    data.accounts.filter(countsInNetWorth),
+    currency,
+    data.fxRates,
+  );
+  return { assets, liabilities, netWorth: assets - liabilities, currency, noRate };
 }
 
 export interface NetWorthByType {
@@ -60,6 +80,8 @@ export interface NetWorthByType {
   byType: Map<AccountType, MinorUnits>;
   /** Shown accounts whose balance is unknown, which net worth leaves out. */
   unknown: Account[];
+  /** Accounts net worth would count, but with no rate to the currency. */
+  noRate: Account[];
 }
 
 /**
@@ -74,7 +96,12 @@ export function netWorthByType(data: FinanceDataset, currency: CurrencyCode): Ne
     byType.set(a.type, (byType.get(a.type) ?? 0) + v);
   }
   const unknown = data.accounts.filter((a) => isBalanceUnknown(a) && !a.hidden);
-  return { byType, unknown };
+  const noRate = accountsWithoutRate(
+    data.accounts.filter(countsInNetWorth),
+    currency,
+    data.fxRates,
+  );
+  return { byType, unknown, noRate };
 }
 
 export interface SeriesPoint {

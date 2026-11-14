@@ -19,12 +19,13 @@ import { Banner, IconBadge, SectionHeader } from '../../design/components/Decor'
 import { HStack, VStack } from '../../design/components/Layout';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
-import { countsInNetWorth } from '../../data/metrics';
+import { accountsWithoutRate, countsInNetWorth } from '../../data/metrics';
 import { useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
+import { noRateText } from '../networth/leftOut';
 import { BackAction } from './BackAction';
 import { goalStatus, leftOutText } from './goalStatus';
 import { updatePlanning, usePlanning } from './usePlanning';
@@ -200,22 +201,22 @@ export function PlanningScreen() {
   const [basis, setBasis] = useState<'real' | 'nominal'>('real');
   const currency = display.reportCurrency;
 
-  const startingSavings = useMemo(
-    () =>
-      data.accounts
-        .filter(
-          (a) =>
-            countsInNetWorth(a) &&
-            classifyAccountType(a.type) === 'asset' &&
-            (a.type === 'brokerage' || a.type === 'retirement' || a.type === 'crypto'),
-        )
-        .reduce(
-          (s, a) =>
-            s + (convertAmount(a.balance, a.currency, planning.currency, data.fxRates) ?? 0),
-          0,
-        ),
-    [data.accounts, data.fxRates, planning.currency],
-  );
+  const { startingSavings, savingsNoRate } = useMemo(() => {
+    const investments = data.accounts.filter(
+      (a) =>
+        countsInNetWorth(a) &&
+        classifyAccountType(a.type) === 'asset' &&
+        (a.type === 'brokerage' || a.type === 'retirement' || a.type === 'crypto'),
+    );
+    const noRate = accountsWithoutRate(investments, planning.currency, data.fxRates);
+    return {
+      startingSavings: investments.reduce(
+        (s, a) => s + (convertAmount(a.balance, a.currency, planning.currency, data.fxRates) ?? 0),
+        0,
+      ),
+      savingsNoRate: noRate,
+    };
+  }, [data.accounts, data.fxRates, planning.currency]);
 
   const result = useMemo(
     () =>
@@ -346,6 +347,11 @@ export function PlanningScreen() {
               format={{ cents: 'never' }}
             />
           </HStack>
+          {savingsNoRate.length > 0 ? (
+            <Text variant="caption" tone="muted" testID="plan-no-rate">
+              {noRateText(savingsNoRate, planning.currency)}
+            </Text>
+          ) : null}
           <HStack justify="space-between">
             <Text variant="body" tone="muted">
               Income it supports each year

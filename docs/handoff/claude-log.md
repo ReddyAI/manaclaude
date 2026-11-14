@@ -715,3 +715,46 @@ Unknown balances:
 2. Net worth: the line under the breakdown names it, and the kinds add up to the totals.
 3. Planning: a goal linked to it shows Unknown and says why.
 4. Accounts: its group says the total leaves it out.
+
+## 2026-11-14: Block L (accounts with no exchange rate)
+
+Started from `main` at `7935548` (PR #26 merged), on the same branch name restarted from main. One commit. No route used beyond what the app already reads (`GET /v1/dataset`); in the browser test, `POST /v1/accounts/cash` and `POST /v1/accounts/manual` set up the accounts. Changed: `apps/mobile/` and this log only.
+
+### What changed
+
+The previous entry said a balance with no exchange rate is "counted as 0". Adding 0 leaves the account out of the number, so the totals were not wrong; they left an account out without saying so. This block names it wherever a total skips it, the same way block K does for unknown balances.
+
+- `data/metrics.ts`: `accountsWithoutRate` (accounts whose balance has no latest rate to a currency). `currentNetWorth` and `netWorthByType` now also return `noRate`: accounts net worth would count (switched in, balance known) that add nothing for want of a rate. The numbers themselves are unchanged.
+- `features/networth/leftOut.ts` (new): the wording, in one place.
+- Net worth: a line under the breakdown, for example "Leaves out "Zurich wallet": there is no CHF to USD exchange rate yet, so it adds nothing. Refresh rates in Settings, Exchange rates." With several, it lists each name with its currency.
+- Home: one line under the net worth for anything it leaves out, unknown balances included (one account by name; several as "Leaves out 2 accounts with an unknown balance or no exchange rate. See Net worth.").
+- Planning: a line under "Starting from investment accounts" for an investment account with no rate to the planning currency.
+- Accounts: a line under a group whose total leaves an account out for want of a rate. An account with an unknown balance gets only block K's line.
+- Goals already left such accounts out (block K).
+
+### Defaults chosen
+
+- The rate checked is the latest one, as the totals use; the report currency is the one in the currency chip (the planning currency for Planning).
+- An account switched out of net worth, or with an unknown balance, is never listed as missing a rate: it isn't counted anyway.
+- The note says to refresh rates in Settings, Exchange rates; if the Worker's sources don't carry that currency at all, refreshing won't help, and the note does not claim it will.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **1,360 tests** (shared 118, connectors 345, backend 313, deployment, runtime and recovery 46, mobile 538, up from 528). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192`; no config change.
+- 10 new mobile tests with invented data in `networth/__tests__/missingRates.test.tsx`.
+- Each of 14 new guards was removed once by a script; every removal made a test fail. One had no test at first (an unknown balance in another currency on Accounts showing only the unknown line); the test was added.
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars`, `ALLOW_SAMPLE_SEED=true`, all migrations, `POST /v1/dev/seed`, a fresh database per run), at 412 px and 1280 px, with results read back from the Worker's API. **22 of 22 checks passed (11 at each width).** The Worker's rates covered USD, INR and EUR only. A CHF cash wallet and a GBP brokerage account were made on the Worker and stored as counted in net worth. Net worth then named both; its Assets total and Home's net worth stayed exactly as before; Home, Planning and the Cash and Investments groups each named the right account.
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted; none is committed.
+- **No Android device or emulator was used.**
+
+### Remaining app work
+
+- Spending and budget totals (`display.total`, by each transaction's day rate) also add nothing for a transaction with no rate, without saying so. That is a different number (spending, not balances) and is not changed here.
+
+### How to test on the phone
+
+1. Accounts, Connectors tab, "Add a cash account" in a currency your Worker has no rate for (for example CHF), with some cash on hand.
+2. Net worth: the line under the breakdown names it and says there is no rate. The total does not change.
+3. Home: the line under the net worth names it.
+4. Accounts: the Cash group says its total leaves it out.
+5. Settings, Exchange rates, "Refresh rates now". If a rate arrives, the lines go away and the account is counted.

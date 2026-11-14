@@ -19,11 +19,13 @@ import {
   netWorthHistory,
   upcomingRecurring,
 } from '../../data/metrics';
+import { isBalanceUnknown } from '../../data/manualBalance';
 import { useLookups, useToday } from '../../data/selectors';
 import { useSettings } from '../../data/settingsStore';
 import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { homeLeftOutText } from '../networth/leftOut';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { CashQuickAddButton } from '../transactions/CashQuickAdd';
 import { describeTransaction, isListed } from '../transactions/display';
@@ -220,6 +222,11 @@ export function DashboardScreen() {
     ? metrics.budget.totalSpent / metrics.budget.totalBudgeted
     : 0;
   const nwChange = metrics.monthAgo ? netWorth.netWorth - metrics.monthAgo.value : 0;
+  const leftOutNote = homeLeftOutText(
+    data.accounts.filter((a) => isBalanceUnknown(a) && !a.hidden),
+    netWorth.noRate,
+    currency,
+  );
 
   return (
     <Screen
@@ -264,6 +271,11 @@ export function DashboardScreen() {
                   in 30 days
                 </Text>
               </HStack>
+              {leftOutNote ? (
+                <Text variant="caption" tone="muted" testID="net-worth-left-out">
+                  {leftOutNote}
+                </Text>
+              ) : null}
               <LineChart
                 values={metrics.history.map((p) => p.value)}
                 role="netWorth"
