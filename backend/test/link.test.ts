@@ -209,6 +209,28 @@ describe('link options', () => {
 });
 
 describe('Sophtron', () => {
+  it('persists and replays a refresh that completes immediately without a job', async () => {
+    await addConnection({ id: 'conn_soph', connectorId: 'sophtron', status: 'needs_repair' });
+    await saveCredentials(env, 'conn_soph', { SOPHTRON_USER_INSTITUTION_ID: 'ui-555' });
+    const fetch = fakeFetch({
+      ...sophtronRoutes([]),
+      [`POST ${SOPH}/api/UserInstitutionAccount/RefreshUserInstitutionAccount`]: { json: {} },
+    });
+    const a = api(fetch);
+    const done = await a.call<SophtronLinkStatus>('POST', '/v1/link/sophtron/start', {
+      connectionId: 'conn_soph',
+      refresh: true,
+    });
+    expect(done.body).toEqual({
+      linkId: expect.stringMatching(/^link_/),
+      status: 'done',
+      connectionIds: ['conn_soph'],
+      repaired: true,
+    });
+    expect((await a.call('GET', `/v1/link/sophtron/${done.body.linkId}`)).body).toEqual(done.body);
+    expect(fetch.calls).toHaveLength(2);
+    expect(await slots()).toEqual({});
+  });
   it('signs in, answers the security question, saves only the login id, then syncs', async () => {
     const fetch = fakeFetch(
       sophtronRoutes([
@@ -262,7 +284,7 @@ describe('Sophtron', () => {
 
     // Polling again after it finished changes nothing.
     const again = await a.call<SophtronLinkStatus>('GET', `/v1/link/sophtron/${linkId}`);
-    expect(again.body.status).toBe('done');
+    expect(again.body).toEqual(done.body);
     expect(await selectAll(db, connectionsTable)).toHaveLength(1);
     expect(await slots()).toEqual({ sophtron: 1 });
 
@@ -448,7 +470,9 @@ describe('SnapTrade', () => {
       SNAPTRADE_USER_ID: 'billionaire_demo',
       SNAPTRADE_USER_SECRET: SECRETS.snapSecret,
     });
-    const fetch = fakeFetch(routes([{ id: 'auth-rh', brokerage: { name: 'Robinhood' } }]));
+    const fetch = fakeFetch(
+      routes([{ id: 'auth-rh', brokerage: { name: 'Robinhood' }, disabled: false }]),
+    );
     const a = api(fetch);
     const start = await a.call<{ linkId: string }>('POST', '/v1/link/snaptrade/start', {
       connectionId: 'conn_st',

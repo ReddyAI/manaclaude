@@ -87,6 +87,16 @@ export async function saveCredentials(
   values: Credentials,
   opts: { replace?: boolean } = {},
 ): Promise<void> {
+  await (await prepareCredentials(env, connectionId, values, opts)).run();
+}
+
+/** The same encrypted write, for callers that commit credentials with other effects atomically. */
+export async function prepareCredentials(
+  env: Env,
+  connectionId: string,
+  values: Credentials,
+  opts: { replace?: boolean } = {},
+): Promise<D1PreparedStatement> {
   const key = await keyFor(env);
   const merged = opts.replace
     ? { ...values }
@@ -97,14 +107,12 @@ export async function saveCredentials(
     key,
     enc.encode(JSON.stringify(merged)),
   );
-  await env.DB.prepare(
+  return env.DB.prepare(
     `INSERT INTO connection_credentials (connection_id, iv, ciphertext, updated_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT (connection_id) DO UPDATE SET iv = excluded.iv,
        ciphertext = excluded.ciphertext, updated_at = excluded.updated_at`,
-  )
-    .bind(connectionId, toBase64(iv), toBase64(new Uint8Array(cipher)), nowIso())
-    .run();
+  ).bind(connectionId, toBase64(iv), toBase64(new Uint8Array(cipher)), nowIso());
 }
 
 export async function deleteCredentials(env: Env, connectionId: string): Promise<void> {

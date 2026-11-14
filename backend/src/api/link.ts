@@ -7,7 +7,6 @@ import {
   createSophtronLogin,
   exchangeKiteRequestToken,
   exchangePlaidPublicToken,
-  getSophtronJob,
   kiteLoginUrl,
   listSnaptradeAuthorizations,
   registerSnaptradeUser,
@@ -52,6 +51,8 @@ import { selectAll } from '../db/table';
 import { connectionsTable } from '../db/tables';
 import { ApiError, badRequest, conflict, notFound } from '../util/errors';
 import { newId } from '../util/ids';
+import { sophtronStatus } from '../link/sophtron';
+import { completeSnaptradeRepair, snaptradeRepairCredentials } from '../link/snaptrade';
 
 /**
  * Account linking (session E2). Every route under /v1/link needs the bearer
@@ -156,46 +157,6 @@ function backToApp(
 // Sophtron
 // ---------------------------------------------------------------------------
 
-async function sophtronStatus(c: C, session: LinkSession): Promise<SophtronLinkStatus> {
-  const env = c.env;
-  if (session.status === 'done') return { linkId: session.id, status: 'done' };
-  if (session.status === 'failed')
-    return { linkId: session.id, status: 'failed', message: 'This attempt ended. Start again.' };
-  const secret = await sessionSecret(env, session.id);
-  if (!secret.jobId) return { linkId: session.id, status: 'failed', message: 'Start again.' };
-  const ctx = contextOf(c, 'sophtron');
-  const job = await getSophtronJob(ctx, secret.jobId);
-  if (job.state === 'pending') return { linkId: session.id, status: 'pending' };
-  if (job.state === 'mfa') return { linkId: session.id, status: 'mfa', challenge: job.challenge };
-  if (job.state === 'failed') {
-    await endSession(env, session.id, 'failed', nowOf(c));
-    return { linkId: session.id, status: 'failed', message: job.reason };
-  }
-  // Success: only one request may finish the attempt.
-  if (!(await moveSession(env, session.id, ['pending'], 'done', nowOf(c)))) {
-    return { linkId: session.id, status: 'done' };
-  }
-  let done: { connectionId: string; repaired: boolean };
-  if (secret.userInstitutionId) {
-    done = await finishLink(env, {
-      now: nowOf(c),
-      connectorId: 'sophtron',
-      institutionName: session.institutionName ?? 'Bank',
-      credentials: { SOPHTRON_USER_INSTITUTION_ID: secret.userInstitutionId },
-      connectionId: session.connectionId,
-    });
-  } else {
-    done = await markRepaired(env, session.connectionId ?? '', 'sophtron', nowOf(c));
-  }
-  await endSession(env, session.id, 'done', nowOf(c));
-  return {
-    linkId: session.id,
-    status: 'done',
-    connectionIds: [done.connectionId],
-    repaired: done.repaired,
-  };
-}
-
 const answerSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('security_answer'),
@@ -271,6 +232,7 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     );
     const ctx = contextOf(c, 'sophtron');
     let secret: Record<string, string>;
+    let status: 'pending' | 'finalizing' = 'pending';
     let institutionName = b.institutionName ?? null;
     if (b.refresh) {
       if (!b.connectionId) throw badRequest('Say which connection to repair.');
@@ -280,16 +242,8 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
       if (!creds.SOPHTRON_USER_INSTITUTION_ID)
         throw conflict('This connection has no saved Sophtron login. Sign in again instead.');
       const job = await startSophtronRefresh(ctx, creds.SOPHTRON_USER_INSTITUTION_ID);
-      if (!job) {
-        const done = await markRepaired(c.env, conn.id, 'sophtron', nowOf(c));
-        return c.json({
-          linkId: '',
-          status: 'done',
-          connectionIds: [done.connectionId],
-          repaired: true,
-        } satisfies SophtronLinkStatus);
-      }
-      secret = { jobId: job.jobId };
+      status = job ? 'pending' : 'finalizing';
+      secret = job ? { jobId: job.jobId } : {};
     } else {
       if (!b.institutionId || !b.username || !b.password)
         throw badRequest('Choose the bank and enter its user name and password.');
@@ -311,19 +265,20 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     const session = await createSession(c.env, {
       now: nowOf(c),
       connectorId: 'sophtron',
+      status,
       connectionId: b.connectionId ?? null,
       institutionName,
       minutes: SESSION_MINUTES,
       secret,
     });
-    return c.json(await sophtronStatus(c, session));
+    return c.json(await sophtronStatus(c.env, session, contextOf(c, 'sophtron'), () => nowOf(c)));
   });
 
   app.get('/v1/link/sophtron/:linkId', async (c) => {
     requireConfigured(c.env, 'sophtron');
     const session = await getSession(c.env, c.req.param('linkId'), 'sophtron', nowOf(c));
     if (!session) throw notFound('This sign-in has expired. Start again.');
-    return c.json(await sophtronStatus(c, session));
+    return c.json(await sophtronStatus(c.env, session, contextOf(c, 'sophtron'), () => nowOf(c)));
   });
 
   app.post('/v1/link/sophtron/:linkId/answer', async (c) => {
@@ -369,16 +324,24 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
       z.object({ returnUrl: z.string().max(500).optional(), ...optionalConnection }),
     );
     let reconnect: string | undefined;
+    let repairCredentials: Record<string, string> | undefined;
     if (b.connectionId) {
       const conn = await loadConnectionFor(c.env.DB, b.connectionId, 'snaptrade');
-      reconnect = (await loadCredentials(c.env, conn.id)).SNAPTRADE_AUTHORIZATION_ID;
+      repairCredentials = await snaptradeRepairCredentials(c.env, conn.id);
+      reconnect = repairCredentials.SNAPTRADE_AUTHORIZATION_ID;
     } else {
       await assertCanLink(c.env.DB, 'snaptrade');
     }
-    const user = await snaptradeUser(c);
+    const user = repairCredentials
+      ? {
+          userId: repairCredentials.SNAPTRADE_USER_ID!,
+          userSecret: repairCredentials.SNAPTRADE_USER_SECRET!,
+        }
+      : await snaptradeUser(c);
     const session = await createSession(c.env, {
       now: nowOf(c),
       connectorId: 'snaptrade',
+      secret: repairCredentials,
       connectionId: b.connectionId ?? null,
       returnUrl: safeReturnUrl(c.env, b.returnUrl),
       minutes: SESSION_MINUTES,
@@ -414,16 +377,13 @@ export function registerLinkRoutes<E extends AppEnv>(hono: Hono<E>): void {
     const session = await getSession(c.env, c.req.param('linkId'), 'snaptrade', nowOf(c));
     if (!session || session.status === 'done' || session.status === 'failed')
       throw notFound('This link has expired. Start again.');
+    if (session.connectionId) {
+      return c.json(
+        await completeSnaptradeRepair(c.env, session, contextOf(c, 'snaptrade'), () => nowOf(c)),
+      );
+    }
     const user = await snaptradeUser(c);
     const auths = await listSnaptradeAuthorizations(contextOf(c, 'snaptrade'), user);
-    if (session.connectionId) {
-      const done = await markRepaired(c.env, session.connectionId, 'snaptrade', nowOf(c));
-      await endSession(c.env, session.id, 'done', nowOf(c));
-      return c.json({
-        connectionIds: [done.connectionId],
-        repaired: true,
-      } satisfies LinkDoneResponse);
-    }
     const linked = await linkedSnaptradeAuthorizations(c.env);
     const fresh = auths.filter((a) => !a.disabled && !linked.has(a.id));
     if (fresh.length === 0) {

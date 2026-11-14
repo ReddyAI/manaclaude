@@ -90,6 +90,9 @@ export async function listSnaptradeAuthorizations(
 ): Promise<SnaptradeAuthorization[]> {
   const resp = await client(ctx).get<unknown>('/api/v1/authorizations', signedQuery(ctx, user));
   if (!Array.isArray(resp)) throw new ProviderDataError('SnapTrade', 'authorizations');
+  if (resp.some((a) => !a || typeof a !== 'object')) {
+    throw new ProviderDataError('SnapTrade', 'authorizations');
+  }
   return (resp as Record<string, unknown>[])
     .filter((a) => typeof a.id === 'string')
     .map((a) => {
@@ -99,6 +102,7 @@ export async function listSnaptradeAuthorizations(
         (typeof brokerage.name === 'string' && brokerage.name) ||
         (typeof a.name === 'string' && a.name) ||
         'Brokerage';
-      return { id: a.id as string, name, disabled: a.disabled === true };
+      // Only an explicit enabled flag proves that a repair succeeded.
+      return { id: a.id as string, name, disabled: a.disabled !== false };
     });
 }
