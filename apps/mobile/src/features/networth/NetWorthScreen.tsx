@@ -24,6 +24,7 @@ import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { goTo } from '../planning/navigate';
+import { noRateText } from './leftOut';
 
 type Range = '3M' | '6M' | '1Y';
 const RANGE_MONTHS: Record<Range, number> = { '3M': 3, '6M': 6, '1Y': 12 };
@@ -81,7 +82,7 @@ export function NetWorthScreen() {
     const from = addMonths(today, -RANGE_MONTHS[range]);
     const history = netWorthHistory(data, currency).filter((p) => p.date >= from);
     // Only what net worth counts: accounts switched out of it or with an unknown balance are left out.
-    const { byType, unknown } = netWorthByType(data, currency);
+    const { byType, unknown, noRate } = netWorthByType(data, currency);
     const securities = new Map(data.securities.map((s) => [s.id, s]));
     const holdings = data.holdings
       .map((h) => {
@@ -104,7 +105,7 @@ export function NetWorthScreen() {
       const k = x.sec?.assetClass ?? 'other';
       allocation.set(k, (allocation.get(k) ?? 0) + x.value);
     }
-    return { nw, history, byType, unknown, holdings, invested, costTotal, allocation };
+    return { nw, history, byType, unknown, noRate, holdings, invested, costTotal, allocation };
   }, [data, currency, range, today, display]);
 
   const point = scrub !== null ? m.history[scrub] : undefined;
@@ -224,6 +225,12 @@ export function NetWorthScreen() {
           {m.unknown.length === 1
             ? `Leaves out "${m.unknown[0]!.name}": its balance is unknown. Enter it on the account's page to count it.`
             : `Leaves out ${m.unknown.length} accounts whose balance is unknown: ${m.unknown.map((a) => `"${a.name}"`).join(', ')}. Enter a balance on each account's page to count it.`}
+        </Text>
+      ) : null}
+
+      {m.noRate.length > 0 ? (
+        <Text variant="caption" tone="muted" testID="networth-no-rate">
+          {noRateText(m.noRate, currency)}
         </Text>
       ) : null}
 

@@ -18,6 +18,7 @@ import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
 import { isBalanceUnknown } from '../../data/manualBalance';
+import { groupNoRateText } from '../networth/leftOut';
 import { useFinance } from '../../data/store';
 import { useRefreshControl } from '../../data/backend/useRefreshControl';
 import { ConnectionsCard } from '../link/ConnectionsCard';
@@ -172,6 +173,12 @@ export function AccountsScreen() {
             if (accounts.length === 0) return null;
             // An account whose balance nobody entered adds nothing to its group's total.
             const unknown = accounts.filter(isBalanceUnknown);
+            const noRate = accounts.filter(
+              (a) =>
+                !isBalanceUnknown(a) &&
+                display.convert(a.balance, a.currency, display.reportCurrency) === null,
+            );
+            const noRateNote = groupNoRateText(noRate, display.reportCurrency);
             const total = display.total(
               accounts
                 .filter((a) => !isBalanceUnknown(a))
@@ -201,6 +208,11 @@ export function AccountsScreen() {
                       {unknown.length === 1
                         ? `The total leaves out "${unknown[0]!.name}": its balance is unknown.`
                         : `The total leaves out ${unknown.length} accounts whose balance is unknown.`}
+                    </Text>
+                  ) : null}
+                  {noRateNote ? (
+                    <Text variant="caption" tone="muted" testID={`group-no-rate-${g.title}`}>
+                      {noRateNote}
                     </Text>
                   ) : null}
                 </VStack>
