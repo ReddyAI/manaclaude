@@ -3,6 +3,8 @@ import type {
   ImportCommitResult,
   ImportDetail,
   ImportListResponse,
+  ImportMapping,
+  ImportMappingsResponse,
   ImportPreview,
   ImportPreviewOptions,
   ImportRecord,
@@ -86,6 +88,11 @@ export function getImport(importId: string): Promise<ImportDetail> {
 /** GET /v1/imports: the newest import records. */
 export async function listImports(): Promise<ImportRecord[]> {
   return (await api<ImportListResponse>('GET', '/v1/imports')).imports;
+}
+
+/** GET /v1/import-mappings: the saved CSV layouts, most recently used first. */
+export async function listImportMappings(): Promise<ImportMapping[]> {
+  return (await api<ImportMappingsResponse>('GET', '/v1/import-mappings')).mappings;
 }
 
 /** DELETE /v1/imports/:id/transactions: removes what a saved import added. The file stays in the vault. */

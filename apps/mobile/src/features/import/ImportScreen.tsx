@@ -15,16 +15,18 @@ import { BackAction } from '../planning/BackAction';
 import { CsvColumnsCard } from './CsvColumnsCard';
 import { DestinationCard } from './DestinationCard';
 import { ImportHistory } from './ImportHistory';
+import { SavedLayouts } from './SavedLayouts';
 import { planImport, requestKey } from './importFlow';
 import { PreviewCard, TotalsTable } from './PreviewCard';
 import { DuplicateReviewCard, ParseErrorsCard } from './ReviewCards';
 import { useImportFlow } from './useImportFlow';
 import { WhatToImportCard } from './WhatToImportCard';
 
-type Tab = 'import' | 'history';
+type Tab = 'import' | 'history' | 'layouts';
 const TABS = [
   { value: 'import', label: 'Import' },
   { value: 'history', label: 'History' },
+  { value: 'layouts', label: 'File layouts' },
 ] as const;
 
 /**
@@ -365,9 +367,11 @@ export function ImportScreen() {
         options={TABS}
         value={tab}
         onChange={setTab}
-        accessibilityLabel="Import a file or see earlier imports"
+        accessibilityLabel="Import a file, see earlier imports or saved file layouts"
       />
-      {tab === 'history' ? (
+      {tab === 'layouts' ? (
+        <SavedLayouts />
+      ) : tab === 'history' ? (
         <>
           <HStack gap="sm" align="center" justify="space-between" wrap>
             <Text variant="caption" tone="muted">

@@ -360,6 +360,26 @@ export interface ImportUndoResult {
   removed: number;
 }
 
+/**
+ * One saved file layout: how a CSV's columns map to transactions, stored
+ * under its header signature when an import with it is saved.
+ */
+export interface ImportMapping {
+  signature: string;
+  /** The file name of the import that first saved it. */
+  name: string;
+  /** The account its rows went to last time; null when none or that account was removed. */
+  accountId: Id | null;
+  mapping: CsvMapping;
+  /** When an import last saved with it. */
+  updatedAt: IsoDateTime;
+}
+
+/** GET /v1/import-mappings: saved file layouts, most recently used first. */
+export interface ImportMappingsResponse {
+  mappings: ImportMapping[];
+}
+
 // ---------------------------------------------------------------------------
 // Manual accounts (POST /v1/accounts/manual)
 // ---------------------------------------------------------------------------
