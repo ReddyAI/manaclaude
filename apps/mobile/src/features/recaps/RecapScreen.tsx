@@ -139,18 +139,24 @@ export function RecapScreen({ kind }: RecapScreenProps) {
               {noRate}
             </Text>
           ) : null}
-          <HStack gap="xs" wrap>
-            <MoneyText
-              amount={Math.abs(diff)}
-              currency={currency}
-              size="small"
-              tone={diff > 0 ? 'spending' : 'income'}
-              format={{ cents: 'never' }}
-            />
-            <Text variant="caption" tone="muted">
-              {`${diff > 0 ? 'more' : 'less'} than ${vs}`}
+          {diff === 0 ? (
+            <Text variant="caption" tone="muted" testID="recap-diff">
+              {`The same as ${vs}`}
             </Text>
-          </HStack>
+          ) : (
+            <HStack gap="xs" wrap testID="recap-diff">
+              <MoneyText
+                amount={Math.abs(diff)}
+                currency={currency}
+                size="small"
+                tone={diff > 0 ? 'spending' : 'income'}
+                format={{ cents: 'never' }}
+              />
+              <Text variant="caption" tone="muted">
+                {`${diff > 0 ? 'more' : 'less'} than ${vs}`}
+              </Text>
+            </HStack>
+          )}
           <BarChart
             data={[
               { label: kind === 'weekly' ? 'Before' : 'Previous', value: r.previousSpending },
@@ -211,34 +217,47 @@ export function RecapScreen({ kind }: RecapScreenProps) {
 
       <View>
         <SectionHeader title="Top categories" />
-        <Card padding="none">
-          {r.topCategories.map((c) => {
-            const cat = lookups.categoriesById.get(c.categoryId);
-            const delta = c.amount - c.previous;
-            return (
-              <ListRow
-                key={c.categoryId}
-                title={cat?.name ?? 'Uncategorized'}
-                subtitle={
-                  c.previous > 0
-                    ? `${delta >= 0 ? 'Up' : 'Down'} ${Math.round((Math.abs(delta) / c.previous) * 100)}% from ${vs}`
-                    : 'New this period'
-                }
-                leading={<IconBadge icon={cat?.icon ?? 'circle'} color={cat?.color ?? 'c1'} />}
-                trailing={
-                  <VStack align="flex-end" gap="xs">
-                    <MoneyText amount={c.amount} currency={currency} format={{ cents: 'never' }} />
-                    <ProgressBar
-                      value={c.amount / maxCat}
-                      accessibilityLabel={`${cat?.name} share`}
-                    />
-                  </VStack>
-                }
-                testID={`recap-cat-${c.categoryId}`}
-              />
-            );
-          })}
-        </Card>
+        {r.topCategories.length === 0 ? (
+          <Card>
+            <Text variant="body" tone="muted" testID="recap-no-categories">
+              No spending in this period.
+            </Text>
+          </Card>
+        ) : null}
+        {r.topCategories.length > 0 ? (
+          <Card padding="none">
+            {r.topCategories.map((c) => {
+              const cat = lookups.categoriesById.get(c.categoryId);
+              const delta = c.amount - c.previous;
+              return (
+                <ListRow
+                  key={c.categoryId}
+                  title={cat?.name ?? 'Uncategorized'}
+                  subtitle={
+                    c.previous > 0
+                      ? `${delta >= 0 ? 'Up' : 'Down'} ${Math.round((Math.abs(delta) / c.previous) * 100)}% from ${vs}`
+                      : 'New this period'
+                  }
+                  leading={<IconBadge icon={cat?.icon ?? 'circle'} color={cat?.color ?? 'c1'} />}
+                  trailing={
+                    <VStack align="flex-end" gap="xs">
+                      <MoneyText
+                        amount={c.amount}
+                        currency={currency}
+                        format={{ cents: 'never' }}
+                      />
+                      <ProgressBar
+                        value={c.amount / maxCat}
+                        accessibilityLabel={`${cat?.name} share`}
+                      />
+                    </VStack>
+                  }
+                  testID={`recap-cat-${c.categoryId}`}
+                />
+              );
+            })}
+          </Card>
+        ) : null}
       </View>
 
       {r.biggestTransactions.length > 0 ? (

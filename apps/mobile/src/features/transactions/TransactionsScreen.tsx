@@ -123,11 +123,21 @@ export function TransactionsScreen() {
       {reviewing ? (
         <ReviewQueueList />
       ) : items.length === 0 ? (
-        <EmptyState
-          icon="search"
-          title="Nothing matches"
-          message="Try a different search or filter."
-        />
+        query.trim() === '' && filter === 'all' ? (
+          <EmptyState
+            icon="list"
+            title="No transactions yet"
+            message="They appear here after a sync, an import or a cash entry."
+            testID="transactions-empty"
+          />
+        ) : (
+          <EmptyState
+            icon="search"
+            title="Nothing matches"
+            message="Try a different search or filter."
+            testID="transactions-no-match"
+          />
+        )
       ) : table ? (
         <TransactionsTable transactions={filtered} lookups={lookups} onOpen={setOpen} />
       ) : (

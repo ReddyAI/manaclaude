@@ -1,5 +1,5 @@
 import type { ColorSlot, Look } from '@manaclaude/shared';
-import { LOOK_TOKENS, type Scheme } from './tokens';
+import { CATEGORY_TEXT_LIGHT, LOOK_TOKENS, type Scheme } from './tokens';
 
 /** "#7AA2FF" + 0.16 -> "rgba(122,162,255,0.16)" */
 function withAlpha(hex: string, alpha: number): string {
@@ -21,7 +21,12 @@ function buildTheme(look: Look, scheme: Scheme) {
     name: `${look}-${scheme}` as ThemeName,
     look,
     scheme,
-    colors: { ...palette, categoryMuted },
+    colors: {
+      ...palette,
+      categoryMuted,
+      /** Category colour for text on its own tint (readable in light schemes too). */
+      categoryText: scheme === 'light' ? CATEGORY_TEXT_LIGHT : palette.category,
+    },
     type: tokens.type,
     space: tokens.space,
     radius: tokens.radius,

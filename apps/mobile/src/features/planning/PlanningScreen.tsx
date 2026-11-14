@@ -379,11 +379,20 @@ export function PlanningScreen() {
 
       <View style={styles.last}>
         <SectionHeader title="Goals" />
-        <Card padding="none">
-          {data.goals.map((g) => (
-            <GoalRow key={g.id} goal={g} />
-          ))}
-        </Card>
+        {data.goals.length === 0 ? (
+          <Card>
+            <Text variant="body" tone="muted" testID="goals-empty">
+              No goals yet. Goals come from your Worker; the app can show them but cannot make one
+              yet.
+            </Text>
+          </Card>
+        ) : (
+          <Card padding="none">
+            {data.goals.map((g) => (
+              <GoalRow key={g.id} goal={g} />
+            ))}
+          </Card>
+        )}
       </View>
     </Screen>
   );

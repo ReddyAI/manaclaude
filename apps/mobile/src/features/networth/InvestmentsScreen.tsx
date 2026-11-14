@@ -383,40 +383,51 @@ export function InvestmentsScreen() {
 
       <View>
         <SectionHeader title="Positions" />
-        <Card padding="none">
-          {positions.map(({ h, sec, summary }) => (
-            <ListRow
-              key={h.id}
-              title={sec?.symbol ?? h.securityId}
-              subtitle={`${qty(h.quantity)} · ${sec?.name ?? ''}`}
-              leading={
-                <Avatar
-                  label={sec?.symbol ?? '?'}
-                  color={ASSET_CLASS_COLOR[sec?.assetClass ?? 'other']}
-                />
-              }
-              onPress={() => setOpen(h)}
-              showChevron
-              trailing={
-                <VStack align="flex-end" gap="xxs">
-                  <Amount
-                    amount={h.marketValue}
-                    currency={h.currency}
-                    format={{ cents: 'never' }}
-                  />
-                  <Text
-                    variant="caption"
-                    tone={summary.unrealized >= 0 ? 'income' : 'spending'}
-                    numeric
-                  >
-                    {pct(summary.unrealizedPct)}
-                  </Text>
-                </VStack>
-              }
-              testID={`holding-${h.id}`}
+        {positions.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon="chart-pie"
+              title="No investments yet"
+              message="Link a brokerage, Zerodha or a crypto exchange from Accounts, Connectors."
+              testID="positions-empty"
             />
-          ))}
-        </Card>
+          </Card>
+        ) : (
+          <Card padding="none">
+            {positions.map(({ h, sec, summary }) => (
+              <ListRow
+                key={h.id}
+                title={sec?.symbol ?? h.securityId}
+                subtitle={`${qty(h.quantity)} · ${sec?.name ?? ''}`}
+                leading={
+                  <Avatar
+                    label={sec?.symbol ?? '?'}
+                    color={ASSET_CLASS_COLOR[sec?.assetClass ?? 'other']}
+                  />
+                }
+                onPress={() => setOpen(h)}
+                showChevron
+                trailing={
+                  <VStack align="flex-end" gap="xxs">
+                    <Amount
+                      amount={h.marketValue}
+                      currency={h.currency}
+                      format={{ cents: 'never' }}
+                    />
+                    <Text
+                      variant="caption"
+                      tone={summary.unrealized >= 0 ? 'income' : 'spending'}
+                      numeric
+                    >
+                      {pct(summary.unrealizedPct)}
+                    </Text>
+                  </VStack>
+                }
+                testID={`holding-${h.id}`}
+              />
+            ))}
+          </Card>
+        )}
       </View>
 
       <View>

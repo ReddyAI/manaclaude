@@ -168,14 +168,16 @@ export function Badge({
   label,
   tone = 'neutral',
   icon,
+  testID,
 }: {
   label: string;
   tone?: BadgeTone;
   icon?: IconName;
+  testID?: string;
 }) {
   const textTone = tone === 'neutral' ? 'muted' : tone;
   return (
-    <View style={styles.badge(tone)}>
+    <View style={styles.badge(tone)} testID={testID}>
       {icon ? <Icon name={icon} size="xs" tone={textTone} /> : null}
       <Text variant="micro" tone={textTone} uppercase>
         {label}
