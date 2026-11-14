@@ -758,3 +758,49 @@ The previous entry said a balance with no exchange rate is "counted as 0". Addin
 3. Home: the line under the net worth names it.
 4. Accounts: the Cash group says its total leaves it out.
 5. Settings, Exchange rates, "Refresh rates now". If a rate arrives, the lines go away and the account is counted.
+
+## 2026-11-14: Block M (spending totals with no exchange rate)
+
+Started from `main` at `b984339` (PR #27 merged), on the same branch name restarted from main. One commit. Changed: `apps/mobile/` and this log only. In the browser test, `POST /v1/accounts/cash`, `POST /v1/cash` and `PUT /v1/budgets` set up the data.
+
+### What changed
+
+`summarizeSpending` (shared) skips a transaction no rate converts and only counts it (`missingRate`); no screen showed that count, and some screens sum on their own. A "day rate" lookup falls back to the nearest rate the Worker has, so a transaction is skipped only when its currency has no rate to the report currency at all, the same case as block L.
+
+- `data/metrics.ts`: `transactionsWithoutRate` lists the transactions a spending or income total in a currency skips, with the same rule as `summarizeSpending` (in the date range, counted by `reportTreatment`, no rate); a test checks the count equals `missingRate`. `monthSpending` also returns `noRate` for this month.
+- `features/currency/missingRates.ts` (new): the wording. One transaction is named with its amount and date ("Leaves out "Migros" (CHF 42.50, Nov 14): there is no CHF to USD exchange rate yet. Refresh rates in Settings, Exchange rates."); several are counted with up to three names.
+- Home: a line on the spending card (the budget card covers the same month).
+- Budgets: a line under the month for its skipped transactions (it applies to the Budget and Spending plan views), and a line for a budget set in a currency with no rate, which the shared budget math counts as a 0 budget ("The "Fees" budget is in CHF, and there is no CHF to USD exchange rate yet, so it counts as 0 here.").
+- Recaps: a line under "Spent" for the period shown.
+- Recurring: a line under "Bills and subscriptions per month" for an active bill or subscription with no rate; the monthly and next-30-days totals leave it out.
+- Transactions table (Compact look, wide screens): the footer says how many selected rows the selected total leaves out ("301 selected. 1 is not in the total: no exchange rate to USD.").
+- Numbers are unchanged.
+
+### Defaults chosen
+
+- The currency checked is the report currency in the chip; in Both mode the line speaks of the main one.
+- Only transactions that count in reports are listed (transfers, card payments, split wholes and excluded rows are not).
+- A recap stored by the Worker gets the same line, worked out on the phone from the same data and rates.
+- Income items on Recurring are not listed: the totals there are bills and subscriptions.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **1,368 tests** (shared 118, connectors 345, backend 313, deployment, runtime and recovery 46, mobile 546, up from 538). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192`; no config change.
+- 8 new mobile tests with invented data in `currency/__tests__/missingRates.test.tsx`, including one that checks the list matches `summarizeSpending`'s `missingRate`.
+- Each of 18 new guards was removed once by a script; every removal made a test fail. Two had no test at first (the end of the date range, and the table counting only selected rows); tests were added. A check for future months on Budgets was removed as unneeded (the date range is already empty).
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars`, `ALLOW_SAMPLE_SEED=true`, all migrations, `POST /v1/dev/seed`, a fresh database per run), with results read back from the Worker's API. **17 of 17 checks passed** (8 at 412 px; 9 at 1280 px, where the Compact table also shows). The Worker had no CHF rate. A CHF cash wallet, a CHF 42.50 cash expense and a CHF budget were stored on the Worker. Home, Budgets and the monthly recap then named the expense with its amount and date, Home's spending total stayed exactly the same ($3,909.11), Budgets said the CHF budget counts as 0, and the table's footer said one selected row was not in the total.
+- Recurring was checked in Jest only: no route makes a recurring item in another currency.
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted; none is committed.
+- **No Android device or emulator was used.**
+
+### Remaining app work
+
+- The Spending plan's savings figure and its bills list convert with the latest rate and add nothing for a currency with no rate, without a line of their own (the Budgets line above covers the month's transactions only).
+- Investments (holdings value, cost and gains) also add nothing for a holding with no rate; not changed here.
+
+### How to test on the phone
+
+1. Make a cash account in a currency your Worker has no rate for (Accounts, Connectors tab, "Add a cash account", for example CHF), then add a quick cash expense in it.
+2. Home: the spending card names the expense, and the total doesn't change.
+3. Budgets and Month in review: the same line.
+4. Settings, Exchange rates, "Refresh rates now". If a CHF rate arrives, the lines go away and the expense is counted.

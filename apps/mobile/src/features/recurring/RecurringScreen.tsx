@@ -27,6 +27,7 @@ import { useLookups, useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { Amount, DualAmount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { skippedItemsText } from '../currency/missingRates';
 import { pickDual, useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { setDecision, setRecurringStatus } from './actions';
 
@@ -85,6 +86,11 @@ export function RecurringScreen() {
         0,
       ),
     );
+    const noRate = active.filter(
+      (r) =>
+        r.kind !== 'income' &&
+        convertAmount(r.expectedAmount, r.currency, display.reportCurrency, data.fxRates) === null,
+    );
     const increases = active
       .map((r) => ({ r, inc: priceIncrease(r) }))
       .filter((x): x is { r: RecurringItem; inc: NonNullable<typeof x.inc> } => x.inc !== null);
@@ -97,6 +103,7 @@ export function RecurringScreen() {
       monthlyOut,
       upcoming,
       dueTotal,
+      noRateText: skippedItemsText(noRate, display.reportCurrency),
       increases,
       toReview,
     };
@@ -144,6 +151,11 @@ export function RecurringScreen() {
           <Text variant="caption" tone="muted">
             {`${m.bills.length} bills · ${m.subscriptions.length} subscriptions`}
           </Text>
+          {m.noRateText ? (
+            <Text variant="caption" tone="muted" testID="recurring-no-rate">
+              {m.noRateText}
+            </Text>
+          ) : null}
         </VStack>
       </Card>
 

@@ -25,6 +25,7 @@ import { useSettings } from '../../data/settingsStore';
 import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { skippedTransactionsText } from '../currency/missingRates';
 import { homeLeftOutText } from '../networth/leftOut';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { CashQuickAddButton } from '../transactions/CashQuickAdd';
@@ -88,6 +89,8 @@ export function DashboardScreen() {
   const delta = shownSpent - lastMonthSame;
   const daysLeft = spending.daysInMonth - spending.dayOfMonth + 1;
 
+  const spendingNoRate = skippedTransactionsText(spending.noRate, currency);
+
   const spendingCard = (
     <Card>
       <VStack gap="sm">
@@ -118,6 +121,11 @@ export function DashboardScreen() {
           />
           {delta <= 0 ? ' less than' : ' more than'} the same point last month
         </Text>
+        {spendingNoRate ? (
+          <Text variant="caption" tone="muted" testID="spending-no-rate">
+            {spendingNoRate}
+          </Text>
+        ) : null}
         <LineChart
           values={spending.cumulative}
           compare={spending.lastMonthCumulative}

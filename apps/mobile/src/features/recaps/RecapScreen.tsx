@@ -20,10 +20,12 @@ import { ListRow } from '../../design/components/ListRow';
 import { MoneyText } from '../../design/components/MoneyText';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
+import { transactionsWithoutRate } from '../../data/metrics';
 import { useLookups, useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { DualAmount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { skippedTransactionsText } from '../currency/missingRates';
 import { pickDual, useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { BackAction } from '../planning/BackAction';
 import { goReplace } from '../planning/navigate';
@@ -64,6 +66,14 @@ export function RecapScreen({ kind }: RecapScreenProps) {
     [data, display, kind, period, lookups],
   );
   const r = recap.main;
+  const noRate = useMemo(
+    () =>
+      skippedTransactionsText(
+        transactionsWithoutRate(data, lookups.treatment, period.start, period.end, currency),
+        currency,
+      ),
+    [data, lookups, period, currency],
+  );
 
   const diff = r.spending - r.previousSpending;
   const vs = kind === 'weekly' ? 'the week before' : 'the month before';
@@ -124,6 +134,11 @@ export function RecapScreen({ kind }: RecapScreenProps) {
             format={{ cents: 'never' }}
             testID="recap-spending"
           />
+          {noRate ? (
+            <Text variant="caption" tone="muted" testID="recap-no-rate">
+              {noRate}
+            </Text>
+          ) : null}
           <HStack gap="xs" wrap>
             <MoneyText
               amount={Math.abs(diff)}

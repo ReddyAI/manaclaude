@@ -10,6 +10,7 @@ import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
 import type { Lookups } from '../../data/selectors';
 import { Amount } from '../currency/Amount';
+import { selectedNoRateText } from '../currency/missingRates';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { describeTransaction, isListed } from './display';
 
@@ -80,6 +81,20 @@ export function TransactionsTable({
         rows
           .filter((r) => selected.has(r.key))
           .map((r) => ({ amount: r.txn.amount, currency: r.txn.currency, date: r.txn.date })),
+      ),
+    [rows, selected, display],
+  );
+
+  const selectedNoRate = useMemo(
+    () =>
+      selectedNoRateText(
+        rows.filter(
+          (r) =>
+            selected.has(r.key) &&
+            display.convert(r.txn.amount, r.txn.currency, display.reportCurrency, r.txn.date) ===
+              null,
+        ).length,
+        display.reportCurrency,
       ),
     [rows, selected, display],
   );
@@ -188,7 +203,11 @@ export function TransactionsTable({
       />
       {selected.size > 0 ? (
         <View style={styles.footer}>
-          <Text variant="label">{`${selected.size} selected`}</Text>
+          <Text variant="label" testID="table-selected">
+            {selectedNoRate
+              ? `${selected.size} selected. ${selectedNoRate}`
+              : `${selected.size} selected`}
+          </Text>
           <MoneyText
             amount={selectedTotal.amount}
             currency={selectedTotal.currency}
