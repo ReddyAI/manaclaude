@@ -10,6 +10,7 @@ import { readD1Migrations } from '@cloudflare/vitest-plugin';
 import { getPlatformProxy } from 'wrangler';
 import type { Env } from '../../src/env';
 import { createApp } from '../../src/api/app';
+import { createCashAccount, addCashTransaction } from '../../src/services/cash';
 import { createManualAccount, manualAccountSchema } from '../../src/services/accounts';
 import { ensureDefaultCategories } from '../../src/services/seed';
 import { updateSettings } from '../../src/services/settings';
@@ -197,6 +198,25 @@ beforeAll(async () => {
   await env.DB.prepare('INSERT INTO nightly_state VALUES (1, ?, ?, ?)')
     .bind(JSON.stringify(nightly), 'invented-abandoned-nightly-lease', 1794484800000)
     .run();
+  // Preserve edited-balance provenance, cash reversal generations and deleted
+  // creation identities, not only the newly added empty table schemas.
+  await env.DB.prepare('INSERT INTO manual_balance_overrides VALUES (?, 0, 2)')
+    .bind(unknown.account.id)
+    .run();
+  await env.DB.prepare('INSERT INTO deleted_manual_accounts VALUES (?, ?, ?)')
+    .bind('invented-deleted-key', 'invented-hash', 'invented-deleted-account')
+    .run();
+  const wallet = await createCashAccount(env.DB, {
+    name: 'Invented wallet',
+    currency: 'INR',
+    balance: 10000,
+  });
+  await addCashTransaction(env.DB, {
+    accountId: wallet.id,
+    amount: -300,
+    currency: 'INR',
+    date: '2026-11-01',
+  });
   const dump = await env.DB.prepare('PRAGMA miniflare_d1_export(?,?,?);')
     .bind(false, false)
     .raw<string[]>();
@@ -245,12 +265,12 @@ describe('private D1 and original-file recovery', () => {
       '--manifest-sha256',
       digest,
     ]);
-    expect(JSON.parse(stdout)).toEqual({ tables: 44, files: 4 });
+    expect(JSON.parse(stdout)).toEqual({ tables: 48, files: 4 });
   });
   it('restores all records, balances, notes, categories, splits, transfers and originals to new local D1/R2', async () => {
     const restored = join(root, 'restored');
     const result = await restoreLocal(bundle, digest, restored);
-    expect(result).toEqual({ tables: 44, files: 4 });
+    expect(result).toEqual({ tables: 48, files: 4 });
     const target = await getPlatformProxy<Env>({
       configPath: join(restored, 'wrangler.json'),
       remoteBindings: false,

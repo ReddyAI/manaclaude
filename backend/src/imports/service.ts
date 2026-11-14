@@ -774,6 +774,8 @@ async function commitLocked(
       // Fail the whole batch if a concurrent save/sync invalidated our review,
       // or another invocation reclaimed the lease. status is NOT NULL.
       sql: `UPDATE imports SET status = CASE WHEN status = 'committing' AND updated_at = ? AND NOT EXISTS (
+        SELECT 1 FROM json_each(?) j WHERE NOT EXISTS (SELECT 1 FROM accounts WHERE id = j.value)
+      ) AND NOT EXISTS (
         SELECT 1 FROM json_each(?) j JOIN transactions t
         ON t.account_id = json_extract(j.value, '$.accountId')
         AND t.currency = json_extract(j.value, '$.currency')
@@ -784,7 +786,16 @@ async function commitLocked(
           OR coalesce(t.import_fingerprint = json_extract(j.value, '$.fingerprint'), 0)
         )
       ) THEN status ELSE NULL END WHERE id = ?`,
-      params: [now, JSON.stringify(unreviewed), importId],
+      params: [
+        now,
+        JSON.stringify([
+          ...new Set(
+            newRows.map((r) => r.accountId).filter((id) => id && !created.some((a) => a.id === id)),
+          ),
+        ]),
+        JSON.stringify(unreviewed),
+        importId,
+      ],
       rows: 1,
     },
     ...bulkInsertSpecs(accountsTable, created),

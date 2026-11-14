@@ -7,7 +7,7 @@ import {
 } from '@manaclaude/shared';
 import { fromRow, insertStatement } from '../db/table';
 import { accountsTable, balanceSnapshotsTable } from '../db/tables';
-import { conflict } from '../util/errors';
+import { conflict, notFound } from '../util/errors';
 import { newId, nowIso, sha256Hex } from '../util/ids';
 
 const amount = z.number().int().refine(Number.isSafeInteger, 'Use whole, safe minor units.');
@@ -15,6 +15,11 @@ const date = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((v) => parseDateWithFormat(v, 'YYYY-MM-DD') !== null, 'Use a valid calendar date.');
+
+export const currentBalanceSchema = z
+  .object({ amount, asOf: z.iso.datetime().transform((v) => new Date(v).toISOString()) })
+  .strict()
+  .nullable();
 
 /** Backend-local contract. Shared/mobile adoption belongs to Claude. */
 export const manualAccountSchema = z
@@ -31,10 +36,7 @@ export const manualAccountSchema = z
     subtype: z.string().trim().min(1).max(100).nullable().default(null),
     openingBalance: z.object({ amount, date }).strict().nullable().default(null),
     // Required, including explicit null: omission must never mean a real zero balance.
-    currentBalance: z
-      .object({ amount, asOf: z.iso.datetime().transform((v) => new Date(v).toISOString()) })
-      .strict()
-      .nullable(),
+    currentBalance: currentBalanceSchema,
     includeInNetWorth: z.boolean().optional(),
   })
   .strict()
@@ -69,7 +71,7 @@ export interface ManualBalanceInfo {
   openingBalance: { amount: number; date: string } | null;
 }
 export interface AccountWithManualBalance extends Account {
-  /** Present only for accounts created by the general manual-account API. */
+  /** Present after manual creation or an explicit current-balance edit. */
   manualBalance?: ManualBalanceInfo;
 }
 export interface CreateManualAccountResponse {
@@ -77,13 +79,16 @@ export interface CreateManualAccountResponse {
   replayed: boolean;
 }
 
-const accountQuery = `SELECT a.*, m.account_id AS manual_account_id,
-  m.current_balance_known, m.opening_balance, m.opening_date
-  FROM accounts a LEFT JOIN manual_account_details m ON m.account_id = a.id`;
+export const accountQuery = `SELECT a.*, m.account_id AS manual_account_id,
+  b.account_id AS balance_override_id,
+  COALESCE(b.current_balance_known, m.current_balance_known) AS current_balance_known,
+  m.opening_balance, m.opening_date
+  FROM accounts a LEFT JOIN manual_account_details m ON m.account_id = a.id
+  LEFT JOIN manual_balance_overrides b ON b.account_id = a.id`;
 
-function accountFromRow(row: Record<string, unknown>): AccountWithManualBalance {
+export function accountFromRow(row: Record<string, unknown>): AccountWithManualBalance {
   const account: AccountWithManualBalance = fromRow(accountsTable, row);
-  if (row.manual_account_id !== null) {
+  if (row.manual_account_id != null || row.balance_override_id != null) {
     account.manualBalance = {
       currentKnown: row.current_balance_known === 1,
       openingBalance:
@@ -101,6 +106,15 @@ export async function listAccounts(db: D1Database): Promise<AccountWithManualBal
   return rows.results.map(accountFromRow);
 }
 
+export async function getAccount(db: D1Database, id: string): Promise<AccountWithManualBalance> {
+  const row = await db
+    .prepare(`${accountQuery} WHERE a.id = ?`)
+    .bind(id)
+    .first<Record<string, unknown>>();
+  if (!row) throw notFound('Account not found.');
+  return accountFromRow(row);
+}
+
 async function replay(
   db: D1Database,
   key: string,
@@ -108,7 +122,8 @@ async function replay(
 ): Promise<CreateManualAccountResponse | null> {
   const saved = await db
     .prepare(
-      'SELECT account_id, request_hash FROM manual_account_details WHERE idempotency_key = ?',
+      `SELECT account_id, request_hash FROM manual_account_details WHERE idempotency_key = ?1
+       UNION ALL SELECT account_id, request_hash FROM deleted_manual_accounts WHERE idempotency_key = ?1`,
     )
     .bind(key)
     .first<{ account_id: string; request_hash: string }>();

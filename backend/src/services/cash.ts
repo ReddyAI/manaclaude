@@ -1,18 +1,22 @@
 import type { Account, CurrencyCode, Id, LocalDate, Transaction } from '@manaclaude/shared';
 import { bulkInsertSpecs, runSpecs } from '../db/bulk';
 import { insertStatement, selectAll, selectOne } from '../db/table';
-import { accountsTable, transactionsTable, transferLinksTable } from '../db/tables';
-import { linkFromCandidate, linkIdsSpec } from './matcher';
-import { badRequest } from '../util/errors';
+import { accountsTable, transactionsTable } from '../db/tables';
+import { existingLinkSpecs, linkFromCandidate, linkIdsSpec } from './matcher';
+import { badRequest, conflict } from '../util/errors';
 import { newId, nowIso } from '../util/ids';
 import { makeTransaction } from './transactions';
+import { accountStateSql, guardedWrite } from './account-writes';
+import { getAccount } from './accounts';
 
 /** The quick-add target for a currency, created on first use ("Cash (INR)"). */
 export async function defaultCashAccount(db: D1Database, currency: CurrencyCode): Promise<Account> {
-  const existing =
-    (await selectOne(db, accountsTable, "type = 'cash' AND currency = ? AND is_default_cash = 1", [
-      currency,
-    ])) ?? (await selectOne(db, accountsTable, "type = 'cash' AND currency = ?", [currency]));
+  const existing = await selectOne(
+    db,
+    accountsTable,
+    "type = 'cash' AND currency = ? AND connection_id IS NULL AND external_id IS NULL ORDER BY is_default_cash DESC, created_at, id",
+    [currency],
+  );
   if (existing) return existing;
   return createCashAccount(db, { currency, name: `Cash (${currency})`, isDefault: true });
 }
@@ -71,7 +75,22 @@ export async function addCashTransaction(db: D1Database, entry: CashEntry): Prom
   if (!account) throw badRequest('That is not a cash account.');
   if (account.currency !== entry.currency)
     throw badRequest('The cash account uses another currency.');
-  const now = nowIso();
+  const state = await db.prepare(accountStateSql).bind(account.id).first<string>('state');
+  const current = await getAccount(db, account.id);
+  if (
+    !state ||
+    current.connectionId ||
+    current.externalId ||
+    current.type !== 'cash' ||
+    JSON.stringify(
+      Object.fromEntries(Object.keys(account).map((k) => [k, current[k as keyof Account]])),
+    ) !== JSON.stringify(account)
+  )
+    throw conflict('Cash account changed. Reload and try again.', 'account_changed');
+  const known = current.manualBalance?.currentKnown !== false;
+  if (known && !Number.isSafeInteger(account.balance + entry.amount))
+    throw badRequest('This entry would exceed the safe balance range.');
+  const now = nowIso(new Date(Math.max(Date.now(), Date.parse(account.updatedAt) + 1)));
   const txn = makeTransaction(
     {
       accountId: account.id,
@@ -89,14 +108,24 @@ export async function addCashTransaction(db: D1Database, entry: CashEntry): Prom
     },
     now,
   );
-  await db.batch([
-    insertStatement(db, transactionsTable, txn),
-    db
-      .prepare(
-        'UPDATE accounts SET balance = balance + ?, balance_as_of = ?, updated_at = ? WHERE id = ?',
-      )
-      .bind(entry.amount, now, now, account.id),
-  ]);
+  await guardedWrite(
+    db,
+    [{ sql: accountStateSql, id: account.id, state }],
+    [
+      insertStatement(db, transactionsTable, txn),
+      db
+        .prepare(
+          `INSERT INTO cash_entry_effects (transaction_id, account_id, amount, generation)
+          VALUES (?1, ?2, ?3, COALESCE((SELECT cash_generation FROM manual_balance_overrides WHERE account_id = ?2), 0))`,
+        )
+        .bind(txn.id, account.id, known ? entry.amount : 0),
+      db
+        .prepare(
+          'UPDATE accounts SET balance = balance + ?, balance_as_of = ?, updated_at = ? WHERE id = ?',
+        )
+        .bind(known ? entry.amount : 0, known ? now : account.balanceAsOf, now, account.id),
+    ],
+  );
   return txn;
 }
 
@@ -146,7 +175,23 @@ export async function recordAtmWithdrawals(
   // One default cash account per currency (created on first use).
   const cashByCurrency = new Map<CurrencyCode, Account>();
   for (const currency of new Set(eligible.map((t) => t.currency))) {
-    const all = [...accounts.values()].filter((a) => a.type === 'cash' && a.currency === currency);
+    const all = [...accounts.values()]
+      .filter(
+        (a) => a.type === 'cash' && a.currency === currency && !a.connectionId && !a.externalId,
+      )
+      .sort(
+        (a, b) =>
+          Number(b.isDefaultCash) - Number(a.isDefaultCash) ||
+          (a.createdAt < b.createdAt
+            ? -1
+            : a.createdAt > b.createdAt
+              ? 1
+              : a.id < b.id
+                ? -1
+                : a.id > b.id
+                  ? 1
+                  : 0),
+      );
     const cash =
       all.find((a) => a.isDefaultCash) ??
       all[0] ??
@@ -205,7 +250,13 @@ export async function recordAtmWithdrawals(
       transactionsTable,
       pairs.map((p) => p.deposit),
       'ignore',
-    ),
+    ).map((s) => ({
+      ...s,
+      sql: s.sql.replace(
+        'WHERE true',
+        `WHERE EXISTS (SELECT 1 FROM accounts WHERE id = json_extract(value, '$[${Object.keys(transactionsTable.columns).indexOf('accountId')}]'))`,
+      ),
+    })),
   );
   const inserted = await db
     .prepare('SELECT id FROM transactions WHERE id IN (SELECT value FROM json_each(?))')
@@ -228,11 +279,12 @@ export async function recordAtmWithdrawals(
   for (const p of made) byCash.set(p.cash.id, (byCash.get(p.cash.id) ?? 0) - p.out.amount);
   await runSpecs(db, [
     ...[...byCash.entries()].map(([id, delta]) => ({
-      sql: 'UPDATE accounts SET balance = balance + ?, updated_at = ? WHERE id = ?',
+      sql: `UPDATE accounts SET balance = CASE WHEN EXISTS (SELECT 1 FROM manual_balance_overrides
+        WHERE account_id = accounts.id AND current_balance_known = 0) THEN 0 ELSE balance + ? END, updated_at = ? WHERE id = ?`,
       params: [delta, now, id],
       rows: 1,
     })),
-    ...bulkInsertSpecs(transferLinksTable, links, 'ignore'),
+    ...existingLinkSpecs(links),
     linkIdsSpec(links, now),
   ]);
   return links.length;

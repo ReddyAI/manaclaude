@@ -67,7 +67,11 @@ export async function splitTransaction(db: D1Database, req: SplitRequest): Promi
         )
         .bind(req.idempotencyKey, 'split', parent.id, now),
       db
-        .prepare('INSERT INTO split_locks (parent_id, created_at) VALUES (?, ?)')
+        .prepare(
+          `INSERT INTO split_locks (parent_id, created_at) VALUES (?1,
+            CASE WHEN EXISTS (SELECT 1 FROM transactions WHERE id = ?1 AND is_split_parent = 0)
+            THEN ?2 ELSE NULL END)`,
+        )
         .bind(parent.id, now),
       db
         .prepare(

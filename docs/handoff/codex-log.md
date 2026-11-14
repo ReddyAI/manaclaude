@@ -475,3 +475,148 @@ Latest FX costs at most five D1 statements normally, six after a lost batch resp
 - Changes are confined to `backend/`, this log and the permitted `AGENTS.md` instruction update. No edits to mobile, Claude's log, shared packages, workflows, dependencies/lockfile, the Plaid switch or `CREDENTIALS_SECRET` implementation. No real provider/Plaid calls, private data, deployment or migration. Applying the additive migration and deploying the four-trigger Worker are rollout requirements; neither was performed here.
 
 **Final validation: `npm run check` passed — 1,082 tests** (shared 118, connectors 345, Worker 271 including 21 new nightly/latest cases, Node deployment/runtime/recovery 46, mobile 302), plus typecheck, lint and formatting. The actual Worker startup/authentication test and the 44-table recovery/resume test pass. The full check is rerun on the committed files before pushing. Main remained `372d1fe` at the final fetch. Checks use only process-local `NODE_OPTIONS=--max-old-space-size=6144`, `EXPO_OFFLINE=1`, `XDG_CONFIG_HOME=/tmp/manaclaude-test-config`, `WRANGLER_LOG_PATH=/tmp/manaclaude-wrangler` and `WRANGLER_SEND_METRICS=false`; no environment settings changed. `git diff --check` passes. Stop after opening this one PR; do not merge or begin queue item 2.
+
+## 2026-11-13 — Item 2: unconnected account editing and removal (Claude G)
+
+Started `codex/account-editing` from latest main **`f095391`**, after reading `CLAUDE.md`, `AGENTS.md`, both complete handoff logs and every Claude backend-request section, including the new D/E entry. GitHub verifies **#21 merged as `f095391` and #22 as `23fa3e3`**; #19/#20 remain in main. This implements queue item 2 only. Claude's F work is independent and no unmerged F code is assumed. **Claude can build G once this PR is merged and migration 0008/the corresponding Worker are deployed.** Codex does not merge it.
+
+### Implementation and defaults
+
+- New backend services: `account-editing.ts`, `account-deletion.ts`, `cash-deletion.ts`, and `account-writes.ts`. Route wiring is in `api/app.ts`; shared API declarations remain Claude-owned. Account detail and deletion preview each read one consistent D1 snapshot. A SHA-256 version/token binds the reviewed state. An ephemeral CHECK guard plus all effects commit in one D1 batch; a concurrent change aborts the whole batch. No stored lease or partially completed deletion.
+- Migration **`0008_account_management.sql` must precede this Worker**. It adds `manual_balance_overrides` (explicit provenance and cash baseline generation), `cash_entry_effects` (the actual quick-add balance effect), `deleted_manual_accounts` (creation-key tombstones), and `account_write_guard` (empty outside an atomic write), plus dependency indexes. It backfills cash effects only for eligible legacy manual entries. If a legacy entry's amount was edited, its original effect is unknowable and is recorded as NULL, rather than guessed. Existing amounts/balances are not recalculated. Migration is local-test-only here; no deployment or remote migration.
+- `services/accounts.ts` joins edited provenance into all account reads without per-account queries. Opening readings and original creation hashes remain intact. Existing/import-created accounts gain `manualBalance` only after an explicit current-balance choice; a rename alone does not reclassify old zero balances. Current balance edits never create income/expense transactions. Historical snapshots survive an unknown choice; an explicit reading upserts that UTC day's snapshot, as creation does.
+- Removal is deliberately **empty-account-only for every kind, including cash**. It never cascades through financial history. Undo an import using its existing route, or remove eligible hand-entered cash entries individually, then request a fresh deletion preview. Provider-identified/connected accounts, investment/recurring/goal/rule references and any saving import block removal. Even disabled rules and cancelled recurring items count. This PR does not add deletion/reassignment routes for those dependencies. A sum above 2,000 snapshots/direct import references/saved layout references refuses synchronous cleanup. A nonzero balance by itself is not a blocker: the preview includes that account/balance for confirmation.
+- Empty account removal deletes its snapshots and balance metadata; clears nullable direct references on retained import records and saved layouts. **All statement originals, immutable historical preview JSON, import history/status/counts, categories and rules stay.** Old previews referring to a removed account must be made again with a live destination; a missing destination is not silently recreated by commit. A deliberately new import can create a new file-named account under the existing import rules. A deleted manual creation key is retained permanently: retrying that original creation cannot resurrect the removed account.
+- Cash deletion reverses the **recorded quick-add effect**, which can differ from the transaction's subsequently edited amount. Existing `PATCH /v1/transactions/:id` remains unchanged: it does not maintain cash balances. Setting a current cash balance (known or unknown) starts a new baseline generation, so deleting any entry already stored at that moment cannot alter that explicit balance. This is based on when the balance was set, not the entry's transaction date or the entered as-of date. Future quick-adds record effects in the new generation. Baseline changes cost constant row work, not one write per historical transaction. Unknown cash remains unknown/zero-placeholder across quick-adds, ATM recording and deletion.
+- Quick-add and ATM fallback selection now consistently prefer an existing default wallet, then oldest `createdAt`, then lowest ID, within the currency and among unconnected/provider-unidentified cash accounts. Deleting an explicitly default cash wallet promotes that next wallet and clears other default flags for its currency. Deleting a nondefault leaves flags alone. Deleting the last wallet creates nothing immediately; the next quick-add/ATM need creates `Cash (CCC)` under the existing behavior. No balances/history move to the replacement.
+- To support deletion safely, existing writers recheck references at write time: cash quick-add, import commit, splits, receipt attachment, manual links and automatic/ATM link insertion. Deleted accounts/transactions cannot be recreated as dangling references by those stale in-flight operations. Public shapes stay unchanged; the additional race errors are below. No changes to category/rule/Ask AI/status or transaction-PATCH request/response contracts.
+
+### API contract for Claude
+
+All routes below require `Authorization: Bearer <APP_API_TOKEN>`. All JSON errors are exactly `{ "error": string, "message": string }`; treat `error` as the stable code and display `message` without parsing it. Common errors on every route: **401 `unauthorized`** (missing/wrong token), **503 `not_configured`** (Worker app token unset), **500 `internal`** (unexpected storage/server failure). JSON-body routes also return **400 `bad_request`** for absent/malformed JSON and **400 `invalid_body`** for schema rejection. No provider is called by these account routes.
+
+`AccountWithManualBalance` means the **entire existing shared `Account`** (all fields, not a partial patch), plus the existing optional metadata:
+
+```ts
+type AccountWithManualBalance = Account & {
+  manualBalance?: {
+    currentKnown: boolean;
+    openingBalance: { amount: number; date: string } | null;
+  };
+};
+```
+
+`Account` fields are exactly `id`, `name`, `institutionName`, `type`, `subtype`, `currency`, `balance`, `balanceAsOf`, `availableBalance`, `creditLimit`, `mask`, `connectionId`, `externalId`, `includeInNetWorth`, `hidden`, `isDefaultCash`, `interestRate`, `openedOn`, `createdAt`, `updatedAt`, using their existing shared types/nullability. No creation key, hash, effect, generation or internal guard leaks into responses. Every monetary value is signed safe-integer **minor units in account currency**. Account assets mean what is held; liability balances mean positive money owed, negative credit. Changing kind does not invert balances or transaction signs. All timestamps are ISO UTC strings; current balance inputs require a valid `Z` timestamp and normalize to milliseconds. Dates are real `YYYY-MM-DD` dates. **When `manualBalance.currentKnown` is false, render Unknown; the number 0 and timestamp are compatibility placeholders, not a reading.** Missing metadata retains the existing legacy/cash/provider behavior.
+
+#### GET /v1/accounts/:id
+
+No request body. **200** exactly `{ account: AccountWithManualBalance, version: string }`. `version` is an opaque lowercase 64-hex token for the whole account/provenance state, not a timestamp or a value clients compute. Additional error: **404 `not_found`**. Retry is a fresh read. Call before opening an edit form, and keep its version with the form's values. This route also reads provider accounts, although their writes below are refused.
+
+#### PATCH /v1/accounts/:id
+
+Exact JSON body (at least one change besides `expectedVersion`; omitted keys retain their values):
+
+```ts
+{
+  expectedVersion: string; // required token from GET detail or a successful PATCH
+  name?: string;          // trim, 1–100 characters
+  type?: 'checking' | 'savings' | 'credit_card' | 'cash' | 'brokerage' |
+    'retirement' | 'crypto' | 'loan' | 'mortgage' | 'property' | 'vehicle' |
+    'other_asset' | 'other_liability';
+  currentBalance?: { amount: number; asOf: string } | null;
+  includeInNetWorth?: boolean;
+}
+```
+
+Top-level and nested unknown keys are rejected. Currency, subtype, opening balance/date, provider fields, default-cash flag and hidden flag cannot be changed here. Subtype is preserved when kind changes. Both `connectionId` and `externalId` must be null. Non-cash kinds can change to another non-cash kind unless holdings/investment activity exists; cash cannot convert to/from another kind. Balances retain creation's safe-integer/sign/date rules. A stored opening reading cannot be later than the new current reading's UTC day. Null means unknown and forces exclusion from net worth unless explicitly requesting true (which is rejected). Otherwise omission of `includeInNetWorth` **preserves the existing switch**, including when unknown becomes known; G should offer the switch explicitly. No automatic currency conversion or balance inference from history. Explicit current balance clears `availableBalance` because it is no longer a provider reading.
+
+**200** exactly `{ account: AccountWithManualBalance, version: string }`, containing current persisted state and the new version. Additional errors: **404 `not_found`**; **409 `account_connected`** for any provider identity; **409 `account_kind_conflict`** for cash conversion or investment history preventing kind change; **409 `account_changed`** for a stale version or a write-time race; **400 `invalid_body`** for unknown+net-worth or opening/current chronology as well as schema validation.
+
+Retry: this is an optimistic absolute edit, **not a creation idempotency key**. After timeout/500/lost response, GET the detail. A successful original request invalidates its old version, so resending it returns 409 rather than overwriting a later change. If reloaded values already match the intended edit, show them as saved; otherwise present the reloaded values and require a deliberate new save with their version. Do not silently fetch a new version and resend old form values. Two writes in the same millisecond still get distinct updated timestamps/versions.
+
+#### GET /v1/accounts/:id/deletion-preview
+
+No body; no mutations. **200** exactly:
+
+```ts
+{
+  accountId: string;
+  account: AccountWithManualBalance; // authoritative account to show in confirmation
+  previewToken: string;             // opaque 64-hex token; required by DELETE
+  allowed: boolean;
+  blockers: Array<'account_connected' | 'account_not_empty' | 'account_in_use' |
+    'import_in_progress' | 'account_delete_too_large'>;
+  counts: {
+    transactions: number; balanceSnapshots: number; holdings: number;
+    investmentActivities: number; recurringItems: number; goals: number;
+    rules: number; imports: number; savedLayouts: number; savingImports: number;
+  };
+  removes: { accounts: 1; balanceSnapshots: number; manualBalance: boolean };
+  detaches: { imports: number; savedLayouts: number };
+  defaultCash: null | {
+    wasDefault: boolean;
+    nextAccountId: string | null;
+    createsOnNextUse: boolean;
+  };
+}
+```
+
+Counts include split children/parents, hidden records and disabled/cancelled dependencies. `imports`/`savedLayouts` count direct nullable references to detach; they are **not files to delete**. `savingImports` is the database-wide count of `committing` imports (a multi-account import may identify a destination only in preview JSON). `manualBalance` reports whether metadata exists to remove. A blocked preview still returns 200 and its whole explanation; `removes`/`detaches` describe what deletion would do **if allowed**, not work already performed. `account_in_use` means any holdings, investment activities, recurring items, goals or account-rule conditions. `account_delete_too_large` means `balanceSnapshots + imports + savedLayouts > 2000`. `defaultCash` is null for non-cash; otherwise it reports the next quick-add/ATM target after deletion, or creation on next use if no wallet remains. Additional error: **404 `not_found`**. Retry safely recomputes it; a token does not reserve/lock the account.
+
+#### DELETE /v1/accounts/:id
+
+Exact JSON body `{ previewToken: string }`; required 64-hex token, unknown keys rejected. **200** exactly `{ deletedAccountId: string, defaultCash: <the preview's defaultCash shape> }`. All removal/detachment/default selection effects are atomic. No undo endpoint for account deletion.
+
+Additional errors: **404 `not_found`**; **409 `account_delete_refused`** if any current preview blocker is present (GET preview for the full reasons); **409 `account_changed`** if the token is stale or state changes during the write. Refusal takes priority over a stale token when the account currently cannot be removed. Common body/auth/server errors above also apply. Retry never removes an additional account: the same ID is gone after success and then returns 404. After an uncertain result, GET detail; 404 confirms that ID is absent. If it remains, obtain and display a new preview before another delete; never silently replace the token and delete.
+
+#### DELETE /v1/transactions/:id
+
+No body. Only an unconnected, provider-unidentified **cash** account and a hand-entered transaction (`source: 'manual'`, no provider IDs, import ID/fingerprint, split parent/children/lock or transfer pointer/non-rejected link) qualify. Automatic ATM deposits do not qualify even though their source is manual. Reject/unlink transfers and undo splits first. A transaction's `kind` alone is not a link. Imported/provider/non-cash history cannot be deleted through this route.
+
+**200** exactly:
+
+```ts
+{
+  deletedTransactionId: string;
+  reversedBalanceAmount: number; // signed amount actually subtracted from cash balance
+  account: AccountWithManualBalance;
+}
+```
+
+Example: a quick-add expense of -500 reduced cash from 10000 to 9500; deleting it reports `reversedBalanceAmount: -500` and restores 10000. Even if its displayed amount was later edited to -900, the reversal is -500. If a new explicit balance was set after the entry was stored, reversal is 0. Unknown balances stay unknown and report 0. The current snapshot history is not rewritten; snapshots remain explicit historical readings. The entry's alerts and rejected link records are removed. Receipts pointing at it become `matchedTransactionId: null`, `status: 'needs_review'`; their records, images and parsed contents stay. Other transactions, merchant/category/rule/learned-example records and recurring schedules stay. Completed historical recaps are not synchronously regenerated.
+
+Additional errors: **404 `not_found`** for a missing transaction/account; **409 `cash_delete_refused`** for an ineligible entry/dependency; **409 `cash_balance_unknown`** when a legacy amount edit makes the original effect unknowable (set the cash account's explicit current balance, known or unknown, then retry); **409 `cash_balance_overflow`** if reversal would exceed safe integers; **409 `account_changed`** on concurrent changes. Retry after success returns 404 and never reverses twice. After timeout/500, GET the transaction: 404 confirms absence; if it still exists, reload it/account and try again deliberately. No delete replay key or automatic repeating cash insertion.
+
+#### Existing reads and creation/cash compatibility
+
+- **GET `/v1/accounts`**: no body, **200 `{ accounts: AccountWithManualBalance[] }`**. **GET `/v1/dataset`**: no body, **200 the existing `FinanceDataset`**, with `accounts` carrying the same extended account objects; all other fields are unchanged (`balanceHistory`, `transactions`, `transferLinks`, `categoryGroups`, `categories`, `tags`, `merchants`, `rules`, `budgets`, `goals`, `recurring`, `securities`, `holdings`, `taxLots`, `activities`, `prices`, `receipts`, `fxRates`, `connections`, `connectorSlotsUsed`, `settings`, `recaps`). Only common errors apply. Retries reload persisted edits/removals. List remains one D1 query.
+- **POST `/v1/accounts/manual`** keeps the exact request/201-or-200 response and every error documented in the PR #16 entry above. The existing **409 `account_missing`** now intentionally covers an original creation key whose account was removed; changed normalized payload with that key still yields **409 `idempotency_conflict`**. Original retries never resurrect it. Do not rotate the key automatically. A new, deliberate creation needs a new key.
+- **POST `/v1/cash`** retains exact body `{ amount: number, currency: string, categoryId?: string | null, name?: string, date?: string, notes?: string | null, accountId?: string }` and **201 `{ transaction: Transaction }`**, using the existing complete shared `Transaction` shape. Currency is three uppercase letters, amount nonzero safe minor units, name max 200, notes max 2000, date optional existing date validation/default-today behavior. Existing **400 `bad_request`** covers noncash/missing selection, wrong currency, invalid/nonzero amount and now unsafe resulting balance. Body errors/common errors remain; **404 `not_found`** can occur if the account disappears during the read; **409 `account_changed`** now refuses an in-flight account change/deletion/provider attachment. A successful quick-add to unknown cash stores the entry but keeps the account unknown/excluded. This pre-existing insertion route has **no idempotency key**: never blindly retry an uncertain successful insert. Reload transactions first. `POST /v1/accounts/cash` is unchanged.
+
+#### Existing writers: deletion-race guards, unchanged success shapes
+
+These are integration safeguards, not new screens. The exact existing shared `Transaction`, `TransferLink`, `Receipt`, `SplitLineInput` and import result types remain in effect. Their normal request/response bodies do not change. Common errors and JSON-body errors above apply where a JSON body is required.
+
+| Method/path                           | Exact body → successful response                                                                                                                                           | Domain errors and retry                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/transactions/:id/split`     | `{ idempotencyKey: string, lines: SplitLineInput[] }` → 201 `{ parent: Transaction, children: Transaction[], replayed: false }`, matching replay 200 with `replayed: true` | 404 `not_found`; 400 `bad_request`/`invalid_split`; 409 `split_conflict` now also covers a parent deleted after reading. Same original key replays an existing split; after a missing parent, reload instead of making another split. Lines remain 2–50, each `{amount,categoryId,name?,notes?,tagIds?,kind?}` under the existing field limits.                                                                                                                         |
+| `POST /v1/transactions/:id/link`      | `{ otherTransactionId: string }` → 201 `{ link: TransferLink }`                                                                                                            | 404 `not_found`, 400 `bad_request`, 409 `conflict`. Missing endpoints cannot create a dangling link. Retry uses the stored pair; an already active pair may return the existing conflict, so reload links first.                                                                                                                                                                                                                                                        |
+| `POST /v1/transfer-links/:id/confirm` | no body → 200 `{ link: TransferLink }`                                                                                                                                     | 404 `not_found`, 409 `conflict`; repeated confirmed link returns it, rejected pair stays refused. A deleted endpoint cannot be activated.                                                                                                                                                                                                                                                                                                                               |
+| `POST /v1/transfer-links/run`         | no body → 200 `{ linked: number, suggested: number }`                                                                                                                      | Only common errors; retry matches remaining eligible pairs and skips stored pairs. A stale candidate with a deleted endpoint is skipped.                                                                                                                                                                                                                                                                                                                                |
+| `POST /v1/receipts/:id/attach`        | `{ transactionId: string }` → 200 `{ receipt: Receipt }`                                                                                                                   | 404 `not_found`; new 409 `account_changed` when the transaction disappears during attachment. Retry the same existing pair after reload; never recreate a deleted transaction.                                                                                                                                                                                                                                                                                          |
+| `POST /v1/receipts/:id/split`         | `{ idempotencyKey: string }` → 201 `{ parent: Transaction, children: Transaction[], replayed: boolean }` (including existing replay)                                       | 404 `not_found`, 400 `bad_request`/`invalid_split`, 409 `split_conflict`. Uses the same parent-deletion guard and original-key replay as normal splitting.                                                                                                                                                                                                                                                                                                              |
+| `POST /v1/imports/:id/commit`         | `{ skipLines?: number[], keepLines?: number[] }` → 200 the existing `ImportCommitResult` (including optional warnings; full contract in #12/#16 above)                     | Existing 404 `not_found`; 400 `bad_request`, `invalid_body`, `import_parse_errors`, `import_account_required`, `import_currency_mismatch`, `import_duplicates_require_review`; 409 `conflict`, `import_preview_changed`. The last now also covers a destination disappearing during the write. After an uncertain save read `GET /v1/imports/:id`; a committed import stays committed, and a repeat commit remains 409. A missing destination requires a fresh preview. |
+
+Receipt uploads that attach/match and split-by-receipt use the same guarded helpers; original upload/matching responses remain unchanged. No request/response shape changes to `PATCH /v1/transactions/:id`, `/v1/categories`, `/v1/rules`, `/v1/ai/ask` or `/v1/ai/status`. G should add types in `packages/shared/src/api/` from this contract; Codex has not touched that file or any mobile file.
+
+### Validation and remaining limits
+
+Invented-data tests cover unknown/known/zero/signed balances and snapshots, strict input validation, read-back through both account endpoints, legacy/import-made account editing, original creation retries after deletion, stale versions/tokens, write-time races, full rollback, import/undo/file retention, dependency refusals, deterministic default-cash promotion/recreation, recorded cash reversals after amount edits and balance resets, unknown cash, receipt/image preservation and alert cleanup. Queries are metered inside batches; individual operations remain below Free's 50-query limit. Deletion of an account with 1,500 snapshots is tested without loading those snapshots into JS; above the declared cleanup cap it refuses instead of partially deleting. SQL dependency scans and production CPU still depend on actual data size; this is not production CPU/quota certification.
+
+Recovery now round-trips **48 tables** including the migration journal, retains edited provenance, a deleted creation identity and an actual cash entry's effect/generation, plus the four invented originals and saved nightly checkpoint. It resumes only on the disposable restored target. Use recovery code/migrations matching the backup schema; no private production backup/drill, real history migration or deployment was performed.
+
+Changes are confined to `backend/` and this log. No mobile/Claude log/shared/root/workflow/dependency/lockfile edits; no Plaid or real provider calls; no provider-switch or `CREDENTIALS_SECRET` implementation changes. Queue item 3 (Sophtron replay and SnapTrade authorization verification) and the later queue remain untouched. Final whole-repository validation is recorded below.
+
+**Final validation: `npm run check` passed — 1,202 tests** (shared 118, connectors 345, Worker 313 including 42 account-management cases, deployment/runtime/recovery 46, mobile 380), plus typecheck, lint and formatting. The final gate passed on the final implementation; only this validation note was appended afterward and checked for formatting. Initial targeted checks passed 135 cases; the expanded account suite passed 42, and the 48-table recovery suite passed 11. One full-check attempt found the new provenance table sorting before its foreign-key parent during restore; naming it `manual_balance_overrides` keeps it after `accounts`, and the full gate now passes. No recovery safeguards were weakened. The actual Worker startup/authentication smoke test passes.
+
+Main remained **`f095391`** at the final fetch. Claude's **open #23 (F)** touches mobile/shared API declarations/Claude's log only, so this PR does not depend on or include it. Checks used process-local `NODE_OPTIONS=--max-old-space-size=6144`, `EXPO_OFFLINE=1`, `XDG_CONFIG_HOME=/tmp/manaclaude-test-config`, `WRANGLER_LOG_PATH=/tmp/manaclaude-wrangler` and `WRANGLER_SEND_METRICS=false`; no published environment settings changed. `git diff --check` passes. Older Workers do not understand the new balance overrides or deletion tombstones: retaining additive tables alone does not make a Worker rollback preserve these new behaviors. Stop after opening this one PR; do not merge it or start item 3.
