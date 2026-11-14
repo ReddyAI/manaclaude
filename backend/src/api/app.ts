@@ -54,6 +54,9 @@ import {
 import { attachReceipt, searchReceipts, splitByReceipt, uploadReceipt } from '../receipts/service';
 import { addCashTransaction, createCashAccount } from '../services/cash';
 import { createManualAccount, listAccounts, manualAccountSchema } from '../services/accounts';
+import { accountDetail, accountPatchSchema, patchAccount } from '../services/account-editing';
+import { accountDeleteSchema, deletionPreview, deleteAccount } from '../services/account-deletion';
+import { deleteCashTransaction } from '../services/cash-deletion';
 import { loadDataset } from '../services/dataset';
 import { editTransaction } from '../services/edits';
 import { confirmLink, linkManually, listLinks, rejectLink } from '../services/links';
@@ -328,6 +331,25 @@ export function createApp(deps: AppDeps = {}) {
     return c.json(await loadDataset(c.env.DB));
   });
   app.get('/v1/accounts', async (c) => c.json({ accounts: await listAccounts(c.env.DB) }));
+  app.get('/v1/accounts/:id', async (c) =>
+    c.json(await accountDetail(c.env.DB, c.req.param('id'))),
+  );
+  app.patch('/v1/accounts/:id', async (c) => {
+    const input = await body(c, accountPatchSchema);
+    return c.json(await patchAccount(c.env.DB, c.req.param('id'), input, c.get('deps').now));
+  });
+  app.get('/v1/accounts/:id/deletion-preview', async (c) =>
+    c.json((await deletionPreview(c.env.DB, c.req.param('id'))).preview),
+  );
+  app.delete('/v1/accounts/:id', async (c) => {
+    const input = await body(c, accountDeleteSchema);
+    return c.json(
+      await deleteAccount(c.env.DB, c.req.param('id'), input.previewToken, c.get('deps').now),
+    );
+  });
+  app.delete('/v1/transactions/:id', async (c) =>
+    c.json(await deleteCashTransaction(c.env.DB, c.req.param('id'), c.get('deps').now)),
+  );
   app.post('/v1/accounts/manual', async (c) => {
     const input = await body(c, manualAccountSchema);
     const result = await createManualAccount(c.env.DB, input, c.get('deps').now);

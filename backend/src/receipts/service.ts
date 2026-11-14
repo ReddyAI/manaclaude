@@ -12,6 +12,7 @@ import {
 import type { Env } from '../env';
 import { completeJson, getAi, type AiDeps, type JsonSchema } from '../ai/provider';
 import { cleanMerchantName } from '../ai/merchant';
+import { guardedWrite } from '../services/account-writes';
 import { insertStatement, selectAll, selectOne, updateStatement } from '../db/table';
 import { categoriesTable, receiptsTable, transactionsTable } from '../db/tables';
 import { badRequest, notFound } from '../util/errors';
@@ -292,20 +293,30 @@ export async function attachReceipt(
   const txn = await selectOne(db, transactionsTable, 'id = ?', [transactionId]);
   if (!txn) throw notFound('Transaction not found.');
   const now = nowIso();
-  await db.batch([
-    db
-      .prepare('UPDATE transactions SET receipt_id = NULL, updated_at = ? WHERE receipt_id = ?')
-      .bind(now, receiptId),
-    db
-      .prepare('UPDATE transactions SET receipt_id = ?, updated_at = ? WHERE id = ?')
-      .bind(receiptId, now, transactionId),
-    updateStatement(
-      db,
-      receiptsTable,
-      { id: receiptId },
-      { matchedTransactionId: transactionId, status, updatedAt: now },
-    ),
-  ]);
+  await guardedWrite(
+    db,
+    [
+      {
+        sql: "SELECT CASE WHEN EXISTS (SELECT 1 FROM transactions WHERE id = ?1) THEN 'present' ELSE 'missing' END",
+        id: transactionId,
+        state: 'present',
+      },
+    ],
+    [
+      db
+        .prepare('UPDATE transactions SET receipt_id = NULL, updated_at = ? WHERE receipt_id = ?')
+        .bind(now, receiptId),
+      db
+        .prepare('UPDATE transactions SET receipt_id = ?, updated_at = ? WHERE id = ?')
+        .bind(receiptId, now, transactionId),
+      updateStatement(
+        db,
+        receiptsTable,
+        { id: receiptId },
+        { matchedTransactionId: transactionId, status, updatedAt: now },
+      ),
+    ],
+  );
   return { ...receipt, matchedTransactionId: transactionId, status, updatedAt: now };
 }
 

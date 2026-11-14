@@ -4,6 +4,7 @@ import { accountsTable, transferLinksTable } from '../db/tables';
 import { badRequest, conflict, notFound } from '../util/errors';
 import { nowIso } from '../util/ids';
 import { linkFromCandidate } from './matcher';
+import { guardedWrite } from './account-writes';
 import { getTransaction } from './transactions';
 
 export function getLink(db: D1Database, id: Id): Promise<TransferLink | null> {
@@ -27,32 +28,54 @@ async function activate(
 ): Promise<TransferLink> {
   const now = nowIso();
   try {
-    const res = await db.batch([
-      db
-        .prepare('UPDATE transfer_links SET status = ?, updated_at = ? WHERE id = ?')
-        .bind(status, now, link.id),
-      db
-        .prepare(
-          'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL',
-        )
-        .bind(link.id, now, link.outTransactionId, link.inTransactionId),
-      db
-        .prepare(
-          "DELETE FROM transfer_links WHERE status = 'suggested' AND id != ? AND (out_transaction_id IN (?, ?) OR in_transaction_id IN (?, ?))",
-        )
-        .bind(
-          link.id,
-          link.outTransactionId,
-          link.inTransactionId,
-          link.outTransactionId,
-          link.inTransactionId,
-        ),
-    ]);
-    if ((res[1]?.meta.changes ?? 0) !== 2) {
+    const res = await guardedWrite(
+      db,
+      [
+        {
+          sql: `SELECT CASE WHEN (SELECT count(*) FROM transactions
+        WHERE id IN (json_extract(?1, '$[0]'), json_extract(?1, '$[1]'))
+        AND transfer_link_id IS NULL) = 2
+        AND EXISTS (SELECT 1 FROM transfer_links WHERE id = json_extract(?1, '$[2]'))
+        THEN 'present' ELSE 'missing' END`,
+          id: JSON.stringify([link.outTransactionId, link.inTransactionId, link.id]),
+          state: 'present',
+        },
+      ],
+      [
+        db
+          .prepare(
+            `UPDATE transfer_links SET status = ?, updated_at = CASE WHEN
+          (SELECT count(*) FROM transactions WHERE id IN (?, ?)) = 2 THEN ? ELSE NULL END WHERE id = ?`,
+          )
+          .bind(status, link.outTransactionId, link.inTransactionId, now, link.id),
+        db
+          .prepare(
+            'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL',
+          )
+          .bind(link.id, now, link.outTransactionId, link.inTransactionId),
+        db
+          .prepare(
+            "DELETE FROM transfer_links WHERE status = 'suggested' AND id != ? AND (out_transaction_id IN (?, ?) OR in_transaction_id IN (?, ?))",
+          )
+          .bind(
+            link.id,
+            link.outTransactionId,
+            link.inTransactionId,
+            link.outTransactionId,
+            link.inTransactionId,
+          ),
+      ],
+    );
+    if ((res[2]?.meta.changes ?? 0) !== 2) {
       throw conflict('One side of this transfer is already linked to something else.');
     }
   } catch (e) {
-    if (e instanceof Error && e.name === 'ApiError') throw e;
+    if (
+      e instanceof Error &&
+      e.name === 'ApiError' &&
+      !('code' in e && e.code === 'account_changed')
+    )
+      throw e;
     throw conflict('One side of this transfer is already linked to something else.');
   }
   return { ...link, status, updatedAt: now };
@@ -145,7 +168,7 @@ export async function linkManually(db: D1Database, aId: Id, bId: Id): Promise<Tr
   if (!existing) {
     await db
       .prepare(
-        'INSERT INTO transfer_links (id, out_transaction_id, in_transaction_id, out_amount, out_currency, in_amount, in_currency, implied_rate, status, kind, match_score, matched_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO transfer_links (id, out_transaction_id, in_transaction_id, out_amount, out_currency, in_amount, in_currency, implied_rate, status, kind, match_score, matched_by, created_at, updated_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM transactions WHERE id = ?2) AND EXISTS (SELECT 1 FROM transactions WHERE id = ?3)',
       )
       .bind(
         link.id,

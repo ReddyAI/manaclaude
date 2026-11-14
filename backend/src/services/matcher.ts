@@ -195,20 +195,33 @@ export async function runTransferMatcher(
   let linked = 0;
   if (autoLinks.length > 0) {
     const results = await runSpecs(db, [
-      ...bulkInsertSpecs(transferLinksTable, autoLinks, 'ignore'),
+      ...existingLinkSpecs(autoLinks),
       linkIdsSpec(autoLinks, now),
     ]);
     linked = results.slice(0, -1).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
   }
   let suggested = 0;
   if (suggestedLinks.length > 0) {
-    const results = await runSpecs(
-      db,
-      bulkInsertSpecs(transferLinksTable, suggestedLinks, 'ignore'),
-    );
+    const results = await runSpecs(db, existingLinkSpecs(suggestedLinks));
     suggested = results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
   }
   return { linked, suggested };
+}
+
+/** Do not recreate links whose endpoints were deleted after the matching read. */
+export function existingLinkSpecs(links: TransferLink[]): StatementSpec[] {
+  const fields = Object.keys(transferLinksTable.columns);
+  const out = fields.indexOf('outTransactionId');
+  const into = fields.indexOf('inTransactionId');
+  return bulkInsertSpecs(transferLinksTable, links, 'ignore').map((s) => ({
+    ...s,
+    sql: s.sql.replace(
+      'WHERE true',
+      `WHERE EXISTS (SELECT 1 FROM transactions
+      WHERE id = json_extract(value, '$[${out}]')) AND EXISTS (SELECT 1 FROM transactions
+      WHERE id = json_extract(value, '$[${into}]'))`,
+    ),
+  }));
 }
 
 export function linkFromCandidate(
