@@ -812,3 +812,81 @@ Before the service fix, **11 of the initial 14 cases failed**, including an imme
 Changes are confined to `backend/` and this appended entry. No mobile, Claude-log, shared, root configuration, workflow, credentials, provider switch, dependency or lockfile edits. No deployment, production migration or real-data operation. Full-check results are recorded below before the sole branch push.
 
 **Final validation: `npm run check` passed — 1,462 tests** (shared 118, connectors 346, Worker 360 including all 15 new layout cases, deployment/runtime/recovery 46, mobile 592), plus typecheck, lint and formatting. Node **24.22.1**, npm **11.9.0**. Checks used process-local `NODE_OPTIONS=--max-old-space-size=6144`, `EXPO_OFFLINE=1`, `XDG_CONFIG_HOME=/tmp/manaclaude-test-config`, `WRANGLER_LOG_PATH=/tmp/manaclaude-wrangler` and `WRANGLER_SEND_METRICS=false`; no repository or published environment settings changed. Main remained `61084af` at the final fetch. Only this validation paragraph was appended after the full gate and checked for formatting; the tested implementation is unchanged. The original log bytes are preserved, and `git diff --check` passes. Open and attach this single focused PR, then stop; do not merge, deploy or start further backlog work.
+
+## 2026-11-14 — CSV date detection with unreadable lines
+
+Read `CLAUDE.md`, `AGENTS.md`, and both complete handoff logs in that order, including every backend-request section. GitHub confirmed **PR #31 merged** as **`b1b059cd192a9622d7f6f2b330570f0fc37dfe3c`**, and fetched main contained that merge before starting `codex/csv-usable-date-evidence`. After the chat paused, main advanced through #32/#33; read their complete new Claude-log entries and updated this branch to **`0ca2c03f31dca624a3eb36f42fec7065d5abe951`** before final validation. Their mobile/workflow changes are inherited, not part of this PR. The saved-preamble fix (#31), backend link completion (#28), and mobile link adoption (#30) are already delivered. This task addresses only Claude's “One unreadable line hides the date format” request.
+
+### Implementation and defaults
+
+- `packages/shared/src/import/csv.ts`, `suggestCsvMapping`: use the existing detector to identify cells readable in at least one supported date format, then detect a common format over those usable cells. No public types or other shared implementation changed. The existing preference order, day-first option, candidate list and ambiguity calculation are reused unchanged.
+- Filtering applies only to date evidence. The original file still goes through `parseCsvWithMapping` in full; unreadable dates, impossible calendar dates, missing date cells and footers remain explicit `{ line, message }` errors. No date is fabricated and no error row becomes a transaction. Commit still requires every parse-error line in `skipLines`.
+- Preserve the existing bounded sample (up to 199 body records after the header/preamble). Empty/all-invalid samples, missing date columns and mutually incompatible readable formats still require manual mapping. There is no majority vote or per-row format switching. A single usable date remains sufficient under the existing detector; day/month ambiguity is still reported even then. A valid date only beyond the sample does not cause a guess from an otherwise unusable sample.
+- Explicit and saved mappings still take precedence. A date readable in another format remains an error under the chosen explicit format. #31's current-request preamble behavior is untouched. Existing stored previews are immutable: make a fresh preview to benefit from corrected suggestion.
+
+### API contract for Claude
+
+No route, public field, schema or status code is added. The exact existing nested `CsvMapping`, `DateFormat`, `ImportPreviewRow`, `ParsedAccount`, `StatementCheck` and `ImportRecord` definitions and the complete general-import contract remain as documented in the preceding #31 entry and in `packages/shared/src/api/index.ts` / `src/import/{csv,types}.ts`. The affected CSV route behavior is below. All requests require `Authorization: Bearer <APP_API_TOKEN>`; JSON errors are exactly `{ error: string, message: string }`. Common errors: **401 `unauthorized`**, **503 `not_configured`** (app token absent), **500 `internal`** (unexpected server/storage failure). Dates remain `YYYY-MM-DD`, amounts integer minor units and line numbers one-based under the existing CSV parser.
+
+**POST `/v1/imports`** — multipart/form-data. Required `file`: nonempty upload, at most 20 MiB. Exact optional text fields: `format` (existing `csv | qif | ofx | sure_ndjson | actual_csv | pdf`; use `csv` here), `accountId`, `mapping` (JSON-encoded complete `CsvMapping`), `skipRows` (numeric preamble count, default 0), `preferDayFirst` (`'true' | 'false'`), `fromDate` / `toDate` (inclusive calendar dates), `accountMappings` (JSON object of source account label to destination ID), `currency` (three uppercase letters), `commit` (only exact `'true'` requests immediate save).
+
+**201** exactly `{ preview: ImportPreview, result: ImportCommitResult | null }`. The CSV preview retains this exact field shape, with the existing nested types cited above:
+
+```ts
+{
+  importId: string; format: ImportFormat; status: 'preview' | 'needs_mapping';
+  fileName: string; accountId: string | null;
+  rows: ImportPreviewRow[]; accountsToCreate: ParsedAccount[];
+  errors: { line: number; message: string }[]; warnings: string[];
+  counts: { total: number; new: number; alreadyImported: number; existing: number; needsAccount: number };
+  csv: null | {
+    headers: string[]; signature: string; suggestedMapping: CsvMapping;
+    missing: ('date' | 'amount' | 'description')[];
+    dateFormatAmbiguous: boolean; dateFormatCandidates: DateFormat[];
+    usedSavedMapping: boolean;
+  };
+  mapping: CsvMapping | null; statementCheck: StatementCheck | null;
+  periodStart: string | null; periodEnd: string | null;
+  sourceFormat?: 'monefy';
+  duplicateCandidates: { line: number; transactionIds: string[] }[];
+  dateRange: { from: string | null; to: string | null; excluded: number };
+  requiresDateConfirmation: boolean;
+}
+```
+
+Behavior: without an explicit/saved mapping, usable dates plus one unreadable line now produce `status: 'preview'`, a detected `mapping`, all readable transactions exactly once (including identical purchase occurrences), and the unreadable line in `errors`. `counts.total` counts readable rows, not errors. For example, two `23/11/2026` purchases around an unreadable line produce two November 23 rows and one error, not `missing: ['date']`. `result` is null unless an immediate commit succeeds. With no consistent usable date evidence, return `status: 'needs_mapping'`, `mapping: null`, `csv.missing` containing `date`, no candidates and no parsed rows, as before; an explicit mapping is needed before row-level parsing.
+
+Ambiguous readable day/month dates still set `csv.dateFormatAmbiguous: true`, return both candidates, and warn `Dates could be MM/DD/YYYY or DD/MM/YYYY; read as <format>. Change it if that is wrong.` Backend preference remains explicit `preferDayFirst`, otherwise day-first for INR and month-first otherwise. Generic CSV ambiguity is still exposed through `csv`; `requiresDateConfirmation` is the existing Monefy-specific flag. The existing mobile `needsDateConfirmation` gate requires an explicit choice for unsaved ambiguous CSV layouts. This change does not introduce or remove a backend generic-CSV ambiguity gate.
+
+Additional errors: **400 `bad_request`** for malformed multipart/missing file, empty/oversize upload, invalid format/mapping JSON/account mappings/preference/currency/date range/destination, ambiguous destination selection, or PDF immediate commit; **400 `unreadable_file`** for a parser failure; existing **400 `ai_disabled`** for PDF; **400 `import_currency_mismatch`** for destination-currency disagreement. Per-line errors appear in the 201 preview, not as an upload rejection. With `commit=true`, those same errors now cause **400 `import_parse_errors`** before any transaction is written; immediate commit cannot acknowledge error lines and therefore cannot bypass review. Other commit errors below still apply.
+
+Retry: preview creation has no idempotency key and creates another stored preview/original each time. Request a fresh preview to correct an old `needs_mapping` result; never assume a stored preview was reparsed. After an uncertain immediate-save response, inspect import history/status before attempting another save. Preview retention is unchanged.
+
+**POST `/v1/imports/:id/commit`** — exact JSON `{ skipLines?: number[], keepLines?: number[], createAccounts?: boolean }`; `{}` uses defaults, named-account creation defaults to true. Skip lines are integers, keep lines positive integers; unknown keys retain the schema's existing stripping behavior. **200** exactly:
+
+```ts
+{
+  importId: string; added: number; matched: number; skipped: number;
+  accountsCreated: string[]; transactionIds: string[];
+  linked: number; suggested: number; warnings: string[];
+}
+```
+
+Every unreadable line must be explicitly present in `skipLines`; `keepLines` cannot repair it, nor does skipping a different readable line acknowledge it. An unacknowledged error gives **400 `import_parse_errors`**, exactly `{ error: 'import_parse_errors', message: 'Some rows could not be read. Correct the file or explicitly skip those lines before saving.' }`. Nothing is saved, and the import remains previewable/retryable. A reviewed retry can omit those lines plus any deliberately deselected readable rows; it saves only the remaining eligible rows, preserves identical occurrences, and includes acknowledged errors in `skipped`.
+
+Other existing errors: **404 `not_found`**; **400 `bad_request`** (malformed JSON, overlapping keep/skip, no usable preview/rows, unconfirmed Monefy dates, excessive save plan); **400 `invalid_body`**; **400 `import_account_required`**, **400 `import_currency_mismatch`**, **400 `import_duplicates_require_review`**; **409 `conflict`** for already committed/currently saving or changed matched records; **409 `import_preview_changed`** for write-time account/transaction/import changes. Destination checks, duplicate review and atomic writes are unchanged.
+
+Retry: after a known refusal, deliberately retry the same import with reviewed choices. After timeout/500/lost response, read the detail first. Committed means saved; resending commit returns 409 and inserts nothing. Still-saving imports retain the five-minute abandoned-lease recovery, with no overlapping retries. Changed data/destinations need a fresh preview. Saved-with-warning is committed and must not be imported again as a retry.
+
+**GET `/v1/imports/:id`** — no body; **200** exactly `ImportDetail` (`ImportRecord` plus `{ preview: ImportPreview | null }`). `ImportRecord` fields remain `id`, `format`, `status`, `accountId`, `fileName`, `contentType`, `size`, `sha256`, `r2Key`, `rowsTotal`, `rowsAdded`, `rowsMatched`, `rowsSkipped`, `error`, `periodStart`, `periodEnd`, `createdAt`, `updatedAt`, `committedAt`, with their existing types/nullability. Additional **404 `not_found`**. Safe read retries return persisted preview/errors/status/counts, without parsing or saving again. **GET `/v1/imports`** has no body and returns **200 `{ imports: ImportRecord[] }`**, newest 200; common errors only, safe read retry. It can locate an uncertain immediate-save attempt.
+
+**Mobile changes needed: none.** Existing date-choice, unreadable-line acknowledgement and per-row review controls already consume this contract; the backend/shared fix makes the usable preview reachable automatically. No new shared declarations, migration or dependency is required. No mobile file or Claude log was edited.
+
+### Regression evidence and validation
+
+- `packages/shared/test/import-csv.test.ts`: 29 invented-data cases across all fourteen date formats; malformed/impossible/empty dates and footers; default/day-first/month-first ambiguity and equal interpretations; empty/all-invalid/missing-column/incompatible/bounded-sample evidence; strict explicit parsing. Before the fix, 20 cases failed, reproducing hidden formats and lost ambiguity; all 29 pass with the fix.
+- `backend/test/import-csv-dates.test.ts`: 15 HTTP cases with local Worker/D1/R2. Verify exact row dates/amounts/line numbers and distinct fingerprints, stored preview readback, refusal without acknowledgement (including keep instead of skip), corrected commit, deliberate readable-row exclusion, persisted result counts and repeated-commit refusal, immediate-commit refusal, currency/preferences/ambiguity, missing evidence and explicit format precedence.
+- Existing #31 `import-layouts.test.ts` passes unchanged, including saved layouts with omitted/zero/shorter/longer preambles, explicit mappings, debit/credit and inverted amounts, duplicate occurrences, immediate commit and review safeguards. Existing import, safety and build-check suites pass too. Initial HTTP validation found four test-fixture accounts missing their required type; corrected the fixtures and reran all 15 new HTTP cases successfully. A typecheck found an inferred optional field incompatible with `Record<string, string>` in the parameter table; the table now declares its intended type.
+- All fixtures and external responses are invented/mocked. No provider or Plaid call, flag change, credential change, private data, production migration or deployment. Changes are confined to the authorized CSV function, its new shared/backend regression tests and this append-only log. No preview-retention, layout-deletion, reconciliation or other backlog work. The whole-repository check on updated main follows; only then will this single branch be pushed and its focused PR opened/attached.
+
+**Final validation: `npm run check` passed — 1,655 tests** (shared 147, connectors 346, Worker 375, deployment/runtime/recovery 46, mobile 741), plus typecheck, lint and formatting. This includes all 44 new regressions and all 15 unchanged #31 saved-layout cases. Node **24.22.1**, npm **11.9.0**. Updated installed dependencies with `npm ci` against main's committed lockfile; the first attempt failed on the unavailable default npm cache, and the retry using `/tmp/manaclaude-npm-cache` succeeded without manifest/lockfile changes. Checks used process-local heap/Expo/Wrangler temporary-directory settings and that temporary npm cache only. Main remained `0ca2c03` at the final fetch. The full gate passed on the final implementation; only this validation paragraph was appended afterward and checked for formatting. The original handoff bytes are preserved and `git diff --check` passes. No browser/physical-device run was performed for this parser-only change. Open and attach one focused PR, then stop; do not merge, deploy or start other backlog work.
