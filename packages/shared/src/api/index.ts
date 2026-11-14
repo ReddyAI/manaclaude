@@ -586,6 +586,11 @@ export interface ReceiptAttachRequest {
   transactionId: Id;
 }
 
+/** 200 of POST /v1/receipts/:id/attach. 409 `account_changed` when the transaction went away meanwhile. */
+export interface ReceiptAttachResponse {
+  receipt: Receipt;
+}
+
 /** POST /v1/receipts/:id/split: split the matched transaction by line items. */
 export interface ReceiptSplitRequest {
   idempotencyKey: string;

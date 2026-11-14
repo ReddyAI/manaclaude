@@ -486,3 +486,121 @@ Exchange rates (`GET /v1/fx/latest`, `POST /v1/fx/refresh`):
 ### Not possible until Codex's routes exist (not built)
 
 Block G (screens for the account editing routes) waits for Codex's contract to be merged. Also still waiting: entering a balance later for an account made as unknown; renaming or removing a hand-made account; cash deletion; category merging; export and backup in the app; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file.
+
+## 2026-11-14: Blocks G and H (account editing and removal, cash entry deletion, receipts to attach)
+
+Started from `main` at `361327b` on `claude/keen-keller-u1th1y`, after checking on GitHub that PR #23 (F) and PR #24 (Codex's account editing and deletion routes) are merged. One pull request, one commit per block; this log entry is in the block H commit. Everything is built on routes in `backend/src/api/app.ts` on main and follows the "API contract for Claude" in Codex's entry "Item 2: unconnected account editing and removal (Claude G)". Changed: `apps/mobile/`, `packages/shared/src/api/index.ts` (additive types only) and this log. No backend, connector, workflow, root-config, dependency or lockfile changes.
+
+### Shared types added (`packages/shared/src/api/index.ts`)
+
+From the #24 contract, word for word in shape: `AccountDetailResponse` (GET and PATCH /v1/accounts/:id), `AccountPatchRequest`, `AccountDeletionBlocker`, `AccountDeletionCounts`, `DefaultCashAfterDeletion`, `AccountDeletionPreview`, `AccountDeleteRequest`, `AccountDeleteResponse`, `CashTransactionDeleteResponse`. For an existing route the app now uses: `ReceiptAttachResponse` (`{ receipt }`, POST /v1/receipts/:id/attach). The existing `AccountWithManualBalance`, `ManualCurrentBalance`, `ReceiptAttachRequest` and `TransactionResponse` are reused. Nothing renamed, removed or reshaped.
+
+### Block G: account editing, removal and cash entry deletion
+
+Account page (`features/accounts/AccountDetailScreen.tsx`):
+
+- An account with a `connectionId` or an `externalId` shows why it is read-only, in plain words ("This account comes from your X connection, which keeps its name, kind and balance up to date..."), and offers nothing.
+- Any other account gets "Edit" and "Remove", once the Worker's data is on screen. With sample data on screen it says to load the data (or set up the backend) first.
+
+Editing (`accountEdit.ts`, `AccountEditSheet.tsx`, `actions.ts`):
+
+- The form is filled from `GET /v1/accounts/:id`, not from the phone's copy, and keeps that answer's `version`.
+- Name, kind, the balance now ("I know it" with an amount and the day it was true, or "Unknown") and "Count in net worth".
+- PATCH sends `expectedVersion` plus only what changed. The Worker's answer replaces the phone's copy of the account, then the data is loaded again.
+- Whenever the balance changes (amount, date, or known/unknown), the sheet says "You are changing the balance. Choose whether this balance counts in net worth." and the choice shown is always sent as `includeInNetWorth`, so the Worker never keeps an old switch by itself. Unknown turns the switch off and greys it.
+- 409 `account_changed`: the account is read again. If the Worker already has the edit, it shows as saved. Otherwise the form shows the Worker's values with "This account was changed somewhere else after you opened it, so nothing was saved... Make your change again and tap Save." Nothing is resent.
+- Timeout, network failure or 5xx: the account is read again before anything else, with the same two outcomes ("Your Worker's answer was lost, but it has your change." or "...it does not have your change, so nothing was saved"). If that read fails too, the sheet shows only "Check again"; Save is gone until a read works.
+- 409 `account_connected` reads the account again and shows it read-only. 404 says the account is no longer on the Worker and reloads the data. Other refusals (`account_kind_conflict`, `invalid_body`) show the Worker's message.
+
+Removing (`accountRemoval.ts`, `RemoveAccountSheet.tsx`):
+
+- Opening "Remove" reads `GET /v1/accounts/:id/deletion-preview` and shows the Worker's account with its balance ("Unknown" for an unknown one).
+- Blocked: "This account can't be removed yet." with every blocker, its count and what to do first. `account_not_empty` gives the number of transactions and says to undo the import or delete cash entries one at a time. `account_in_use` lists holdings, investment activities, recurring items, goals and rules by count and says switched-off rules and cancelled recurring items count. `import_in_progress` says to wait. `account_delete_too_large` gives the total against the 2,000 limit. `account_connected` says it can't be done here. Only "Check again" is offered.
+- Allowed: what goes (the account, N saved balance readings, a hand-entered balance), what is detached (imports keep the file and history; saved layouts), and that categories, rules, statements and import history stay. A nonzero balance gets its own line. For cash, which wallet takes quick entries: "Quick cash entries in EUR go to this account now. After removal they go to "Euro B"." or that the next quick entry makes "Cash (EUR)".
+- "Remove "name"" sends `DELETE` with the token of the preview on screen and nothing else. 409 `account_changed` or `account_delete_refused`: the new preview is shown with a notice and must be confirmed again; its token is never used by itself. A lost answer: `GET /v1/accounts/:id`; 404 means removed, otherwise the new preview is shown; if that read fails, only "Check again".
+- After removal the account page says "Account removed" with where quick cash entries now go. The account and its balance readings leave the phone's data, the next wallet is marked as the default, and the data is loaded again.
+
+Deleting a hand-entered cash entry (`transactions/cashDelete.ts`, `CashDeleteSection.tsx`, `actions.ts`, `TransactionDetailSheet.tsx`):
+
+- Offered on a transaction's detail only when the contract allows: a cash account with no connection or provider id, `source: 'manual'`, no provider ids, no import id or fingerprint, not split, no transfer pointer and no link that is not rejected. That leaves out automatic ATM deposits (they carry `atm:` ids). A hand entry that is split or in a transfer (a suggested one counts) says what to undo first. Nothing is shown for other transactions or for sample data.
+- Asks once, then waits for the Worker (nothing changes on screen first). The detail then reads, for example, "Deleted. The cash balance went back up by ₹1,240.00, to ₹4,690.00." from `reversedBalanceAmount` and the Worker's account. Zero says a balance was entered by hand after the entry; an unknown balance says it stays unknown.
+- If the entry had a receipt: "Its receipt is kept and now waits to be attached to another transaction." with a "Receipts to attach" button (block H). The phone's copy of the receipt becomes `needs_review` with no transaction, as on the Worker.
+- `cash_delete_refused`, `cash_balance_unknown` ("...Enter the cash account's balance first (Accounts, the cash account, Edit; known or unknown), then delete again."), `cash_balance_overflow` and `account_changed` are each said in plain words, with "Nothing was deleted". A lost answer: `GET /v1/transactions/:id`; 404 means deleted, otherwise "it was not deleted"; if that read fails, only "Check again".
+
+Fixes found while building:
+
+- `/transactions/<id>` swapped to "Transaction not found" the moment the entry was deleted, hiding the result. The route now keeps the last transaction it showed (`TransactionRoute.tsx`).
+- A quick cash entry on a wallet whose balance is unknown no longer moves the 0 placeholder on the phone (`cash.ts`); the Worker keeps it unknown.
+- The phone picks the quick-entry wallet as the Worker does: default first, else the oldest, then the lowest id, among cash accounts with no connection (`pickCashAccount`).
+- The design system's `Switch` now also sets `aria-checked` and `aria-disabled`. The web build ignored `accessibilityState`, so its on/off state was invisible to screen readers in the browser.
+
+### Block H: receipts that have no transaction
+
+- `features/transactions/receiptInbox.ts`, `ReceiptsToAttachScreen.tsx`, route `src/app/transactions/receipts.tsx`.
+- Where it is reached from (my choice): a "Receipts to attach · N" chip on Transactions, next to "Possible transfers", shown only when N is above 0 and the Worker's data is on screen; and the button after a cash entry with a receipt is deleted.
+- The list comes from the dataset: receipts with no transaction or with status `needs_review`, newest first, leaving out photos still uploading from this phone (`pending-upload/` keys). Each row gives the shop, date, total and why it is waiting ("Has no transaction. Its old one was deleted, or the match was not clear." or "Attached, but your Worker was not sure...").
+- Opening one shows its photo. The copy on this phone is used when there is one. Otherwise `GET /v1/receipts/:id/image` is read with the token, with `cache: 'no-store'`, into a `data:` URI held only in the view's state (`fetchImageData` in `data/backend/client.ts`, `ReceiptImage.tsx`). Nothing is written to the phone; the string goes when the view closes. A failure says so, with "Try again". It is not fetched while sample data is on screen. The same viewer now works from a transaction's receipt thumbnail when the photo is not on the phone.
+- "Which purchase is it for?": money out, without another receipt, not split, not a linked transfer. The transaction an unsure match points at comes first, then the same amount in the same currency, then the fewest days apart. A search box narrows by name; 25 are shown.
+- Picking one asks "Attach this receipt to "X" on <date>?", then sends `POST /v1/receipts/:id/attach` once and waits. The Worker's receipt goes into the phone's data and the transaction points at it. 409 `account_changed`: "That transaction was deleted while the receipt was being attached, so nothing was attached..." and the data is loaded again. 404 likewise. A lost answer: the data is loaded again and the receipt checked; it is either shown as attached or "was not attached. Pick the transaction again". Nothing is resent by itself.
+- No "run now" buttons for AI jobs or the transfer matcher were added.
+
+### Defaults chosen
+
+- Balance dates are sent as noon UTC of the day typed, as the import form does, so the day reads the same in India and the US. Not after today, not before the opening balance date.
+- A negative balance is allowed for every kind except cash (overdrawn, or a credit on a debt). Changing kind does not flip signs; the form says so.
+- Unknown to known turns "Count in net worth" on, as making an account with a balance does; the sentence above the switch asks for the choice.
+- The kind is locked for cash and for an account with holdings or investment activity on the phone (the Worker would refuse). All other kinds are offered, including crypto, property and vehicle.
+- Edit and Remove are offered only with the Worker's data on screen. Provider accounts get no Remove (the preview would only say `account_connected`).
+- Removal, cash deletion and attaching wait for the Worker; nothing changes on screen first. A second tap before the answer is ignored.
+- Receipts list: newest first by when the Worker stored them.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **1,301 tests** (shared 118, connectors 345, backend 313, deployment, runtime and recovery 46, mobile 479, up from 420). The block G commit on its own also passed typecheck, lint, format and the 465 mobile tests it has. ESLint needed `NODE_OPTIONS=--max-old-space-size=8192` in the cloud container; no config change.
+- New mobile tests, all with invented data: `accounts/__tests__/accountEdit.test.ts` (13, form, checks and preview wording), `accountEditSheet.test.tsx` (9), `removeAccount.test.tsx` (8), `accountPage.test.tsx` (3), `transactions/__tests__/cashDelete.test.tsx` (12), `receiptInbox.test.ts` (6) and `receiptsToAttach.test.tsx` (8). The stand-in Worker in `data/backend/__tests__/helpers.ts` now records the fetch cache mode.
+- Each new guard was removed once (a script swapped the line, ran the test file and put it back). All 65 made a test fail: block G 50 (including the route keeping the deletion result), block H 15. One had no test at first (a hand entry on a non-cash account); a test was added. The route fix came from the browser run and got its own test, which fails without it. The Switch's `aria-*` state cannot be seen in Jest (the native renderer folds it into `accessibilityState`); it is checked only in the browser run below.
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars`, `ALLOW_SAMPLE_SEED=true`, migrations 0001 to 0008, `POST /v1/dev/seed`, a fresh database for each run), at 412 px and 1280 px. Every result was read back from the Worker's own API. **39 of 39 checks passed at each width** (78 of 78), on the final build.
+  - G: a connected account read-only with no Edit; rename sent as `{ expectedVersion, name: 'NRE Joint' }` and stored; set to unknown sent `{ currentBalance: null, includeInNetWorth: false }`, stored, shown as "Unknown" on the page and "Balance unknown" on Accounts; back to known with the switch offered on, sent with noon UTC of today and stored; a rename made through the API while the form was open gave the 409 notice with the Worker's name in the form, no second PATCH, then a deliberate save stored; a PATCH that reached the Worker but whose answer the browser dropped was shown as saved after one GET; a PATCH that never left showed the Worker's values and asked again; NRE's blocked preview showed both blockers and 7 transactions with no Remove button; an empty hand-made account (unknown balance) removed with one DELETE carrying the preview's token, 404 afterwards; a 409 on DELETE after a rename through the API showed the new name and removed only after a second tap; a default EUR wallet's preview named "Euro B", and after removal the Worker held Euro B as the default; deleting "Kirana store" said "went back up by ₹1,240.00, to ₹4,690.00" and the Worker's balance rose by exactly 124,000; a receipt uploaded and attached to "Pharmacy" was left `needs_review` with no transaction after deleting it, with the button shown; an entry whose amount was edited through the API got the `cash_balance_unknown` text and still existed; a linked ATM deposit offered no Delete.
+  - H: the chip read "Receipts to attach · 2", the Worker's count; the list had exactly those 2; the uploaded photo was read from `GET /v1/receipts/:id/image` and drawn; attaching to the first candidate stored the match on the Worker both ways; afterwards localStorage, sessionStorage, Cache Storage and IndexedDB held nothing of the photo and no image was left on the page.
+- **One answer was played by the browser:** the 409 `account_changed` from `POST /v1/receipts/:id/attach` (it needs a deletion inside the Worker's write). The message and the reload were checked; the Worker's receipt stayed unattached. Lost answers were made by the browser dropping the Worker's real answer.
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted afterwards; none is committed.
+- **No Android device or emulator was used.**
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **Receipt attach:** `attachReceipt` sets the target transaction's `receipt_id` even when it already has another receipt; that other receipt keeps `matchedTransactionId` pointing at it (read in `receipts/service.ts`, not run). The app does not offer such transactions. A 409 with a reason, or moving the old receipt to `needs_review`, would close it.
+- **Receipt image:** `GET /v1/receipts/:id/image` answers `cache-control: private, max-age=3600`, so a browser may keep the photo for an hour. The app asks for `no-store`; `no-store` from the Worker would make it certain for every client.
+- **Removal dead ends:** a recurring item (even cancelled), a goal or a holding blocks removal, and no route deletes them or moves them to another account (only `PATCH /v1/recurring/:id` with status exists). An account that ever had one cannot be removed.
+- **Account PATCH:** a `currentBalance.asOf` in the future is accepted (only its format is checked; read in the code, not run). There is no way to change the opening balance, the subtype or which cash wallet is the default.
+- **Cash deletion:** `cash_balance_unknown` asks for a new balance before an old edited entry can be deleted; that is a reset of the whole wallet's baseline for one entry. Unchanged from F: editing a cash amount does not move the balance.
+- Unchanged from earlier entries: the items listed under blocks D, E and F and before.
+
+### Not possible until Codex's routes exist (not built)
+
+Category merging; export and backup in the app; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file.
+
+### How to test on the phone
+
+Editing an account:
+
+1. Accounts, tap an account you made by hand (not one from a bank connection), tap Edit.
+2. Change the name, tap Save. "Saved." appears; close the sheet and the new name shows.
+3. Edit again, tap "Unknown", tap Save. The page shows the balance as Unknown.
+4. Edit again, tap "I know it", type today's balance, leave "Count in net worth" on, tap Save.
+5. Open an account from a bank connection: it should say why it can't be edited, with no buttons.
+
+Removing an account:
+
+1. Open a hand-made account that has transactions and tap Remove. It should say it can't be removed yet and why.
+2. Open an empty one (or make one in Import), tap Remove, read the list, tap Remove "name". The page says "Account removed".
+
+Deleting a cash entry:
+
+1. Add a quick cash expense, open it from Transactions, tap "Delete this cash entry", then Delete.
+2. It should say how far the cash balance moved. Check the wallet's balance on Accounts.
+
+Receipts to attach:
+
+1. If Transactions shows "Receipts to attach · N", tap it.
+2. Tap a receipt. Its photo loads (from your Worker if it is not on the phone).
+3. Tap the purchase it belongs to, then Attach. Open that purchase: the receipt is on it.

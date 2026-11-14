@@ -13,6 +13,7 @@ import { haptic } from '../../design/haptics';
 import { useFinance } from '../../data/store';
 import type { Lookups } from '../../data/selectors';
 import { Amount } from '../currency/Amount';
+import { goTo } from '../planning/navigate';
 import { setCategory, setReviewed, undoSplit, type CashDeleteOutcome } from './actions';
 import { CashDeleteSection } from './CashDeleteSection';
 import { CategoryPicker } from './CategoryPicker';
@@ -89,6 +90,19 @@ export function TransactionDetailSheet({
                     ? 'Its receipt is kept and now waits to be attached to another transaction.'
                     : `Its ${gone.receipts} receipts are kept and now wait to be attached to another transaction.`}
                 </Text>
+                <HStack>
+                  <Button
+                    label="Receipts to attach"
+                    icon="receipt"
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => {
+                      onClose();
+                      goTo('/transactions/receipts');
+                    }}
+                    testID="cash-deleted-receipts"
+                  />
+                </HStack>
               </VStack>
             ) : null}
             <Button label="Done" onPress={onClose} fullWidth testID="cash-deleted-done" />

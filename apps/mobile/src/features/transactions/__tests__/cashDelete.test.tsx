@@ -158,7 +158,7 @@ describe('deleting a cash entry', () => {
     expect(screen.getByTestId('cash-deleted-text').props.children).toBe(
       `Deleted. The cash balance went back up by ₹1,240.00, to ₹${(after.balance / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}.`,
     );
-    expect(screen.getByText(/Its receipt is kept/)).toBeTruthy();
+    expect(screen.getByTestId('cash-deleted-receipts')).toBeTruthy();
     const now = getFinance();
     expect(now.transactions.some((t) => t.id === kirana.id)).toBe(false);
     expect(now.accounts.find((a) => a.id === wallet.id)!.balance).toBe(after.balance);
