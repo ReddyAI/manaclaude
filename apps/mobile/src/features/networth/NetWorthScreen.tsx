@@ -17,7 +17,7 @@ import { Icon } from '../../design/components/Icon';
 import { MoneyText } from '../../design/components/MoneyText';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
-import { currentNetWorth, netWorthHistory } from '../../data/metrics';
+import { currentNetWorth, netWorthByType, netWorthHistory } from '../../data/metrics';
 import { useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
@@ -80,11 +80,8 @@ export function NetWorthScreen() {
     const nw = currentNetWorth(data, currency);
     const from = addMonths(today, -RANGE_MONTHS[range]);
     const history = netWorthHistory(data, currency).filter((p) => p.date >= from);
-    const byType = new Map<AccountType, number>();
-    for (const a of data.accounts) {
-      const v = display.convert(a.balance, a.currency, currency) ?? 0;
-      byType.set(a.type, (byType.get(a.type) ?? 0) + v);
-    }
+    // Only what net worth counts: accounts switched out of it or with an unknown balance are left out.
+    const { byType, unknown } = netWorthByType(data, currency);
     const securities = new Map(data.securities.map((s) => [s.id, s]));
     const holdings = data.holdings
       .map((h) => {
@@ -107,7 +104,7 @@ export function NetWorthScreen() {
       const k = x.sec?.assetClass ?? 'other';
       allocation.set(k, (allocation.get(k) ?? 0) + x.value);
     }
-    return { nw, history, byType, holdings, invested, costTotal, allocation };
+    return { nw, history, byType, unknown, holdings, invested, costTotal, allocation };
   }, [data, currency, range, today, display]);
 
   const point = scrub !== null ? m.history[scrub] : undefined;
@@ -221,6 +218,14 @@ export function NetWorthScreen() {
           </VStack>
         </Card>
       </View>
+
+      {m.unknown.length > 0 ? (
+        <Text variant="caption" tone="muted" testID="networth-unknown">
+          {m.unknown.length === 1
+            ? `Leaves out "${m.unknown[0]!.name}": its balance is unknown. Enter it on the account's page to count it.`
+            : `Leaves out ${m.unknown.length} accounts whose balance is unknown: ${m.unknown.map((a) => `"${a.name}"`).join(', ')}. Enter a balance on each account's page to count it.`}
+        </Text>
+      ) : null}
 
       <SectionHeader title="Investments" />
       <Card onPress={() => goTo('/networth/investments')} accessibilityLabel="Open investments">

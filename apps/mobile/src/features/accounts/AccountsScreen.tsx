@@ -171,6 +171,7 @@ export function AccountsScreen() {
             const accounts = data.accounts.filter((a) => g.types.includes(a.type) && !a.hidden);
             if (accounts.length === 0) return null;
             // An account whose balance nobody entered adds nothing to its group's total.
+            const unknown = accounts.filter(isBalanceUnknown);
             const total = display.total(
               accounts
                 .filter((a) => !isBalanceUnknown(a))
@@ -193,7 +194,16 @@ export function AccountsScreen() {
                     />
                   }
                 />
-                <Card padding="none">{accounts.map(accountRow)}</Card>
+                <VStack gap="xs">
+                  <Card padding="none">{accounts.map(accountRow)}</Card>
+                  {unknown.length > 0 ? (
+                    <Text variant="caption" tone="muted" testID={`group-unknown-${g.title}`}>
+                      {unknown.length === 1
+                        ? `The total leaves out "${unknown[0]!.name}": its balance is unknown.`
+                        : `The total leaves out ${unknown.length} accounts whose balance is unknown.`}
+                    </Text>
+                  ) : null}
+                </VStack>
               </View>
             );
           })}

@@ -604,3 +604,114 @@ Receipts to attach:
 1. If Transactions shows "Receipts to attach · N", tap it.
 2. Tap a receipt. Its photo loads (from your Worker if it is not on the phone).
 3. Tap the purchase it belongs to, then Attach. Open that purchase: the receipt is on it.
+
+## 2026-11-14: Blocks I, J and K (connect an assistant, matches after a receipt upload, unknown balances)
+
+Started from `main` at `b2ab93c`. When this chat began, PR #25 (G and H) was still open with its apk build running; I checked GitHub again until it merged, then moved the branch onto `main`. One branch, one pull request, one commit per block. Every screen uses routes already in `backend/src/api/app.ts`: `POST /v1/mcp/clients`, `POST /v1/receipts`, `POST /v1/receipts/:id/attach` and `GET /v1/dataset`. Changed: `apps/mobile/`, `packages/shared/src/api/index.ts` (two additive types), `package-lock.json` (one new app dependency) and this log. No backend, connector, workflow or root-config changes.
+
+### Shared types added
+
+`McpClientRequest` (`{ name, redirectUris }`) and `McpClientResponse` (`{ clientId, clientSecret: string | null }`), exactly as `POST /v1/mcp/clients` reads and sends them. Nothing renamed, removed or reshaped.
+
+### Block I: connecting an AI assistant
+
+- `features/settings/sections/AssistantsSection.tsx` (new, one line in `SettingsScreen.tsx`, below AI): "AI assistants" with the MCP server address (the Worker URL plus `/mcp`), a copy button, and a "Connect an assistant" row. With no backend set it says the backend is needed.
+- `features/assistants/ConnectAssistantScreen.tsx` (new) and route `src/app/assistants/index.tsx`: the server address again with a copy button and a line saying most assistants sign in by themselves; then a form for an assistant that asks for a client ID and secret: a name and 1 to 5 redirect addresses (add and remove rows).
+- After `201`: the client ID and the secret, each with a copy button, and a warning: "This secret is shown only now and can't be shown again." If the Worker sends no secret, only the ID is shown and the screen says so. "Done, I've pasted them" takes both off the screen.
+- The secret lives only in the screen's state. Nothing writes it to the device or logs it; it is gone on Done, when the screen closes (it is a pushed screen, not a tab, so closing unmounts it) and when the backend changes.
+- Copying uses the new `expo-clipboard` dependency (installed with `expo install`, version 58.0.4 for SDK 58). The secret is copied marked sensitive, so Android 13 and later don't preview it. If copying fails, the screen says to press and hold the text, which is selectable.
+- 503 `not_configured`: "Your Worker can't make assistant clients: its sign-in for assistants (OAuth) is not running, so nothing was made." A 4xx says nothing was made, with the Worker's reason. A lost answer, a timeout or a 5xx: "The answer from your Worker didn't arrive, so a client may have been made anyway. Nothing was sent again." The route has no retry key, so nothing is ever resent by itself; making another client is a deliberate tap. An answer that arrives after the backend changed is dropped and the screen says a client may exist on the previous backend.
+- `features/assistants/mcpClient.ts` holds the checks and the error wording; `copy.ts` the clipboard call. A `copy` icon was added to the design system's icon list.
+
+### Block J: matches right after a receipt upload
+
+- `features/transactions/actions.ts`: `uploadReceiptForMatches` sends `POST /v1/receipts` without a transaction and waits for the answer (90 seconds), instead of the old fire-and-forget upload. The Worker's receipt goes into the app's data, and a purchase it matched points at it.
+- `ReceiptMatches.tsx` (new) shows the answer:
+  - Matched by the Worker: "Your Worker attached it to "Starbucks" on Nov 14." with its reason ("Same amount, same day.") and the amount, then "Not this one? Other likely purchases" when it sent others.
+  - Not matched: "Likely purchases", best score first, each with the purchase, its date and account, the amount and the Worker's reason as a sentence, and an Attach button. One tap sends `POST /v1/receipts/:id/attach` once, then says "Attached to "name"."
+  - None: why, from the receipt's status (AI off, could not be read, no total or date, or no purchase with that amount within 3 days), and that it waits in Receipts to attach.
+- Attaching reuses H's `attachReceiptOnWorker` and `checkAttached`: 409 `account_changed` and 404 attach nothing and reload the data; a lost answer reloads and checks where the receipt is, with "Check again" if that fails. Nothing is resent by itself.
+- A lost upload answer reloads the data. If exactly one new receipt arrived, it says the Worker stored it but its likely purchases were lost, and where the receipt is now. Otherwise it says it may still be being read and to look in Receipts to attach before sharing again. The upload is never resent by itself.
+- Where it is used:
+  - The Android share sheet: with your Worker's data on screen, "Keep without matching" becomes "Let my Worker find the purchase", and the sheet then shows the answer. With sample data the old local behaviour stays.
+  - Receipts to attach: a new "Add a receipt photo" card (Take a photo and Choose a photo on the phone, Choose a photo on the web) that sends the photo and shows the answer in a sheet. This is also how a photo can be picked without a transaction.
+- `receiptMatches.ts` (new): the pure view of the answer (matched one apart, the rest best first, no duplicates), the reason as a sentence and the "why none" wording.
+
+### Block K: unknown balances added as 0
+
+- `data/metrics.ts`: `countsInNetWorth` (switched in and the balance is known) is now the one rule for the net worth total and history. The new `netWorthByType` splits by kind with that same rule and lists accounts with an unknown balance.
+- Net worth screen: the breakdown by kind used to add every account, including ones switched out of net worth and unknown ones. It now uses `netWorthByType`, so the kinds add up to the Assets and Liabilities totals above them. A line under the breakdown names the accounts left out for an unknown balance.
+- Goals (`features/planning/goalStatus.ts`, new): a linked account with an unknown balance, with no exchange rate to the goal's currency, or no longer in the data is left out and named on the goal ("Leaves out "NRE Savings" (balance unknown)."). When every linked account is left out the goal shows "Unknown" and "Progress is not known", with no bar. Before, an unknown debt counted as 0 owed showed a debt goal as paid off.
+- Planning: the retirement starting savings count only accounts that count in net worth.
+- Accounts: group totals already left unknown balances out; each group now says which account its total leaves out.
+- Searched every place the app adds balances. Nothing else adds an unknown balance; see "Remaining app work" for missing exchange rates.
+
+### Defaults chosen
+
+- Redirect addresses must be https, or http on localhost (the Worker accepts any URL). The same address twice is refused. Names are trimmed and 1 to 100 characters.
+- The MCP address is built from the backend URL saved in the app, which is the Worker's `PUBLIC_URL` when deployed by the workflow.
+- The secret screen is a pushed screen reached from Settings, so leaving it drops the secret.
+- The upload answer is waited for up to 90 seconds, as the old upload did.
+- The Worker's score decides the order but is not shown as a number; its reason is shown.
+- Attaching a likely purchase is one tap with no confirmation, as asked. A second tap while one is on its way does nothing; after a lost answer the other Attach buttons stay off until "Check again".
+- Closing the upload sheet while the photo is on its way drops the answer on screen; the receipt still lands in Receipts to attach.
+- If the data on screen no longer has the receipt on the purchase the Worker matched, that purchase is offered again with the others.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **1,350 tests** (shared 118, connectors 345, backend 313, deployment, runtime and recovery 46, mobile 528, up from 479). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192` in the cloud container; no config change.
+- 49 new mobile tests, all with invented data: `assistants/__tests__/connectAssistant.test.tsx` (19), `transactions/__tests__/receiptMatches.test.tsx` (18) and `networth/__tests__/unknownBalances.test.tsx` (12).
+- Each of 48 new guards was removed once by a script, which ran its test file and put it back; every removal made a test fail (I 19, J 17, K 12). Five did not at first: the three double-tap tests tapped after a re-render (rewritten to tap twice inside one `act`, as the cash account test does), and the check for more than five addresses was hidden by the duplicate check (the test now uses six different addresses). Two J guards survived because the code was not needed: a second reload for a likely purchase not on the device (every upload already reloads) and a filter the dedupe already covers. Both were removed.
+- Exported web build against a local Worker (`wrangler dev --local`, a throwaway `backend/.dev.vars`, `ALLOW_SAMPLE_SEED=true`, migrations 0001 to 0008, `POST /v1/dev/seed`, a fresh database per run), at 412 px and 1280 px. Every result was read back from the Worker's own API. **74 of 74 checks passed (37 at each width), on the final build.**
+  - I: the address and its copy; an http redirect refused with nothing sent; one POST with exactly `{ name, redirectUris }`; the ID and secret on screen equal the Worker's answer. The Worker knows the client: `/authorize` shows its page for both redirects and refuses another. It accepts the shown secret (`/token` with a made-up code answers `invalid_grant`) and refuses a wrong one (`invalid_client`). Copy puts the ID and secret on the clipboard. The secret was not in localStorage, sessionStorage, IndexedDB, Cache Storage or the console. It was off the page after Done, and after leaving the screen and coming back.
+  - J: a real upload stored with no transaction, and the real "could not be read" text. Likely purchases best first with the reason, then one tap attached on the Worker, with the receipt and the transaction pointing at each other. "Not this one" moved it to another purchase on the Worker. A 409 attached nothing and reloaded. A lost attach answer was checked and shown as attached, sent once. A lost upload answer found the stored receipt, sent once.
+  - K, set up with the Worker's own PATCH: NRE Savings and Auto Loan unknown, NRO Savings switched out. Net worth named both unknown accounts; the Savings row showed $24,311, High-Yield Savings alone. Home in Hyderabad and Pay off the car showed Unknown with the reason, Emergency fund was unchanged, and both Accounts groups named what their totals leave out.
+- **Played by the browser:**
+  - The 503 `not_configured` answer: the local Worker runs the OAuth provider, so its real route made real clients.
+  - The likely purchases and the Worker's own match in the upload answer: the local Worker can't run Workers AI, so it read no receipt and sent no candidates. Each upload still went to the Worker and stored a real receipt; only the answer's `match` and `candidates` were replaced. The match shown as "Your Worker attached it to" was not stored by the Worker.
+  - The 409 from attach.
+  - Lost answers: the request reached the Worker and the browser dropped the answer.
+- Not checked in the browser: a backend change while the secret is on screen (Jest only).
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted afterwards; none is committed.
+- **No Android device or emulator was used.** The share sheet, the camera, the Android clipboard's sensitive flag and the new native module in the APK are not checked here; CI builds the APK.
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **MCP clients:** there is no read or delete for clients made by `POST /v1/mcp/clients`, and no retry key. After a lost answer an unused client stays in `OAUTH_KV` with no way to see or remove it from the app.
+- **OAuth authorize:** `GET /authorize` with a redirect address the client did not register answers 500 (seen locally); a 400 would be clearer.
+- **MCP `list_accounts`** sends an unknown balance as `amount(a.balance, ...)`, which is the placeholder 0 (read in `mcp/tools.ts`, not run). An assistant would read it as a zero balance. Sending null, or leaving such accounts' balance out, would match the app.
+- **Receipts:**
+  - `POST /v1/receipts` has no retry key, so a lost answer can only be worked out by looking for a new receipt.
+  - The candidates and reasons are sent only in the upload answer; no read returns them later, so Receipts to attach can't show the Worker's reasons once the upload screen is closed.
+  - With AI on but not reachable (as locally), the receipt is stored as `failed` with no way to ask the Worker to read it again.
+- Unchanged from earlier entries: the items listed under blocks D to H and before.
+
+### Remaining app work
+
+- A balance in a currency with no exchange rate to the report currency is still counted as 0 in the net worth total, history and breakdown (`?? 0` after `convertAmount` in `data/metrics.ts`); goals now leave such accounts out. Showing those totals as incomplete needs a decision on what to show instead.
+- `packages/shared/src/planning/recap.ts` (not mine to edit) adds snapshots of accounts in net worth; an unknown account can't be in net worth, so it is not affected today.
+
+### Not possible until Codex's routes exist (not built)
+
+Category merging; export and backup in the app; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file; deleting goals or recurring items; deleting saved file layouts.
+
+### How to test on the phone
+
+Connecting an assistant:
+
+1. Settings, AI assistants. The MCP server address ends in /mcp. Tap the copy button and paste it into Claude (Settings, Connectors, Add custom connector). Claude signs in by itself with your owner password.
+2. Only if an assistant asks for a client ID and secret: tap "Connect an assistant", type its name, paste the redirect address it shows, tap "Make the client".
+3. Copy the client ID and the secret into the assistant. The secret is shown once; tap "Done, I've pasted them" when finished.
+
+A receipt with no transaction:
+
+1. Share a receipt photo to Billionaire from the gallery, then tap "Let my Worker find the purchase". Or open Transactions, "Receipts to attach", and tap "Take a photo" or "Choose a photo".
+2. Wait for "Sending the receipt to your Worker and reading it".
+3. If your Worker matched it, it says which purchase. Otherwise tap Attach on the right likely purchase. Open that purchase: the receipt is on it.
+
+Unknown balances:
+
+1. Edit a hand-made account and set its balance to Unknown.
+2. Net worth: the line under the breakdown names it, and the kinds add up to the totals.
+3. Planning: a goal linked to it shows Unknown and says why.
+4. Accounts: its group says the total leaves it out.

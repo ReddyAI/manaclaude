@@ -4,7 +4,6 @@ import {
   classifyAccountType,
   convertAmount,
   formatShortDate,
-  goalProgress,
   monthOf,
   parseMoneyInput,
   projectFire,
@@ -20,12 +19,14 @@ import { Banner, IconBadge, SectionHeader } from '../../design/components/Decor'
 import { HStack, VStack } from '../../design/components/Layout';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
+import { countsInNetWorth } from '../../data/metrics';
 import { useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { BackAction } from './BackAction';
+import { goalStatus, leftOutText } from './goalStatus';
 import { updatePlanning, usePlanning } from './usePlanning';
 
 type Field =
@@ -81,34 +82,60 @@ function AssumptionField({ field, planning }: { field: Field; planning: Planning
   );
 }
 
+function goalIcon(goal: Goal) {
+  return goal.kind === 'debt_payoff'
+    ? 'credit-card'
+    : goal.kind === 'purchase'
+      ? 'home'
+      : 'piggy-bank';
+}
+
 function GoalRow({ goal }: { goal: Goal }) {
   const data = useFinance();
   const today = useToday();
-  const progress = useMemo(() => {
-    const accounts = new Map(data.accounts.map((a) => [a.id, a]));
-    return goalProgress(
-      goal,
-      (id) => {
-        const a = accounts.get(id);
-        return a ? (convertAmount(a.balance, a.currency, goal.currency, data.fxRates) ?? 0) : 0;
-      },
-      monthOf(today),
+  const { progress, leftOut } = useMemo(
+    () => goalStatus(goal, data.accounts, data.fxRates, monthOf(today)),
+    [data.accounts, data.fxRates, goal, today],
+  );
+  const note = leftOutText(goal, leftOut);
+  if (!progress)
+    return (
+      <View style={styles.goal} testID={`goal-${goal.id}`}>
+        <HStack gap="md">
+          <IconBadge icon={goalIcon(goal)} color={goal.color} size="sm" />
+          <VStack flex={1} gap="xxs">
+            <Text variant="bodyStrong" numberOfLines={1}>
+              {goal.name}
+            </Text>
+            <Text variant="caption" tone="muted">
+              {goal.targetDate ? `By ${formatShortDate(goal.targetDate, today)}` : 'No date'}
+            </Text>
+          </VStack>
+          <VStack align="flex-end" gap="xxs">
+            <Text variant="bodyStrong" testID={`goal-unknown-${goal.id}`}>
+              Unknown
+            </Text>
+            <Text variant="caption" tone="muted">
+              of
+            </Text>
+            <Amount
+              amount={goal.targetAmount}
+              currency={goal.currency}
+              size="small"
+              tone="muted"
+              format={{ cents: 'never' }}
+            />
+          </VStack>
+        </HStack>
+        <Text variant="caption" tone="muted" testID={`goal-left-out-${goal.id}`}>
+          {`Progress is not known. ${note ?? ''}`.trim()}
+        </Text>
+      </View>
     );
-  }, [data.accounts, data.fxRates, goal, today]);
   return (
     <View style={styles.goal} testID={`goal-${goal.id}`}>
       <HStack gap="md">
-        <IconBadge
-          icon={
-            goal.kind === 'debt_payoff'
-              ? 'credit-card'
-              : goal.kind === 'purchase'
-                ? 'home'
-                : 'piggy-bank'
-          }
-          color={goal.color}
-          size="sm"
-        />
+        <IconBadge icon={goalIcon(goal)} color={goal.color} size="sm" />
         <VStack flex={1} gap="xxs">
           <Text variant="bodyStrong" numberOfLines={1}>
             {goal.name}
@@ -156,6 +183,11 @@ function GoalRow({ goal }: { goal: Goal }) {
         >{`${Math.round(progress.fraction * 100)}%`}</Text>
         {progress.fraction >= 1 ? <Badge label="Reached" tone="income" /> : null}
       </HStack>
+      {note ? (
+        <Text variant="caption" tone="muted" testID={`goal-left-out-${goal.id}`}>
+          {note}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -173,7 +205,7 @@ export function PlanningScreen() {
       data.accounts
         .filter(
           (a) =>
-            a.includeInNetWorth &&
+            countsInNetWorth(a) &&
             classifyAccountType(a.type) === 'asset' &&
             (a.type === 'brokerage' || a.type === 'retirement' || a.type === 'crypto'),
         )
