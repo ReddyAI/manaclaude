@@ -3,6 +3,7 @@ import {
   type Account,
   type CashResponse,
   type CashTransactionDeleteResponse,
+  type MatchRunResponse,
   type Receipt,
   type ReceiptAttachRequest,
   type ReceiptAttachResponse,
@@ -201,6 +202,18 @@ export function rejectSuggestion(linkId: string): void {
   void persist('not a transfer', before, () => api('POST', `/v1/transfer-links/${linkId}/reject`), {
     refreshAfter: true,
   });
+}
+
+/**
+ * Runs the Worker's transfer matcher over every unlinked transaction (POST
+ * /v1/transfer-links/run), then loads the data again so new links and
+ * suggestions show. Safe to run any number of times: the Worker never links
+ * a transaction twice.
+ */
+export async function runTransferMatching(): Promise<MatchRunResponse> {
+  const result = await api<MatchRunResponse>('POST', '/v1/transfer-links/run');
+  await refreshDataset();
+  return result;
 }
 
 /** Uploads a receipt photo from the phone and swaps the local record for the backend's. */

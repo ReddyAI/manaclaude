@@ -7,6 +7,8 @@ import type {
   AccountPatchRequest,
   AccountResponse,
   CreateCashAccountRequest,
+  ManualAccountRequest,
+  ManualAccountResponse,
 } from '@manaclaude/shared';
 import { api } from '../../data/backend/client';
 import { canSaveToBackend, scheduleRefresh } from '../../data/backend/sync';
@@ -29,6 +31,27 @@ export async function createCashAccount(body: CreateCashAccountRequest): Promise
     scheduleRefresh();
   }
   return account;
+}
+
+/**
+ * POST /v1/accounts/manual from the Accounts tab. Send a request again only
+ * unchanged, with its original key: the Worker then answers with the account
+ * the first send made (`replayed: true`) instead of making a second one.
+ */
+export async function createAccountByHand(
+  request: ManualAccountRequest,
+): Promise<ManualAccountResponse> {
+  const res = await api<ManualAccountResponse>('POST', '/v1/accounts/manual', request);
+  if (canSaveToBackend()) {
+    const { account } = res;
+    updateFinance((d) =>
+      d.accounts.some((a) => a.id === account.id)
+        ? d
+        : { ...d, accounts: [...d.accounts, account] },
+    );
+    scheduleRefresh();
+  }
+  return res;
 }
 
 // Account editing and removal (PATCH and DELETE /v1/accounts/:id) ------------

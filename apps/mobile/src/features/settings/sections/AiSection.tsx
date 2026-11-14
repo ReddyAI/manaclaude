@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import type { AiProvider } from '@manaclaude/shared';
 import { Icon } from '../../../design/components/Icon';
 import { ListRow } from '../../../design/components/ListRow';
 import { Switch } from '../../../design/components/Controls';
 import { isBackendReady, useBackendConfig } from '../../../data/backend/config';
+import { AiJobsSheet } from '../../ask/AiJobsSheet';
 import { goTo } from '../../planning/navigate';
 import { updateSettings, useSettings } from '../../../data/settingsStore';
 import { SettingsGroup, SettingsRow } from '../SettingsRow';
@@ -31,6 +33,7 @@ const PROVIDERS: { value: AiProvider; label: string; note: string }[] = [
 export function AiSection() {
   const settings = useSettings();
   const backendReady = isBackendReady(useBackendConfig());
+  const [jobsOpen, setJobsOpen] = useState(false);
   return (
     <SettingsGroup title="AI">
       {backendReady ? (
@@ -43,6 +46,17 @@ export function AiSection() {
           testID="settings-ask"
         />
       ) : null}
+      {backendReady ? (
+        <ListRow
+          title="Run AI jobs now"
+          subtitle="Categorizing, merchant names, bills, alerts and recaps, without waiting for tonight"
+          leading={<Icon name="sparkles" tone="accent" />}
+          onPress={() => setJobsOpen(true)}
+          showChevron
+          testID="settings-ai-jobs"
+        />
+      ) : null}
+      <AiJobsSheet visible={jobsOpen} onClose={() => setJobsOpen(false)} />
       <SettingsRow
         label="AI features"
         description={

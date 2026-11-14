@@ -78,6 +78,7 @@ export function NewAccountForm({
   busy,
   initialName = '',
   fixedCurrency = null,
+  types = TYPES,
   onCreate,
   onCancel,
 }: {
@@ -86,11 +87,13 @@ export function NewAccountForm({
   initialName?: string;
   /** The file's rows are in this currency, so the account must be too. */
   fixedCurrency?: CurrencyCode | null;
+  /** The types offered, first one chosen. Statement accounts when left out. */
+  types?: readonly ManualAccountType[];
   onCreate: (details: ManualAccountDetails) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initialName);
-  const [type, setType] = useState<ManualAccountType>('savings');
+  const [type, setType] = useState<ManualAccountType>(types[0] ?? 'savings');
   const [subtype, setSubtype] = useState<string | null>(null);
   const [currency, setCurrency] = useState<CurrencyCode | null>(fixedCurrency);
   const [known, setKnown] = useState<boolean | null>(null);
@@ -102,7 +105,9 @@ export function NewAccountForm({
   const [openingDate, setOpeningDate] = useState('');
 
   const liability = classifyAccountType(type) === 'liability';
-  const amountLabel = liability ? 'Amount owed' : 'Balance';
+  // Property and vehicles have a value rather than a balance.
+  const valued = type === 'property' || type === 'vehicle';
+  const amountLabel = liability ? 'Amount owed' : valued ? 'Value' : 'Balance';
   const parse = (text: string) => (currency ? parseAmountText(text, currency) : null);
   const balanceAmount = parse(balance);
   const openingAmount = parse(opening);
@@ -157,7 +162,7 @@ export function NewAccountForm({
         Type
       </Text>
       <HStack gap="xs" wrap>
-        {TYPES.map((t) => (
+        {types.map((t) => (
           <Chip
             key={t}
             label={ACCOUNT_TYPE_LABEL[t]}
@@ -211,7 +216,11 @@ export function NewAccountForm({
       )}
 
       <Text variant="label" tone="muted">
-        {liability ? 'Do you know what is owed today?' : 'Do you know the balance today?'}
+        {liability
+          ? 'Do you know what is owed today?'
+          : valued
+            ? 'Do you know what it is worth today?'
+            : 'Do you know the balance today?'}
       </Text>
       <HStack gap="xs" wrap>
         <Chip
