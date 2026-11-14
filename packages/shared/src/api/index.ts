@@ -57,6 +57,11 @@ export interface TransactionPatchRequest {
   reviewed?: boolean;
 }
 
+/** PATCH /v1/transactions/:id, POST /v1/transactions/:id/review and /category */
+export interface TransactionResponse {
+  transaction: Transaction;
+}
+
 /** POST /v1/transactions/:id/review */
 export interface ReviewRequest {
   reviewed: boolean;
@@ -487,6 +492,17 @@ export interface FxLatestResponse {
   /** When the provider published it. Show next to converted totals. */
   asOf: IsoDateTime | null;
   source: FxRate['source'] | null;
+}
+
+/**
+ * POST /v1/fx/refresh: fetches the latest rates now. Each number is how many
+ * rates that source stored (written again if already there). 0 when the
+ * source has no key, could not be reached or answered with an error; the
+ * Worker does not say which.
+ */
+export interface FxRefreshResponse {
+  openExchangeRates: number;
+  frankfurter: number;
 }
 
 /** GET /v1/fx/rates?from&to */

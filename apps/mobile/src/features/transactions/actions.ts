@@ -5,7 +5,8 @@ import {
   type ReceiptResponse,
   type SplitLineInput,
   type SplitResponse,
-  type Transaction,
+  type TransactionPatchRequest,
+  type TransactionResponse,
 } from '@manaclaude/shared';
 import { api } from '../../data/backend/client';
 import { mergeTransactions, persist, rememberReceiptUri } from '../../data/backend/sync';
@@ -20,7 +21,13 @@ import {
   applySplit,
   applyUndoSplit,
 } from './receiptSplit';
-import { applyConfirmTransfer, applyLinkTransfer, applyUnlinkTransfer } from './transfers';
+import { applyEdit } from './edit';
+import {
+  applyConfirmTransfer,
+  applyLinkTransfer,
+  applyRejectSuggestion,
+  applyUnlinkTransfer,
+} from './transfers';
 
 /**
  * Transaction edits (session A owns this file). Each one changes the local
@@ -43,7 +50,7 @@ export function newId(prefix: string): string {
 
 const nowIso = () => new Date().toISOString();
 
-type TxnResponse = { transaction: Transaction };
+type TxnResponse = TransactionResponse;
 const savedTxn = (r: TxnResponse) => mergeTransactions([r.transaction]);
 
 export function setReviewed(transactionId: string, reviewed: boolean): void {
@@ -100,6 +107,31 @@ export function setCategory(transactionId: string, categoryId: string): void {
   );
 }
 
+/**
+ * Saves an edit of name, date, amount, notes, kind, tags or "left out"
+ * (PATCH /v1/transactions/:id). Send only the fields that changed: the Worker
+ * marks each one as edited by hand, so syncs, imports, rules and the AI never
+ * change it again. The screen changes at once; a refused save is undone and
+ * the banner says why.
+ */
+export function editTransaction(transactionId: string, patch: TransactionPatchRequest): void {
+  if (Object.keys(patch).length === 0) return;
+  const now = nowIso();
+  const before = getFinance();
+  updateFinance((d) => ({
+    ...d,
+    transactions: d.transactions.map((t) =>
+      t.id === transactionId ? applyEdit(t, patch, now) : t,
+    ),
+  }));
+  void persist(
+    'edit',
+    before,
+    () => api<TxnResponse>('PATCH', `/v1/transactions/${transactionId}`, patch),
+    { onSaved: savedTxn },
+  );
+}
+
 // Transfers -----------------------------------------------------------------
 
 export function linkTransfer(aTransactionId: string, bTransactionId: string): void {
@@ -143,6 +175,19 @@ export function confirmTransfer(linkId: string): void {
       refreshAfter: true,
     },
   );
+}
+
+/**
+ * Turns down one suggested pair (POST /v1/transfer-links/:id/reject). The
+ * Worker keeps it as rejected so the matcher never proposes it again.
+ */
+export function rejectSuggestion(linkId: string): void {
+  const now = nowIso();
+  const before = getFinance();
+  updateFinance((d) => applyRejectSuggestion(d, linkId, now));
+  void persist('not a transfer', before, () => api('POST', `/v1/transfer-links/${linkId}/reject`), {
+    refreshAfter: true,
+  });
 }
 
 /** Uploads a receipt photo from the phone and swaps the local record for the backend's. */

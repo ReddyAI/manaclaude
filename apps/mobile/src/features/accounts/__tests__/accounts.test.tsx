@@ -109,6 +109,13 @@ describe('adding and repairing accounts', () => {
     expect(router.push).toHaveBeenCalledWith('/vault');
   });
 
+  it('opens the cash account form from the Connectors tab', async () => {
+    await render(<AccountsScreen />);
+    await fireEvent.press(screen.getByLabelText('Connectors'));
+    await fireEvent.press(screen.getByTestId('add-cash-account'));
+    expect(screen.getByTestId('cash-account-sheet')).toBeTruthy();
+  });
+
   it('Repair opens the repair flow for the same connection (planRepair)', async () => {
     setBackendConfigForTests({ url: 'https://api.demo.test', token: 'demo-token' });
     await render(<AccountsScreen />);
