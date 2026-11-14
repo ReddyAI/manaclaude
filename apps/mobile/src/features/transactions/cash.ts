@@ -10,6 +10,7 @@ import {
   type FinanceDataset,
   type Transaction,
 } from '@manaclaude/shared';
+import { isBalanceUnknown } from '../../data/manualBalance';
 import { compareNewestFirst } from './display';
 
 /**
@@ -26,14 +27,35 @@ export function quickAddCurrency(
 }
 
 /**
- * The cash account for a currency: the one marked as the default, else any
- * visible cash account in that currency. null when there is none.
+ * The cash account for a currency, picked as the Worker picks it for quick
+ * entries and ATM cash: among visible cash accounts with no connection, the
+ * one marked as the default, else the oldest (then the lowest id). null when
+ * there is none.
  */
 export function pickCashAccount(
   accounts: readonly Account[],
   currency: CurrencyCode,
 ): Account | null {
-  const cash = accounts.filter((a) => a.type === 'cash' && a.currency === currency && !a.hidden);
+  const cash = accounts
+    .filter(
+      (a) =>
+        a.type === 'cash' &&
+        a.currency === currency &&
+        !a.hidden &&
+        a.connectionId === null &&
+        a.externalId === null,
+    )
+    .sort((a, b) =>
+      a.createdAt !== b.createdAt
+        ? a.createdAt < b.createdAt
+          ? -1
+          : 1
+        : a.id < b.id
+          ? -1
+          : a.id > b.id
+            ? 1
+            : 0,
+    );
   return cash.find((a) => a.isDefaultCash) ?? cash[0] ?? null;
 }
 
@@ -166,9 +188,12 @@ export function applyAddCash(data: FinanceDataset, entry: CashEntry): FinanceDat
   return {
     ...data,
     accounts: data.accounts.map((a) =>
-      a.id === account.id
-        ? { ...a, balance: a.balance + signed, balanceAsOf: entry.now, updatedAt: entry.now }
-        : a,
+      a.id !== account.id
+        ? a
+        : // An unknown balance stays unknown (the Worker keeps it so); its 0 is a placeholder.
+          isBalanceUnknown(a)
+          ? { ...a, updatedAt: entry.now }
+          : { ...a, balance: a.balance + signed, balanceAsOf: entry.now, updatedAt: entry.now },
     ),
     transactions: [txn, ...data.transactions].sort(compareNewestFirst),
   };

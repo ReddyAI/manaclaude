@@ -150,3 +150,87 @@ export function errorText(e: unknown): string {
   if (e instanceof BackendError) return e.message;
   return 'Something went wrong. Try again.';
 }
+
+/**
+ * GET an image from the Worker (for example GET /v1/receipts/:id/image) and
+ * return it as a data: URI, held in memory only. Nothing is written to disk
+ * and the browser is told not to keep a copy, so the picture is gone once the
+ * screen that holds the string is closed. Tied to the saved backend like
+ * api(): an answer that arrives after the backend changed is dropped.
+ */
+export async function fetchImageData(
+  path: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<string> {
+  watchConfig();
+  const cfg = getBackendConfig();
+  const base = cfg.url.replace(/\/+$/, '');
+  if (!base || !cfg.token)
+    throw new BackendError(0, 'not_set', 'Set the backend URL and API token in Settings, Backend.');
+  const stale = () => getBackendConfig().scope !== cfg.scope;
+  const controller = typeof AbortController === 'undefined' ? null : new AbortController();
+  const timer = controller
+    ? setTimeout(() => controller.abort(), opts.timeoutMs ?? TIMEOUT_MS)
+    : null;
+  if (controller) pending.add(controller);
+  let res: Response;
+  let bytes: ArrayBuffer | null = null;
+  let text = '';
+  try {
+    res = await http.fetch(`${base}${path}`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${cfg.token}` },
+      cache: 'no-store',
+      signal: controller?.signal,
+    });
+    if (res.ok) bytes = await res.arrayBuffer();
+    else text = await res.text().catch(() => '');
+  } catch {
+    if (stale()) throw supersededError();
+    throw new BackendError(
+      0,
+      'offline',
+      "The backend can't be reached. Check your connection and the URL in Settings, Backend.",
+    );
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (controller) pending.delete(controller);
+  }
+  if (stale()) throw supersededError();
+  if (!res.ok || !bytes) {
+    let err: { error?: string; message?: string } = {};
+    try {
+      err = (text ? JSON.parse(text) : {}) as typeof err;
+    } catch {
+      err = {};
+    }
+    throw new BackendError(
+      res.status,
+      err.error ?? 'error',
+      message(res.status, err.error ?? '', err.message ?? ''),
+    );
+  }
+  const type = (res.headers.get('content-type') ?? 'image/jpeg').split(';')[0]!.trim();
+  return `data:${type};base64,${toBase64(new Uint8Array(bytes))}`;
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** Base64 without btoa, so it works the same in Hermes, browsers and tests. */
+export function toBase64(bytes: Uint8Array): string {
+  const out: string[] = [];
+  let i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const n = (bytes[i]! << 16) | (bytes[i + 1]! << 8) | bytes[i + 2]!;
+    out.push(B64[(n >> 18) & 63]! + B64[(n >> 12) & 63]! + B64[(n >> 6) & 63]! + B64[n & 63]!);
+  }
+  const rest = bytes.length - i;
+  if (rest === 1) {
+    const n = bytes[i]! << 16;
+    out.push(`${B64[(n >> 18) & 63]!}${B64[(n >> 12) & 63]!}==`);
+  } else if (rest === 2) {
+    const n = (bytes[i]! << 16) | (bytes[i + 1]! << 8);
+    out.push(`${B64[(n >> 18) & 63]!}${B64[(n >> 12) & 63]!}${B64[(n >> 6) & 63]!}=`);
+  }
+  return out.join('');
+}

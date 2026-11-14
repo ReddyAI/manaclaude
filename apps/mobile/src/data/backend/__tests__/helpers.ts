@@ -11,6 +11,8 @@ export interface Call {
   path: string;
   token: string;
   body: unknown;
+  /** The fetch cache mode asked for, if any. */
+  cache: RequestCache | undefined;
   aborted: () => boolean;
 }
 
@@ -49,6 +51,7 @@ export function fakeBackend(handlers: Record<string, Handler>) {
       path: url.pathname,
       token: ((init?.headers ?? {}) as Record<string, string>).authorization ?? '',
       body: typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined,
+      cache: init?.cache,
       aborted: () => init?.signal?.aborted ?? false,
     };
     calls.push(call);

@@ -1,4 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
+import { useBackendStatus } from '../../data/backend/status';
+import { canSaveToBackend } from '../../data/backend/sync';
 import { useRefreshControl } from '../../data/backend/useRefreshControl';
 import { useMemo, useState } from 'react';
 import { useWindowDimensions, View } from 'react-native';
@@ -21,6 +23,7 @@ import { reviewCount } from './reviewQueue';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { TransactionRow } from './TransactionRow';
 import { TransactionsTable } from './TransactionsTable';
+import { receiptsToAttach } from './receiptInbox';
 import { openSuggestions } from './transfers';
 
 type Filter = 'all' | 'review' | 'pending';
@@ -32,6 +35,7 @@ type Filter = 'all' | 'review' | 'pending';
  */
 export function TransactionsScreen() {
   const refreshControl = useRefreshControl();
+  useBackendStatus();
   const data = useFinance();
   const lookups = useLookups();
   const today = useToday();
@@ -59,6 +63,7 @@ export function TransactionsScreen() {
   );
   const reviewing = filter === 'review';
   const possible = useMemo(() => openSuggestions(data).length, [data]);
+  const toAttach = useMemo(() => receiptsToAttach(data).length, [data]);
 
   return (
     <Screen
@@ -96,6 +101,14 @@ export function TransactionsScreen() {
               icon="link"
               onPress={() => goTo('/transactions/transfers')}
               testID="open-possible-transfers"
+            />
+          ) : null}
+          {toAttach > 0 && canSaveToBackend() ? (
+            <Chip
+              label={`Receipts to attach · ${toAttach}`}
+              icon="receipt"
+              onPress={() => goTo('/transactions/receipts')}
+              testID="open-receipts-to-attach"
             />
           ) : null}
         </HStack>

@@ -43,6 +43,9 @@ export function Switch({
       accessibilityRole="switch"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ checked: value, disabled }}
+      // The web build reads only aria-* for the state.
+      aria-checked={value}
+      aria-disabled={disabled}
       disabled={disabled}
       testID={testID}
       hitSlop={8}

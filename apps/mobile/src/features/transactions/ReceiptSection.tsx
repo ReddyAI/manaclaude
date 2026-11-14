@@ -12,6 +12,8 @@ import { PressableScale } from '../../design/components/PressableScale';
 import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
 import { attachReceipt, removeReceipt } from './actions';
+import { ReceiptImage } from './ReceiptImage';
+import { isOnWorker } from './receiptInbox';
 import { pickReceiptImage, receiptSourcesAvailable, type ReceiptSource } from './receiptFiles';
 import { SplitByItemsSheet } from './SplitByItemsSheet';
 
@@ -97,9 +99,9 @@ export function ReceiptSection({
       </HStack>
       <HStack gap="md" align="flex-start">
         <PressableScale
-          onPress={() => receipt.localUri && setViewing(true)}
+          onPress={() => setViewing(true)}
           accessibilityLabel="Open receipt photo"
-          disabled={!receipt.localUri}
+          disabled={!receipt.localUri && !isOnWorker(receipt)}
           testID="receipt-thumbnail"
         >
           <View style={styles.thumb}>
@@ -127,7 +129,9 @@ export function ReceiptSection({
           ) : null}
           {!receipt.localUri ? (
             <Text variant="caption" tone="faint">
-              The photo is not on this device.
+              {isOnWorker(receipt)
+                ? 'The photo is not on this device. Tap it to load it from your Worker.'
+                : 'The photo is not on this device.'}
             </Text>
           ) : null}
         </VStack>
@@ -205,15 +209,13 @@ export function ReceiptSection({
         onClose={() => setViewing(false)}
         title={receipt.merchant ?? 'Receipt'}
       >
-        {receipt.localUri ? (
-          <Image source={{ uri: receipt.localUri }} style={styles.full} resizeMode="contain" />
-        ) : null}
+        {viewing ? <ReceiptImage receipt={receipt} testID="receipt-full" /> : null}
       </BottomSheet>
     </VStack>
   );
 }
 
-const styles = StyleSheet.create((theme, rt) => ({
+const styles = StyleSheet.create((theme) => ({
   thumb: {
     width: theme.size.avatarLg * 2,
     height: theme.size.avatarLg * 2.5,
@@ -224,6 +226,5 @@ const styles = StyleSheet.create((theme, rt) => ({
     backgroundColor: theme.colors.surfaceSunken,
   },
   image: { width: '100%', height: '100%' },
-  full: { width: '100%', height: rt.screen.height * 0.6 },
   itemName: { flex: 1, marginRight: theme.space.md },
 }));

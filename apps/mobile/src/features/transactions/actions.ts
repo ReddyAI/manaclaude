@@ -1,6 +1,11 @@
 import {
   todayLocal,
+  type Account,
   type CashResponse,
+  type CashTransactionDeleteResponse,
+  type Receipt,
+  type ReceiptAttachRequest,
+  type ReceiptAttachResponse,
   type ReceiptLineItem,
   type ReceiptResponse,
   type SplitLineInput,
@@ -8,11 +13,19 @@ import {
   type TransactionPatchRequest,
   type TransactionResponse,
 } from '@manaclaude/shared';
-import { api } from '../../data/backend/client';
-import { mergeTransactions, persist, rememberReceiptUri } from '../../data/backend/sync';
+import { api, BackendError, errorText, isSuperseded } from '../../data/backend/client';
+import {
+  canSaveToBackend,
+  mergeTransactions,
+  persist,
+  refreshDataset,
+  rememberReceiptUri,
+  scheduleRefresh,
+} from '../../data/backend/sync';
 import { fileForm, imageTypeOf } from '../../data/backend/upload';
 import { getFinance, updateFinance } from '../../data/store';
 import { applyAddCash, type CashEntry } from './cash';
+import { applyCashDelete, cashDeleteErrorText, reversedText } from './cashDelete';
 import {
   applyAttachReceipt,
   applyRemoveReceipt,
@@ -340,4 +353,173 @@ export function addCashTransaction(
     );
   }
   return id;
+}
+
+// Deleting a hand-entered cash entry -------------------------------------------
+
+export type CashDeleteOutcome =
+  | { kind: 'deleted'; text: string; receipts: number }
+  /** Nothing was deleted; `text` says why. */
+  | { kind: 'refused'; text: string }
+  /** The answer was lost and the check after it failed: check again before anything else. */
+  | { kind: 'unsure'; text: string };
+
+const txnPath = (id: string) => `/v1/transactions/${encodeURIComponent(id)}`;
+
+/** Receipts that pointed at the entry; the Worker keeps them, waiting for a transaction. */
+const receiptsOf = (id: string) =>
+  getFinance().receipts.filter((r) => r.matchedTransactionId === id).length;
+
+function dropCashEntry(id: string, account: Account | null): void {
+  if (canSaveToBackend()) updateFinance((d) => applyCashDelete(d, id, account, nowIso()));
+  scheduleRefresh();
+}
+
+/**
+ * DELETE /v1/transactions/:id. Waits for the Worker; nothing changes on screen
+ * before it answers. After a lost answer the entry is read again
+ * (checkCashDeleted); the delete is never sent again by itself. Null when the
+ * backend changed meanwhile.
+ */
+export async function deleteCashEntry(id: string): Promise<CashDeleteOutcome | null> {
+  const receipts = receiptsOf(id);
+  try {
+    const res = await api<CashTransactionDeleteResponse>('DELETE', txnPath(id));
+    dropCashEntry(id, res.account);
+    return {
+      kind: 'deleted',
+      text: `Deleted. ${reversedText(res.reversedBalanceAmount, res.account)}`,
+      receipts,
+    };
+  } catch (e) {
+    if (isSuperseded(e)) return null;
+    if (e instanceof BackendError && e.status === 404) {
+      dropCashEntry(id, null);
+      return { kind: 'deleted', text: 'This entry is no longer on your Worker.', receipts };
+    }
+    if (e instanceof BackendError && (e.offline || e.status >= 500))
+      return checkCashDeleted(id, receipts);
+    if (e instanceof BackendError && e.status === 409) {
+      if (e.code === 'account_changed') scheduleRefresh();
+      return { kind: 'refused', text: cashDeleteErrorText(e.code) ?? errorText(e) };
+    }
+    return { kind: 'refused', text: errorText(e) };
+  }
+}
+
+/** After a lost answer: GET the entry. 404 means it is gone; otherwise it was not deleted. */
+export async function checkCashDeleted(
+  id: string,
+  receipts = receiptsOf(id),
+): Promise<CashDeleteOutcome | null> {
+  try {
+    await api<TransactionResponse>('GET', txnPath(id));
+    return {
+      kind: 'refused',
+      text: "Your Worker's answer was lost, and the entry is still there, so it was not deleted. Try again if you still want to delete it.",
+    };
+  } catch (e) {
+    if (isSuperseded(e)) return null;
+    if (e instanceof BackendError && e.status === 404) {
+      dropCashEntry(id, null);
+      return {
+        kind: 'deleted',
+        text: "Deleted. Your Worker's answer was lost, so how far the cash balance moved is not known here. Pull down on Accounts to see the balance.",
+        receipts,
+      };
+    }
+    return {
+      kind: 'unsure',
+      text: `Your Worker did not answer, so it is not known whether the entry was deleted. Check again before doing anything else. ${errorText(e)}`,
+    };
+  }
+}
+
+// Attaching a receipt that is already on the Worker --------------------------
+
+export type AttachOutcome =
+  | { kind: 'attached'; receipt: Receipt }
+  | { kind: 'refused'; text: string }
+  | { kind: 'unsure'; text: string };
+
+/** The Worker's receipt replaces the app's copy; the transaction points at it. */
+function putAttached(receipt: Receipt): void {
+  if (!canSaveToBackend()) return;
+  const now = nowIso();
+  updateFinance((d) => ({
+    ...d,
+    receipts: d.receipts.map((r) =>
+      r.id === receipt.id ? { ...receipt, localUri: r.localUri ?? receipt.localUri } : r,
+    ),
+    transactions: d.transactions.map((t) =>
+      t.id === receipt.matchedTransactionId
+        ? { ...t, receiptId: receipt.id, updatedAt: now }
+        : t.receiptId === receipt.id
+          ? { ...t, receiptId: null, updatedAt: now }
+          : t,
+    ),
+  }));
+  scheduleRefresh();
+}
+
+/**
+ * POST /v1/receipts/:id/attach. Waits for the Worker. On 409 account_changed
+ * (the transaction went away meanwhile) or 404 the data is loaded again and
+ * nothing is attached. After a lost answer the data is loaded again first and
+ * the receipt is checked; the request is never sent again by itself. Null
+ * when the backend changed meanwhile.
+ */
+export async function attachReceiptOnWorker(
+  receiptId: string,
+  transactionId: string,
+): Promise<AttachOutcome | null> {
+  try {
+    const body: ReceiptAttachRequest = { transactionId };
+    const { receipt } = await api<ReceiptAttachResponse>(
+      'POST',
+      `/v1/receipts/${encodeURIComponent(receiptId)}/attach`,
+      body,
+    );
+    putAttached(receipt);
+    return { kind: 'attached', receipt };
+  } catch (e) {
+    if (isSuperseded(e)) return null;
+    if (e instanceof BackendError && e.status === 409 && e.code === 'account_changed') {
+      void refreshDataset();
+      return {
+        kind: 'refused',
+        text: 'That transaction was deleted while the receipt was being attached, so nothing was attached. The list is being loaded again; pick another transaction.',
+      };
+    }
+    if (e instanceof BackendError && e.status === 404) {
+      void refreshDataset();
+      return {
+        kind: 'refused',
+        text: 'Your Worker no longer has this receipt or that transaction, so nothing was attached. The list is being loaded again.',
+      };
+    }
+    if (e instanceof BackendError && (e.offline || e.status >= 500))
+      return checkAttached(receiptId, transactionId);
+    return { kind: 'refused', text: errorText(e) };
+  }
+}
+
+/** After a lost answer: load the data again and see where the receipt is now. */
+export async function checkAttached(
+  receiptId: string,
+  transactionId: string,
+): Promise<AttachOutcome | null> {
+  const loaded = await refreshDataset();
+  if (!loaded)
+    return {
+      kind: 'unsure',
+      text: 'Your Worker did not answer, so it is not known whether the receipt was attached. Check again before doing anything else.',
+    };
+  const receipt = getFinance().receipts.find((r) => r.id === receiptId);
+  if (receipt?.matchedTransactionId === transactionId && receipt.status === 'matched')
+    return { kind: 'attached', receipt };
+  return {
+    kind: 'refused',
+    text: "Your Worker's answer was lost and the receipt was not attached. Pick the transaction again if you still want it.",
+  };
 }
