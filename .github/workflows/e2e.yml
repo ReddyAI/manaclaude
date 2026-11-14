@@ -1,0 +1,63 @@
+# Browser tests: exports the web build, starts a local Worker per screen
+# width (wrangler dev --local, a fresh database, invented sample data and a
+# throwaway .dev.vars written at run time), and runs apps/mobile/e2e at
+# 412 px and 1280 px in Chromium.
+#
+# Needs no secrets and calls no provider: the Worker has no provider keys,
+# Plaid stays off, and the local AI binding is not available.
+# A separate check. It does not block merging unless it is made a required
+# check in the branch rules.
+name: Browser tests
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'connectors/**'
+      - 'backend/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Chromium for Playwright
+        working-directory: apps/mobile
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the browser tests
+        env:
+          E2E_OUT_DIR: ${{ runner.temp }}/billionaire-e2e
+        run: npm run e2e -w @manaclaude/mobile
+
+      - name: Keep the report and failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: billionaire-e2e-report
+          path: ${{ runner.temp }}/billionaire-e2e
+          if-no-files-found: ignore
+          retention-days: 14

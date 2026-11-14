@@ -1,11 +1,15 @@
 import { formatRate } from '@manaclaude/shared';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../design/components/Button';
 import { Text } from '../../../design/components/Text';
 import { VStack } from '../../../design/components/Layout';
 import { errorText, isSuperseded } from '../../../data/backend/client';
 import { isBackendReady, useBackendConfig } from '../../../data/backend/config';
+import { useBackendStatus } from '../../../data/backend/status';
 import { scheduleRefresh } from '../../../data/backend/sync';
+import { useFinance } from '../../../data/store';
+import { olderThanRatesText, rateRanges, rateRangeText } from '../../currency/rateRanges';
+import { useMoneyDisplay } from '../../currency/useMoneyDisplay';
 import {
   refreshRates,
   refreshText,
@@ -36,6 +40,18 @@ export function ExchangeRatesSection() {
   useEffect(() => {
     if (ready) void usdInrStore.load();
   }, [ready, config.scope]);
+
+  const data = useFinance();
+  const display = useMoneyDisplay();
+  const backend = useBackendStatus();
+  const reportCurrencies = useMemo(
+    () =>
+      display.mode === 'BOTH'
+        ? [display.primaryCurrency, display.secondaryCurrency]
+        : [display.reportCurrency],
+    [display.mode, display.primaryCurrency, display.secondaryCurrency, display.reportCurrency],
+  );
+  const ranges = useMemo(() => rateRanges(data, reportCurrencies), [data, reportCurrencies]);
 
   const refresh = async () => {
     if (sending.current) return;
@@ -102,6 +118,42 @@ export function ExchangeRatesSection() {
           ) : null
         }
       />
+      {ready ? (
+        <SettingsRow
+          label="How far back day rates go"
+          description={
+            backend.mode === 'live'
+              ? 'Reports convert each transaction with the rate on its day, or the nearest one your Worker has.'
+              : "Shown once your Worker's data has loaded; the app is showing sample data now."
+          }
+          below
+          control={
+            backend.mode === 'live' ? (
+              <VStack gap="sm" testID="rate-ranges">
+                {ranges.map((r) => {
+                  const older = olderThanRatesText(r);
+                  return (
+                    <VStack key={r.currency} gap="xxs" testID={`rate-range-${r.currency}`}>
+                      <Text variant="caption" tone={r.noRate ? 'pending' : 'default'}>
+                        {rateRangeText(r, display.reportCurrency)}
+                      </Text>
+                      {older ? (
+                        <Text
+                          variant="caption"
+                          tone="muted"
+                          testID={`rate-range-older-${r.currency}`}
+                        >
+                          {older}
+                        </Text>
+                      ) : null}
+                    </VStack>
+                  );
+                })}
+              </VStack>
+            ) : null
+          }
+        />
+      ) : null}
     </SettingsGroup>
   );
 }

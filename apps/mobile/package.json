@@ -11,7 +11,8 @@
     "build:web": "expo export --platform web --output-dir dist",
     "prebuild:android": "expo prebuild --platform android --no-install",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "jest --ci"
+    "test": "jest --ci",
+    "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "0.4.2",
@@ -52,6 +53,7 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@react-native/jest-preset": "0.88.1",
     "@testing-library/react-native": "14.1.0",
     "@types/jest": "^30.0.0",

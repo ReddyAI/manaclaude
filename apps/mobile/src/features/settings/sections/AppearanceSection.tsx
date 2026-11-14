@@ -39,7 +39,7 @@ export function AppearanceSection() {
                 </View>
               </View>
               <Text variant="bodyStrong">{LOOK_LABELS[look].name}</Text>
-              <Text variant="caption" tone="muted" numberOfLines={2}>
+              <Text variant="caption" tone="muted" testID={`look-${look}-description`}>
                 {LOOK_LABELS[look].description}
               </Text>
             </Pressable>

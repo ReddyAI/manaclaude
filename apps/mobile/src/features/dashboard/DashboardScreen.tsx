@@ -33,6 +33,7 @@ import { describeTransaction, isListed } from '../transactions/display';
 import { reviewCount } from '../transactions/reviewQueue';
 import { TransactionDetailSheet } from '../transactions/TransactionDetailSheet';
 import { TransactionRow } from '../transactions/TransactionRow';
+import { isBackendReady, useBackendConfig } from '../../data/backend/config';
 import { useBackendStatus } from '../../data/backend/sync';
 import { useRefreshControl } from '../../data/backend/useRefreshControl';
 import { AlertsEntry } from '../alerts/AlertsEntry';
@@ -50,6 +51,7 @@ export function DashboardScreen() {
   const { dashboardLayout } = useSettings();
   const { theme } = useUnistyles();
   const backend = useBackendStatus();
+  const backendConfig = useBackendConfig();
   const refreshControl = useRefreshControl();
   const [open, setOpen] = useState<Transaction | null>(null);
   const currency = display.reportCurrency;
@@ -100,10 +102,13 @@ export function DashboardScreen() {
               ? `Spent in ${formatMonth(spending.month).split(' ')[0]}`
               : `Spent by ${formatShortDate(addDays(`${spending.month}-01`, shownDay))}`}
           </Text>
-          <Badge
-            label={`${delta <= 0 ? 'Below' : 'Above'} last month`}
-            tone={delta <= 0 ? 'income' : 'spending'}
-          />
+          {delta !== 0 ? (
+            <Badge
+              label={`${delta < 0 ? 'Below' : 'Above'} last month`}
+              tone={delta < 0 ? 'income' : 'spending'}
+              testID="spending-vs-last-month"
+            />
+          ) : null}
         </HStack>
         <MoneyText
           amount={shownSpent}
@@ -111,16 +116,22 @@ export function DashboardScreen() {
           size="large"
           format={{ cents: 'auto' }}
         />
-        <Text variant="caption" tone="muted">
-          <MoneyText
-            amount={Math.abs(delta)}
-            currency={currency}
-            size="small"
-            tone="muted"
-            format={{ cents: 'never' }}
-          />
-          {delta <= 0 ? ' less than' : ' more than'} the same point last month
-        </Text>
+        {delta === 0 ? (
+          <Text variant="caption" tone="muted" testID="spending-delta">
+            The same as at this point last month
+          </Text>
+        ) : (
+          <Text variant="caption" tone="muted" testID="spending-delta">
+            <MoneyText
+              amount={Math.abs(delta)}
+              currency={currency}
+              size="small"
+              tone="muted"
+              format={{ cents: 'never' }}
+            />
+            {delta < 0 ? ' less than' : ' more than'} the same point last month
+          </Text>
+        )}
         {spendingNoRate ? (
           <Text variant="caption" tone="muted" testID="spending-no-rate">
             {spendingNoRate}
@@ -247,8 +258,12 @@ export function DashboardScreen() {
     >
       {backend.mode === 'sample' ? (
         <Banner icon="info">
-          <Text variant="caption" tone="muted">
-            Sample data. Set up the backend in Settings to see your own accounts.
+          <Text variant="caption" tone="muted" testID="sample-banner">
+            {!isBackendReady(backendConfig)
+              ? 'Sample data. Set up the backend in Settings to see your own accounts.'
+              : backend.loading
+                ? "Sample data while your Worker's data loads."
+                : "Sample data: your Worker's data could not be loaded. Check Settings, Backend."}
           </Text>
         </Banner>
       ) : null}

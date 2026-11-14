@@ -229,18 +229,34 @@ export function RecurringScreen() {
         )}
       </View>
 
-      <View>
-        <SectionHeader title="Subscriptions" />
-        <Card padding="none">{m.subscriptions.map(row)}</Card>
-      </View>
-      <View>
-        <SectionHeader title="Bills" />
-        <Card padding="none">{m.bills.map(row)}</Card>
-      </View>
-      <View>
-        <SectionHeader title="Income" />
-        <Card padding="none">{m.income.map(row)}</Card>
-      </View>
+      {m.subscriptions.length + m.bills.length + m.income.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon="repeat"
+            title="No bills or subscriptions yet"
+            message="Your Worker finds them in your transactions every night. Settings, AI, Run AI jobs now looks right away."
+            testID="recurring-empty"
+          />
+        </Card>
+      ) : null}
+      {m.subscriptions.length > 0 ? (
+        <View>
+          <SectionHeader title="Subscriptions" />
+          <Card padding="none">{m.subscriptions.map(row)}</Card>
+        </View>
+      ) : null}
+      {m.bills.length > 0 ? (
+        <View>
+          <SectionHeader title="Bills" />
+          <Card padding="none">{m.bills.map(row)}</Card>
+        </View>
+      ) : null}
+      {m.income.length > 0 ? (
+        <View>
+          <SectionHeader title="Income" />
+          <Card padding="none">{m.income.map(row)}</Card>
+        </View>
+      ) : null}
       {m.cancelled.length > 0 ? (
         <View style={styles.last}>
           <SectionHeader title="Cancelled" />

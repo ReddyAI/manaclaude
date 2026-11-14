@@ -119,3 +119,14 @@ export function arcPath(cx: number, cy: number, r: number, start: number, end: n
   const large = sweep > Math.PI ? 1 : 0;
   return `M${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1}`;
 }
+
+/** Closed straight-segment shape between an upper and a lower line (a range band). */
+export function bandPath(upper: readonly Point[], lower: readonly Point[]): string {
+  if (upper.length === 0 || lower.length === 0) return '';
+  const top = upper.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const bottom = [...lower]
+    .reverse()
+    .map((p) => `L${p.x},${p.y}`)
+    .join(' ');
+  return `${top} ${bottom} Z`;
+}

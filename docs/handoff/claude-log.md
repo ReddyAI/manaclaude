@@ -1020,3 +1020,105 @@ S&P 500 comparison and saved layouts:
 
 1. With an investment in a currency your Worker has no rate for, Net worth, Investments: a line under "Against the S&P 500" names it.
 2. Import a bank CSV that has lines above its header, then one from the same bank without them. Both import every row. The "File layouts" tab says how many lines the last file had above its header.
+
+## 2026-11-14: Blocks T, U, V and W (browser tests in the repo, a screen-by-screen check, how far back rates go, Monte Carlo planning)
+
+Started from `main` at `841381f` (PR #32 merged; PRs #14 to #32 merged); main did not move during the work. One branch (`ccr-bc496323-la73pg`), one pull request, one commit per block. Screens read only `GET /v1/dataset`; the browser tests also use routes merged earlier (`POST /v1/dev/seed`, `POST /v1/accounts/cash`, `POST /v1/cash`, `PUT /v1/budgets`, `PATCH /v1/settings`, `POST /v1/imports`, `GET /v1/import-mappings`, `POST /v1/accounts/manual`, `POST /v1/transfer-links/run`, `POST /v1/ai/jobs/:job`, `GET /v1/alerts`, `GET /v1/recurring`). Changed: `apps/mobile/` (including `package.json`), `package-lock.json` (Playwright only), one new workflow `.github/workflows/e2e.yml` and this log. No shared types were needed. No backend, connector, shared, root-config or existing-workflow changes.
+
+### Block T: browser tests kept in the repo
+
+- `apps/mobile/e2e/` (new), run with `npm run e2e -w @manaclaude/mobile`. `@playwright/test` 1.63.0 is a dev dependency of the app, pinned to the version whose Chromium the cloud container already has. `apps/mobile/e2e/README.md` explains it.
+- `harness/globalSetup.ts`: one temporary folder outside the repo per run. It exports the web build (or uses `E2E_WEB_DIR`), serves it, writes a throwaway `.dev.vars` there with invented values and `ALLOW_SAMPLE_SEED=true` (no provider key), and for each screen width applies every migration to a fresh database, starts `wrangler dev --local` (`--persist-to` and `--env-file` in the temporary folder, so nothing lands in `backend/`), calls `POST /v1/dev/seed` and plants what the tests look for (`harness/plant.ts` through the Worker's routes, `fixtures/plant.sql` for rows no route makes). The teardown stops the Workers and deletes the folder.
+- Two projects: 412 px (touch) and 1280 px, each with its own Worker, so one width's changes never reach the other. The browser gets the Worker's address and token through `billionaire.backendUrl` and `billionaire.apiToken`. Every test fails on a page error, a console error or a failed request (one allowed, with its reason: the import flow's deliberate empty-body `POST /v1/accounts/manual`, which answers 400 to show the route exists). Results are read back from the Worker's API.
+- `screens.spec.ts`: Home, Transactions, Accounts, Budgets, Net worth, Investments, Recurring, Settings and Planning load. `missing-rates.spec.ts`: the lines of blocks L (Home, Net worth, Accounts), M (Home, Budgets, monthly recap, Recurring), O (Spending plan, Investments) and R (the S&P 500 comparison) name the CHF items. `actions.spec.ts`: adding an account by hand (read back: one vehicle, INR, 65,000,000 minor units), Look for transfers now (the planted pair linked, the second run links nothing), Run AI jobs now (bills and alerts; the screen shows the Worker's own count), and the File layouts tab (a CSV imported through the API shows with its account and "last file had 2 lines above the header").
+- `.github/workflows/e2e.yml` (new, "Browser tests"): on pull requests that touch the app, packages, connectors, backend or the lockfile. Node from `.nvmrc`, `npm ci`, `npx playwright install --with-deps chromium`, then the suite. No secrets, no provider calls. On failure it keeps the HTML report and screenshots as an artifact. It is a separate check and not required for merging unless Sankar makes it one in the branch rules. `npm run check` does not run it.
+
+### Block U: a screen-by-screen check of the web build
+
+`e2e/audit.spec.ts` (runs only with `E2E_AUDIT=1`) opened 24 screens and 16 sheets in Midnight, Warm and Compact, light and dark, at 412 px and 1280 px (480 views a run), took a screenshot of each and ran checks in the page (`e2e/harness/audit.ts`): text contrast against what is behind it (WCAG AA), text cut off or past the screen edge, text boxes overlapping, sideways scrolling, and buttons or fields with no accessible name. The screenshots were also read by eye, and the screens were opened against a Worker with no data and with a wrong token.
+
+Fixed:
+
+- Colours (`design/tokens.ts`): the smallest change that reaches 4.5:1 on every surface each colour is drawn on, worked out per token, not guessed. Faint text and tab labels in all six themes (as low as 2.6:1). In the light schemes, income, spending, pending, danger and net worth, as text and on their own tints (green amounts were 3.4:1 in Midnight light). Warm light's accent (links and buttons, 3.7:1 with white). Warm dark's danger buttons. Midnight dark's buttons had white text on light blue (3.2:1); the text is now dark (7.5:1) and the blue a step lighter. Warm light's muted text moved one step darker so faint stays lighter than muted.
+- Initials in tinted circles (accounts, positions) used the category colour on its own tint (2.6 to 4.1:1 in light). `themes.ts` adds `categoryText`: in light schemes a darker version of each category colour (`CATEGORY_TEXT_LIGHT`); dark schemes keep the category colour.
+- Settings, Appearance: the look cards cut their descriptions to two lines at 412 px; they now show in full.
+- Empty states: Accounts with no accounts ("No accounts yet", with Open Connectors); Investments with no positions; Recurring with nothing found (one empty state instead of three empty headers); Transactions with none at all ("No transactions yet"; "Nothing matches" only for a search or filter); Planning with no goals; a recap with no spending.
+- Home said "Below last month" and "$0 less than" when both months were equal, and the recaps "$0 less than the month before"; they now say "the same".
+- Home's sample-data banner said "Set up the backend in Settings" when a backend was set up but its data had not loaded (for example a wrong token); it now says the Worker's data is loading, or could not be loaded.
+- Design components (additive): `Badge` and `EmptyState` take a `testID`.
+
+Left, with the reason:
+
+- The exchange-rate sheet opens only with a long press on the currency chip, which a keyboard or screen reader cannot do. The same rate is in Settings, Exchange rates; changing the chip's gestures is a design decision for Sankar.
+- At 1280 px the screens opened from a tab (Investments, Import, Categories, Alerts, Planning and others) have no sidebar, only Back. They work; a sidebar on every screen is a layout change, not a fix.
+- The floating + button covers the right end of the bottom row until you scroll; the content scrolls clear of it.
+- "Give the account a name." shows in Add an account by hand before anything is typed; it is the hint next to the disabled button.
+- Net worth with no history shows an empty chart area with no words.
+- On a phone, opening a transaction by its own address (`/transactions/<id>`) shows an empty screen behind its sheet.
+- On Review, the swipe labels ("Reviewed", "Skip") sit under each row and the overlap check counts them; they are hidden until you swipe.
+- At 1280 px the allocation list on Investments leaves a wide gap between each name and its percentage. It reads correctly.
+
+Kept from breaking: `design/__tests__/contrast.test.ts` checks every text colour on every surface and tint in all six themes; `features/settings/__tests__/screenStates.test.tsx` covers each empty and equal state, the banner and the look cards; `e2e/layout.spec.ts` runs the in-page checks on Home, Accounts, Budgets, Investments and Settings in every look and scheme at both widths, and fails on any finding.
+
+### Block V: how far back exchange rates go
+
+- Settings, Exchange rates, "How far back day rates go" (`features/currency/rateRanges.ts`, new): one line per currency the accounts (not hidden) and transactions use, from the dataset's `fxRates`, for example "INR: day rates from Jun 17, 2026 to Nov 14, 2026 (151 days), against USD."
+- When a currency's oldest transaction is older than its oldest rate: "Your oldest INR transaction is from Apr 8, 2026, before the oldest INR rate, so reports before Jun 17, 2026 use the Jun 17, 2026 rate." That matches the shared lookup, which falls back to the oldest rate.
+- A currency with no rate to the report currency: "CHF: there is no CHF to USD exchange rate yet, so totals leave out amounts in CHF. Refresh rates in Settings, Exchange rates." (`currencyNoRateText` in `features/currency/missingRates.ts`, the same words as blocks L, M, O and R).
+- The report currency needs no rate for its own transactions, so it gets no "older" line; in Both mode each currency is converted into the other, so both get one.
+- Shown only once the Worker's data is on screen; with sample data it says so instead.
+
+### Block W: Monte Carlo retirement projection
+
+- `features/planning/monteCarlo.ts` (new): each of 2,000 runs draws one market return per year from a lognormal distribution whose average is the yearly return setting and whose spread is the new volatility setting, takes inflation out, and within each year saves monthly exactly as the straight-line projection does. With volatility 0 every run equals the straight line (a test checks this to 1 minor unit). A seeded generator (mulberry32, fixed seed) gives the same answer for the same inputs. Inputs are minor units, and every balance returned is rounded to a whole minor unit.
+- Planning, a new "Range of outcomes" card under the straight-line one: the chance of reaching the target by the retirement age (a run counts when it reaches the target in any year up to then), a chart with the middle line, the 10th to 90th percentile band and the target as a dashed line (follows Today's money or Future dollars), and the 10th, 50th and 90th percentile at the retirement age in today's money. It says: "An estimate, not a promise. 2,000 simulated markets, each year drawn around a 7% return with 15% swings, less 3% inflation. Real markets can do worse than any of them."
+- New assumption "Yearly swings, volatility (%)", default 15. It is kept on the device with the other planning settings (an extra field in the saved planning object; the shared type is unchanged and planning is not sent to the Worker).
+- `LineChart` takes an optional `band` (additive), drawn with `bandPath` in `charts/paths.ts`.
+- Speed: 2,000 runs take 7.5 ms for 26 years and 18 ms for 60 years in Node on the cloud container; 20,000 runs moved the chance by 0.3 points. In the web build, with Chromium's CPU slowed four times, a changed setting updated the card in 227 to 320 ms over three runs, render included.
+
+### Defaults chosen
+
+- T: one Worker per screen width; tests within a width run in order on one Worker. Ports 8790 (web), 8791 and 8792 (Workers), changeable with `E2E_PORT_BASE`. One retry on CI only. Failure screenshots and the CI report go to a temporary folder, never the repo. The workflow also runs on backend changes, since the suite runs the Worker.
+- U: WCAG AA (4.5:1) for all text, including small captions; tints checked on the page, cards and sheets. Faint text stays the lightest tone that passes. Midnight dark's buttons take dark text rather than a darker blue, so the blue stays readable as text on the dark background.
+- V: rates count for a currency when it is either side of the pair. The report currency is the one in the chip (both in Both mode).
+- W: 2,000 runs, seed 20261114, volatility 15%, lognormal yearly returns with monthly saving inside each year, percentiles by nearest rank. "By the target age" means reaching the target in any year up to the retirement age.
+
+### Validation
+
+- `npm run check` passed on the final tree: typecheck, lint, format and **1,611 tests** (shared 118, connectors 346, backend 360, deployment, runtime and recovery 46, mobile 741, up from 633). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192`; no config change. The first run stopped at the format check on two e2e files; they were formatted inside their own block's commit and the whole check was run again.
+- New mobile tests, all invented data: `design/__tests__/contrast.test.ts` (72, every theme), `features/settings/__tests__/screenStates.test.tsx` (11), `features/currency/__tests__/rateRanges.test.tsx` (9), `features/planning/__tests__/monteCarlo.test.tsx` (16).
+- Each of 41 new guards was removed once by a script that ran the tests and put it back (U 23, V 7, W 11); 40 made a test fail. The one that survived (V: a currency compared with itself before the rate lookup) could never matter, because the lookup already gives 1 for a currency to itself, and was removed. One W guard (the lognormal average correction) had no test at first; a test of the average return was added.
+- The browser suite on the final web export: **52 of 52 passed** (26 at 412 px, 26 at 1280 px), each width on its own fresh database; the 12 audit tests are skipped unless asked for. It ran under the container's Node 22; a first test also ran under Node 24, which GitHub uses. To show it catches a regression, a web build with block R's comparison line removed made that test fail at both widths, and `layout.spec.ts` failed on the web build from before block U.
+- The full audit (`E2E_AUDIT=1`): before the fixes, 468 views (the exchange-rate sheet did not open: it needs a long press) with 1,139 contrast findings and 804 overlaps; on the final build, 480 views with no contrast, cut-off, sideways-scrolling or unnamed-control findings, and 428 overlaps, all the hidden swipe labels on Review (see Left). Screens were also opened against a Worker with no data and with a wrong token: no page errors.
+- Played in the browser: nothing. Every test used the real local Worker. No provider was called: the Worker has no provider keys, Plaid stays off, and the local AI binding is not available (`wrangler dev --local` reports it as not supported).
+- No `backend/.dev.vars` was written (the run folder holds it), and the databases live in the run folder too. `wrangler dev` still leaves its bundling temp files in `backend/.wrangler/tmp` (git-ignored, no data); that folder and the web exports were deleted. None is committed.
+- **No Android device or emulator was used.**
+
+### For Codex (found while building; none of it blocks this PR)
+
+- Nothing new. Unchanged from earlier entries: goals (make, change, delete), adding or deleting a bill or subscription by hand, tags, category merging, export and backup, the status panel, update notices, per-account history dates, attaching a provider account, undoing an alert dismissal, deleting a stored file or a saved file layout, MCP clients, a receipt's candidates after the upload, planning settings on the Worker, and a bounded rate backfill or its progress as a read.
+
+### Remaining app work
+
+- The items under Block U, "Left".
+- The import flow still asks whether the Worker has `POST /v1/accounts/manual` by sending an empty body; every Worker built from main has the route now, so the check could go.
+
+### How to test on the phone
+
+Colours and empty states:
+
+1. Settings, Appearance: each look card shows its whole description. Switch through Midnight, Warm and Compact, light and dark; grey help text, green amounts and the coloured initials on Accounts should all be easy to read.
+2. In Midnight dark, buttons such as "Ask" have dark text on blue.
+
+How far back rates go:
+
+1. Settings, Exchange rates, "How far back day rates go": one line per currency, with the first and last day.
+2. If a currency has transactions older than its first rate, a line under it says reports before that day use the first rate. A currency your Worker has no rate for says so.
+
+Range of outcomes:
+
+1. Net worth or Budgets, then Retirement plan (Planning). Under the first card, "Range of outcomes" shows a chance in percent, a shaded band and three amounts at your retirement age.
+2. Change "Yearly swings, volatility (%)" to 0: the chance becomes 100% or 0%, matching On track or Off track above. Put it back to 15.
+3. Leave and open Planning again: the same numbers.
+
+No Android device or emulator was used for any of this.

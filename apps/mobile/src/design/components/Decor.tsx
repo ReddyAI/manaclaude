@@ -85,15 +85,17 @@ export function EmptyState({
   message,
   actionLabel,
   onAction,
+  testID,
 }: {
   icon?: IconName;
   title: string;
   message?: string;
   actionLabel?: string;
   onAction?: () => void;
+  testID?: string;
 }) {
   return (
-    <View style={styles.empty}>
+    <View style={styles.empty} testID={testID}>
       <Icon name={icon} size="lg" tone="faint" />
       <Text variant="headline" align="center">
         {title}
@@ -140,7 +142,7 @@ const styles = StyleSheet.create((theme) => ({
       backgroundColor: theme.colors.categoryMuted[color],
     };
   },
-  avatarText: (color: ColorSlot) => ({ color: theme.colors.category[color] }),
+  avatarText: (color: ColorSlot) => ({ color: theme.colors.categoryText[color] }),
   section: {
     flexDirection: 'row',
     alignItems: 'center',

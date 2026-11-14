@@ -10,7 +10,7 @@ import {
 import { Button, IconButton } from '../../design/components/Button';
 import { Card } from '../../design/components/Card';
 import { Badge, SegmentedControl } from '../../design/components/Controls';
-import { Avatar, SectionHeader } from '../../design/components/Decor';
+import { Avatar, EmptyState, SectionHeader } from '../../design/components/Decor';
 import { HStack, VStack } from '../../design/components/Layout';
 import { ListRow } from '../../design/components/ListRow';
 import { MoneyText } from '../../design/components/MoneyText';
@@ -170,6 +170,18 @@ export function AccountsScreen() {
                 </VStack>
               </Card>
             ))}
+          {data.accounts.every((a) => a.hidden) ? (
+            <Card>
+              <EmptyState
+                icon="wallet"
+                title="No accounts yet"
+                message="Link a bank, add a cash account or add one by hand from the Connectors tab."
+                actionLabel="Open Connectors"
+                onAction={() => setTab('connectors')}
+                testID="accounts-empty"
+              />
+            </Card>
+          ) : null}
           {GROUPS.map((g) => {
             const accounts = data.accounts.filter((a) => g.types.includes(a.type) && !a.hidden);
             if (accounts.length === 0) return null;
