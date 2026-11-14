@@ -523,3 +523,88 @@ export async function checkAttached(
     text: "Your Worker's answer was lost and the receipt was not attached. Pick the transaction again if you still want it.",
   };
 }
+
+// Uploading a receipt photo with no transaction, then its likely purchases ---
+
+export type ReceiptUploadOutcome =
+  /** The Worker stored it; `response` carries its match and candidates. */
+  | { kind: 'uploaded'; response: ReceiptResponse }
+  /** Nothing was stored; `text` says why. */
+  | { kind: 'refused'; text: string }
+  /**
+   * The answer was lost. `found` is a receipt that appeared on the Worker
+   * while this was sent (most likely this one), or null.
+   */
+  | { kind: 'unsure'; text: string; found: Receipt | null };
+
+/** The Worker's receipt goes into the app's data; a purchase it matched points at it. */
+function putUploaded(receipt: Receipt, localUri: string): void {
+  const now = nowIso();
+  updateFinance((d) => ({
+    ...d,
+    receipts: [...d.receipts.filter((r) => r.id !== receipt.id), { ...receipt, localUri }],
+    transactions: d.transactions.map((t) =>
+      t.id === receipt.matchedTransactionId
+        ? { ...t, receiptId: receipt.id, updatedAt: now }
+        : t.receiptId === receipt.id
+          ? { ...t, receiptId: null, updatedAt: now }
+          : t,
+    ),
+  }));
+}
+
+/**
+ * POST /v1/receipts without a transaction, waiting for the Worker's answer so
+ * its match and likely purchases can be shown. Sent once: after a lost answer
+ * the data is loaded again to see whether a new receipt arrived, and nothing
+ * is sent again by itself. Null when the backend changed meanwhile.
+ */
+export async function uploadReceiptForMatches(
+  localUri: string,
+): Promise<ReceiptUploadOutcome | null> {
+  const before = new Set(getFinance().receipts.map((r) => r.id));
+  let form: FormData;
+  try {
+    form = await fileForm(localUri, 'receipt.jpg', imageTypeOf(localUri));
+  } catch {
+    return {
+      kind: 'refused',
+      text: 'The photo could not be read on this device, so nothing was sent.',
+    };
+  }
+  try {
+    const response = await api<ReceiptResponse>('POST', '/v1/receipts', form, {
+      timeoutMs: 90_000,
+    });
+    if (canSaveToBackend()) {
+      rememberReceiptUri(response.receipt.id, localUri);
+      putUploaded(response.receipt, localUri);
+    }
+    scheduleRefresh();
+    return { kind: 'uploaded', response };
+  } catch (e) {
+    if (isSuperseded(e)) return null;
+    if (e instanceof BackendError && (e.offline || e.status >= 500)) {
+      const loaded = await refreshDataset();
+      if (!loaded)
+        return {
+          kind: 'unsure',
+          found: null,
+          text: "Your Worker's answer was lost and your data could not be loaded again, so it is not known whether the receipt was stored. Nothing was sent again. Look in Receipts to attach before sharing it again.",
+        };
+      const fresh = getFinance().receipts.filter((r) => !before.has(r.id));
+      if (fresh.length === 1)
+        return {
+          kind: 'unsure',
+          found: fresh[0]!,
+          text: 'Your Worker stored the receipt, but its answer with the likely purchases was lost. Nothing was sent again.',
+        };
+      return {
+        kind: 'unsure',
+        found: null,
+        text: "Your Worker's answer was lost and the receipt is not in your data yet. Nothing was sent again. Your Worker may still be reading it: if it is not in Receipts to attach in a minute, share it again.",
+      };
+    }
+    return { kind: 'refused', text: `The receipt was not stored. ${errorText(e)}` };
+  }
+}

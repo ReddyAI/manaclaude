@@ -12,9 +12,14 @@ import { ListRow } from '../../design/components/ListRow';
 import { MoneyText } from '../../design/components/MoneyText';
 import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
+import { isBackendReady, useBackendConfig } from '../../data/backend/config';
+import { useBackendStatus } from '../../data/backend/status';
+import { canSaveToBackend } from '../../data/backend/sync';
 import { useFinance } from '../../data/store';
+import { goTo } from '../planning/navigate';
 import { attachReceipt, saveUnmatchedReceipt } from './actions';
 import { saveReceiptImage } from './receiptFiles';
+import { ReceiptMatches, useReceiptUpload } from './ReceiptMatches';
 
 /** Purchases that could own a shared receipt: spending without a receipt yet, newest first. */
 export function receiptTargets(
@@ -59,6 +64,12 @@ export function SharedReceiptSheet({
   onDone: () => void;
 }) {
   const data = useFinance();
+  const ready = isBackendReady(useBackendConfig());
+  useBackendStatus();
+  // With your Worker's data on screen, a receipt kept without a purchase is
+  // sent at once and its likely purchases are shown here.
+  const live = ready && canSaveToBackend();
+  const upload = useReceiptUpload();
   const [query, setQuery] = useState('');
   const targets = useMemo(
     () => receiptTargets(data.transactions, query),
@@ -70,6 +81,23 @@ export function SharedReceiptSheet({
     haptic('confirm');
     onDone();
   };
+
+  if (upload.state.phase !== 'idle')
+    return (
+      <BottomSheet visible onClose={onDone} title="Receipt" scrollable testID="share-sheet">
+        <VStack gap="md" align="center">
+          <Image source={{ uri: image.path }} style={styles.preview} resizeMode="cover" />
+        </VStack>
+        <ReceiptMatches
+          state={upload.state}
+          onDone={onDone}
+          onOpenInbox={() => {
+            onDone();
+            goTo('/transactions/receipts');
+          }}
+        />
+      </BottomSheet>
+    );
 
   return (
     <BottomSheet visible onClose={onDone} title="Attach receipt" scrollable testID="share-sheet">
@@ -105,14 +133,19 @@ export function SharedReceiptSheet({
         ))
       )}
       <Button
-        label="Keep without matching"
+        label={live ? 'Let my Worker find the purchase' : 'Keep without matching'}
         variant="secondary"
         onPress={() => {
+          if (live) {
+            void upload.start(saveReceiptImage(image.path));
+            return;
+          }
           saveUnmatchedReceipt(saveReceiptImage(image.path));
           haptic('confirm');
           onDone();
         }}
         fullWidth
+        testID="share-keep"
       />
     </BottomSheet>
   );

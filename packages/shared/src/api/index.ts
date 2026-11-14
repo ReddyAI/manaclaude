@@ -697,4 +697,23 @@ export interface MatchRunResponse {
   suggested: number;
 }
 
+/**
+ * POST /v1/mcp/clients: an OAuth client for an assistant that cannot
+ * register itself with the MCP server. `name` is 1 to 100 characters and
+ * `redirectUris` holds 1 to 5 URLs. No retry key.
+ */
+export interface McpClientRequest {
+  name: string;
+  redirectUris: string[];
+}
+
+/**
+ * 201 of POST /v1/mcp/clients. The secret is shown this once; the Worker
+ * keeps only a hash of it. 503 `not_configured` when OAuth is not available.
+ */
+export interface McpClientResponse {
+  clientId: string;
+  clientSecret: string | null;
+}
+
 export * from './link';

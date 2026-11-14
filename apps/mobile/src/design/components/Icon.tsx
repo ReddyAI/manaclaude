@@ -25,6 +25,7 @@ import Clock from 'lucide-react-native/icons/clock';
 import CloudOff from 'lucide-react-native/icons/cloud-off';
 import Coffee from 'lucide-react-native/icons/coffee';
 import Coins from 'lucide-react-native/icons/coins';
+import Copy from 'lucide-react-native/icons/copy';
 import CreditCard from 'lucide-react-native/icons/credit-card';
 import Dumbbell from 'lucide-react-native/icons/dumbbell';
 import Ellipsis from 'lucide-react-native/icons/ellipsis';
@@ -107,6 +108,7 @@ const UI_ICONS = {
   clock: Clock,
   'cloud-off': CloudOff,
   coins: Coins,
+  copy: Copy,
   ellipsis: Ellipsis,
   'external-link': ExternalLink,
   'file-up': FileUp,

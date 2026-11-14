@@ -19,7 +19,9 @@ import { useLookups } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { BackAction } from '../planning/BackAction';
 import { attachReceiptOnWorker, checkAttached, type AttachOutcome } from './actions';
+import { pickReceiptImage, receiptSourcesAvailable, type ReceiptSource } from './receiptFiles';
 import { ReceiptImage } from './ReceiptImage';
+import { ReceiptMatches, useReceiptUpload } from './ReceiptMatches';
 import { attachCandidates, receiptsToAttach, waitingReason } from './receiptInbox';
 
 /**
@@ -38,6 +40,15 @@ export function ReceiptsToAttachScreen() {
   const list = useMemo(() => receiptsToAttach(data), [data]);
   const live = ready && canSaveToBackend();
   const open = openId ? (data.receipts.find((r) => r.id === openId) ?? null) : null;
+  const upload = useReceiptUpload();
+  const [pickNote, setPickNote] = useState<string | null>(null);
+
+  const addPhoto = async (source: ReceiptSource) => {
+    setPickNote(null);
+    const picked = await pickReceiptImage(source);
+    if (picked.status === 'denied') setPickNote(picked.message);
+    if (picked.status === 'picked') void upload.start(picked.uri);
+  };
 
   return (
     <Screen
@@ -62,7 +73,38 @@ export function ReceiptsToAttachScreen() {
             message="Pull down to load your data from your Worker."
           />
         </Card>
-      ) : list.length === 0 ? (
+      ) : null}
+      {ready && live ? (
+        <Card>
+          <VStack gap="sm">
+            <Text variant="bodyStrong">Add a receipt photo</Text>
+            <Text variant="caption" tone="muted">
+              Your Worker reads it and looks for the purchase. When one is clear it is attached;
+              otherwise you see the likely purchases and why.
+            </Text>
+            <HStack gap="sm" wrap>
+              {receiptSourcesAvailable().map((source) => (
+                <Button
+                  key={source}
+                  label={source === 'camera' ? 'Take a photo' : 'Choose a photo'}
+                  icon={source === 'camera' ? 'camera' : 'receipt'}
+                  size="sm"
+                  variant="secondary"
+                  disabled={upload.state.phase === 'sending'}
+                  onPress={() => void addPhoto(source)}
+                  testID={`receipt-add-${source}`}
+                />
+              ))}
+            </HStack>
+            {pickNote ? (
+              <Text variant="caption" tone="danger">
+                {pickNote}
+              </Text>
+            ) : null}
+          </VStack>
+        </Card>
+      ) : null}
+      {!ready || !live ? null : list.length === 0 ? (
         <Card>
           <EmptyState
             icon="receipt"
@@ -101,6 +143,15 @@ export function ReceiptsToAttachScreen() {
         </>
       )}
       <AttachReceiptSheet receipt={open} onClose={() => setOpenId(null)} />
+      <BottomSheet
+        visible={upload.state.phase !== 'idle'}
+        onClose={upload.reset}
+        title="Receipt"
+        scrollable
+        testID="receipt-upload-sheet"
+      >
+        <ReceiptMatches state={upload.state} onDone={upload.reset} />
+      </BottomSheet>
     </Screen>
   );
 }

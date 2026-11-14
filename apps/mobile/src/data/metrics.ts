@@ -16,7 +16,10 @@ import {
   type SpendingSummary,
   type TreatmentContext,
   type YearMonth,
+  type Account,
+  type AccountType,
 } from '@manaclaude/shared';
+import { isBalanceUnknown } from './manualBalance';
 
 /**
  * Derived numbers several screens share (dashboard, net worth, budgets).
@@ -30,17 +33,48 @@ export interface NetWorthBreakdown {
   currency: CurrencyCode;
 }
 
+/**
+ * True when an account adds to net worth: switched in, and with a balance
+ * someone has said. An unknown balance is a placeholder 0 and is left out,
+ * never added as 0. Every net worth number goes through this.
+ */
+export function countsInNetWorth(a: Account): boolean {
+  return a.includeInNetWorth && !isBalanceUnknown(a);
+}
+
 /** Net worth now, converting every balance with the latest rate. */
 export function currentNetWorth(data: FinanceDataset, currency: CurrencyCode): NetWorthBreakdown {
   let assets = 0;
   let liabilities = 0;
   for (const a of data.accounts) {
-    if (!a.includeInNetWorth) continue;
+    if (!countsInNetWorth(a)) continue;
     const v = convertAmount(a.balance, a.currency, currency, data.fxRates) ?? 0;
     if (classifyAccountType(a.type) === 'liability') liabilities += v;
     else assets += v;
   }
   return { assets, liabilities, netWorth: assets - liabilities, currency };
+}
+
+export interface NetWorthByType {
+  /** What each kind of account adds, converted like currentNetWorth (liabilities as owed). */
+  byType: Map<AccountType, MinorUnits>;
+  /** Shown accounts whose balance is unknown, which net worth leaves out. */
+  unknown: Account[];
+}
+
+/**
+ * Net worth split by kind of account. It counts exactly what currentNetWorth
+ * counts, so the kinds add up to its assets and liabilities.
+ */
+export function netWorthByType(data: FinanceDataset, currency: CurrencyCode): NetWorthByType {
+  const byType = new Map<AccountType, MinorUnits>();
+  for (const a of data.accounts) {
+    if (!countsInNetWorth(a)) continue;
+    const v = convertAmount(a.balance, a.currency, currency, data.fxRates) ?? 0;
+    byType.set(a.type, (byType.get(a.type) ?? 0) + v);
+  }
+  const unknown = data.accounts.filter((a) => isBalanceUnknown(a) && !a.hidden);
+  return { byType, unknown };
 }
 
 export interface SeriesPoint {
@@ -53,7 +87,7 @@ export function netWorthHistory(data: FinanceDataset, currency: CurrencyCode): S
   const liabilityIds = new Set(
     data.accounts.filter((a) => classifyAccountType(a.type) === 'liability').map((a) => a.id),
   );
-  const included = new Set(data.accounts.filter((a) => a.includeInNetWorth).map((a) => a.id));
+  const included = new Set(data.accounts.filter(countsInNetWorth).map((a) => a.id));
   const byDate = new Map<LocalDate, number>();
   for (const s of data.balanceHistory) {
     if (!included.has(s.accountId)) continue;

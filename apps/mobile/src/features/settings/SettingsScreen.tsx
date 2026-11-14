@@ -5,6 +5,7 @@ import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
 import { AiSection } from './sections/AiSection';
 import { AppearanceSection } from './sections/AppearanceSection';
+import { AssistantsSection } from './sections/AssistantsSection';
 import { BackendSection } from './sections/BackendSection';
 import { BudgetsSection } from './sections/BudgetsSection';
 import { DisplaySection } from './sections/DisplaySection';
@@ -27,6 +28,7 @@ export function SettingsScreen() {
       <BudgetsSection />
       <OrganizeSection />
       <AiSection />
+      <AssistantsSection />
       <BackendSection />
       <Card>
         <VStack gap="xs">
