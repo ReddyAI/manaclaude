@@ -35,16 +35,30 @@ export function skippedTransactionsText(
   return `Leaves out ${txns.length} transactions in ${currencies(txns)} with no exchange rate to ${to}: ${nameList(txns.map((t) => t.name))}. ${REFRESH}`;
 }
 
-/** Bills, subscriptions or income items a total leaves out. */
+/**
+ * Bills, subscriptions, income items, holdings, sales or dividends a total
+ * leaves out. `noun` names several of them ("items", "holdings").
+ */
 export function skippedItemsText(
   items: readonly { name: string; currency: CurrencyCode }[],
   to: CurrencyCode,
+  noun = 'items',
 ): string | null {
   const first = items[0];
   if (!first) return null;
   if (items.length === 1)
     return `Leaves out "${first.name}" (${first.currency}): there is no ${first.currency} to ${to} exchange rate yet. ${REFRESH}`;
-  return `Leaves out ${items.length} items in ${currencies(items)} with no exchange rate to ${to}: ${nameList(items.map((i) => i.name))}. ${REFRESH}`;
+  return `Leaves out ${items.length} ${noun} in ${currencies(items)} with no exchange rate to ${to}: ${nameList(items.map((i) => i.name))}. ${REFRESH}`;
+}
+
+/** The Spending plan's savings, set in a currency with no rate: it counts as 0. */
+export function savingsNoRateText(from: CurrencyCode, to: CurrencyCode): string {
+  return `Savings is set in ${from}, and there is no ${from} to ${to} exchange rate yet, so it counts as 0 here. ${REFRESH}`;
+}
+
+/** Under one bill in a list: why its amount is not in the total above. */
+export function billNoRateText(from: CurrencyCode, to: CurrencyCode): string {
+  return `No ${from} to ${to} rate yet, so it is not in the plan`;
 }
 
 /** Budgets set in a currency with no rate: the budget math counts them as 0. */
