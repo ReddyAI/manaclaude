@@ -720,3 +720,95 @@ Retry: after `repair_not_finished`, finish the exact reconnect in SnapTrade and 
 The first full-check attempt stopped at mobile typecheck because this workspace lacked `expo-clipboard`, already declared in merged main #26. Refreshed the installed dependencies with `npm ci` using the committed lockfile; no manifest/lockfile changes. The final full gate was then rerun.
 
 **Final validation: `npm run check` passed — 1,383 tests** (shared 118, connectors 346, Worker 345, deployment/runtime/recovery 46, mobile 528), plus typecheck, lint and formatting. The expanded backend link suites now contain **50 passing tests**. The final recovery fixture stores a real completed Sophtron connection/result and verifies replay as well as interrupted finalization on restoration. The real local Worker startup/authentication smoke check passes. Main remained `7935548` at the final fetch. This validation note was appended after the full gate and checked for formatting; the implementation tested is the implementation committed. `git diff --check` passes. No production operations or later queue work were performed.
+
+## 2026-11-14 — Saved CSV layouts use the current file's preamble
+
+Read `CLAUDE.md`, `AGENTS.md`, and both complete handoff logs in that order, including every “For Codex”, “What Codex needs to do”, and “Still needed from Codex for findings 10 and 11” section. GitHub confirms **#28, #29 and #30 are merged**, no PRs were open, and fetched main is **`61084af82b064368710ce85933ce0aab922ede21`**. Started `codex/saved-csv-preamble` from that main. Backend link completion (#28) and Claude's mobile adoption (#30) are already delivered and are not repeated here.
+
+### Change and defaults
+
+- `backend/src/imports/service.ts`, `parseFile`: after finding a saved mapping under the current header signature, copy its mapping and replace **only `skipRows` with `input.skipRows ?? 0`**. The signature lookup and parser now use the same current preamble length. Saved columns, date format, delimiter, header flag, decimal separator and amount/sign settings remain intact.
+- Explicit `mapping` still wins unchanged, including its own `mapping.skipRows`, even when the separate request `skipRows` differs or is omitted. Mapping suggestion and all other formats retain their existing behavior.
+- Preview returns and stores the effective mapping. Preview alone does not update the saved layout. A successful commit stores that effective mapping through the existing atomic save, so the layout list's `mapping.skipRows` describes the last committed file. Its first filename remains its name. The next automatic reuse still takes that next request's preamble, never the stored value.
+- No schema migration, shared type, mobile change, dependency or configuration change is required. Old stored previews are not reparsed or repaired: request a fresh preview of the original file with its current preamble before saving. Date detection, preview retention, layout deletion, reconciliation and all other backlog requests remain outside this PR.
+
+### API contract for Claude
+
+The only behavioral change is automatic saved CSV mapping reuse; there are no new routes or JSON fields. Existing shared types below are the exact types in `packages/shared/src/api/index.ts` and `packages/shared/src/import/{csv,types}.ts`, reused without edits. Amounts remain integer minor units, dates `YYYY-MM-DD`, timestamps ISO UTC, column indexes zero-based and preview line numbers one-based. Every route below requires `Authorization: Bearer <APP_API_TOKEN>`. Errors are exactly `{ error: string, message: string }`. Common errors: **401 `unauthorized`**, **503 `not_configured`** when the app token is unset, **500 `internal`** for unexpected server/storage failures.
+
+**POST `/v1/imports`** — multipart/form-data, required `file` part (nonempty, at most 20 MiB). Exact optional text fields:
+
+```ts
+{
+  format?: 'csv' | 'qif' | 'ofx' | 'sure_ndjson' | 'actual_csv' | 'pdf';
+  accountId?: string;
+  mapping?: string;          // JSON-encoded complete CsvMapping, below
+  skipRows?: string;         // numeric text, current CSV preamble; omitted means 0
+  preferDayFirst?: 'true' | 'false';
+  fromDate?: string;         // inclusive YYYY-MM-DD
+  toDate?: string;           // inclusive YYYY-MM-DD
+  accountMappings?: string; // JSON object: exact source account label -> existing account ID
+  currency?: string;         // three uppercase letters; destination currency takes precedence
+  commit?: 'true' | 'false'; // only exact 'true' requests immediate commit
+}
+```
+
+`CsvMapping` is exactly `{ delimiter: string, hasHeader: boolean, skipRows: number, dateColumn: number, dateFormat: DateFormat, amountMode: 'single' | 'debit_credit', amountColumn: number | null, debitColumn: number | null, creditColumn: number | null, invertSign: boolean, decimalSeparator: '.' | ',', descriptionColumn: number, notesColumn: number | null, categoryColumn: number | null, currencyColumn: number | null, idColumn: number | null }`. `DateFormat` is the existing shared union: `YYYY-MM-DD`, `YYYY/MM/DD`, `YYYYMMDD`, `MM/DD/YYYY`, `DD/MM/YYYY`, `MM-DD-YYYY`, `DD-MM-YYYY`, `DD.MM.YYYY`, `MM/DD/YY`, `DD/MM/YY`, `DD-MMM-YYYY`, `DD MMM YYYY`, `MMM DD, YYYY`, `DD-MMM-YY`. No input-validation redesign is included: send a complete valid mapping and a nonnegative integer preamble count.
+
+**201** exactly `{ preview: ImportPreview, result: ImportCommitResult | null }`. Preview has exactly these fields:
+
+```ts
+{
+  importId: string; format: ImportFormat; status: 'preview' | 'needs_mapping';
+  fileName: string; accountId: string | null;
+  rows: ImportPreviewRow[]; accountsToCreate: ParsedAccount[];
+  errors: { line: number; message: string }[]; warnings: string[];
+  counts: { total: number; new: number; alreadyImported: number; existing: number; needsAccount: number };
+  csv: null | {
+    headers: string[]; signature: string; suggestedMapping: CsvMapping;
+    missing: ('date' | 'amount' | 'description')[];
+    dateFormatAmbiguous: boolean; dateFormatCandidates: DateFormat[];
+    usedSavedMapping: boolean;
+  };
+  mapping: CsvMapping | null; statementCheck: StatementCheck | null;
+  periodStart: string | null; periodEnd: string | null;
+  sourceFormat?: 'monefy';
+  duplicateCandidates: { line: number; transactionIds: string[] }[];
+  dateRange: { from: string | null; to: string | null; excluded: number };
+  requiresDateConfirmation: boolean;
+}
+```
+
+`ImportPreviewRow`, `ParsedAccount` and `StatementCheck` retain their full existing shared shapes; rows retain all source fields plus account/category resolution, fingerprint, occurrence, decision and matched transaction ID. `mapping` is the effective mapping used to parse; `csv.suggestedMapping` remains the independent suggestion, not the saved layout. Automatic reuse sets `csv.usedSavedMapping: true` and `mapping.skipRows` to the current request value (including explicit `"0"`, or 0 when omitted). Explicit `mapping` sets `usedSavedMapping: false` and keeps its own skip count. No transaction is written unless commit is requested. `result` is null except when `commit=true` and preview status is `preview`; that path uses the commit result/errors below. PDF immediate commit remains refused.
+
+Additional errors: **400 `bad_request`** for missing file/wrong content type, empty/oversize file, unknown format, invalid mapping JSON/accountMappings/day-first text/currency/date range/destination, ambiguous account selection or PDF immediate commit; **400 `unreadable_file`** for parser failures (the failed import and original are retained); **400 `ai_disabled`** for disabled PDF extraction; **400 `import_currency_mismatch`** for a row whose currency differs from its destination. Per-row parse errors and missing mapping are returned in the 201 preview for review. Immediate commit can also return any commit error below.
+
+Retry: preview creation has no idempotency key; another request creates another preview/original. For a known preview, read its ID before deciding to replace it. After an uncertain `commit=true` response, inspect import history and the stored status before trying another save. A fresh preview is required to correct a previously stored preview's parsing; this fix does not alter historical previews.
+
+**POST `/v1/imports/:id/commit`** — exact JSON `{ skipLines?: number[], keepLines?: number[], createAccounts?: boolean }`; send `{}` for defaults. Skip lines are integers; keep lines are positive integers. Unknown keys are stripped by the existing schema. Named-account creation defaults to true; ordinary CSV still requires a selected destination. **200** exactly:
+
+```ts
+{
+  importId: string; added: number; matched: number; skipped: number;
+  accountsCreated: string[]; transactionIds: string[];
+  linked: number; suggested: number; warnings: string[];
+}
+```
+
+Commits consume the stored preview, including its corrected mapping, without parsing the file again. Additional errors: **404 `not_found`**; **400 `bad_request`** for absent/malformed JSON, overlapping keep/skip lines, no usable preview/rows, unconfirmed Monefy dates or an oversized atomic save plan; **400 `invalid_body`** for schema rejection; **400 `import_parse_errors`**, **400 `import_account_required`**, **400 `import_currency_mismatch`**, **400 `import_duplicates_require_review`**; **409 `conflict`** for already committed/currently saving imports or changed previously matched transactions; **409 `import_preview_changed`** for a write-time transaction/account/import race. Currency checks, duplicate keep/skip review and atomic writes are unchanged.
+
+Retry: after timeout/500/lost response, read **GET `/v1/imports/:id`**. Committed means saved; another commit returns 409 and inserts nothing. A still-saving import retains the existing five-minute abandoned-lease recovery; do not send overlapping retries. A preview after a refusal can be deliberately retried with corrected keep/skip choices, or replaced with a fresh preview when its data/destination changed. Saved-with-warning is still committed and must not be re-imported as a retry. Repeat file previews recognize stored identities, including distinct occurrences of identical purchases; preamble changes do not create new transaction identities.
+
+**GET `/v1/imports/:id`** — no body; **200** exactly `ImportDetail`, the existing `ImportRecord` plus `{ preview: ImportPreview | null }`. `ImportRecord` fields are exactly `id`, `format`, `status`, `accountId`, `fileName`, `contentType`, `size`, `sha256`, `r2Key`, `rowsTotal`, `rowsAdded`, `rowsMatched`, `rowsSkipped`, `error`, `periodStart`, `periodEnd`, `createdAt`, `updatedAt`, `committedAt`, with their existing shared types/nullability. Additional **404 `not_found`**. Safe read retry returns persisted status/counts/preview; it never reruns parsing or commits. Related unchanged history reads: **GET `/v1/imports`** → **200 `{ imports: ImportRecord[] }`**, **GET `/v1/vault`** → **200 `{ files: ImportRecord[] }`**, each newest 200, no body, common errors only, safe read retries. These reflect corrected counts for newly created imports.
+
+**GET `/v1/import-mappings`** — no body; **200** exactly `{ mappings: Array<{ signature: string, name: string, accountId: string | null, mapping: CsvMapping, updatedAt: string }> }`, newest updated first. Common errors only; safe read retries. After commit, the mapping includes that committed file's effective preamble. The stored account remains display metadata, not an automatically selected destination. There is still no deletion route. No new shared declarations or mobile work is required to use the corrected automatic preview behavior.
+
+### Regression evidence and validation
+
+`backend/test/import-layouts.test.ts` uses invented CSVs and local Worker/D1/R2 through the actual HTTP routes. A layout is saved by a real preview/commit with two preamble lines, then reused with omitted skipRows, explicit zero, one line and three lines, for both separate debit/credit and inverted single amounts. Assertions cover exact dates/names/amounts/currencies/notes, physical row positions, all preview/commit counts, distinct identical-purchase occurrences, persisted preview, saved-layout readback, a repeated commit and a repeat export with yet another preamble. Additional cases cover multipart immediate commit, explicit headerless mappings, explicit mapping precedence over the same saved header, unreadable-line acknowledgement, duplicate review, conflicting keep/skip, current destination selection, unresolved destination refusal and currency mismatch.
+
+Before the service fix, **11 of the initial 14 cases failed**, including an immediate commit that silently omitted both opening purchases; the three explicit-mapping cases already passed. After the fix, the initial **84 targeted tests passed** across layout, imports, import-safety and build-check suites. One further same-header explicit-mapping regression was added for the final gate. Existing tests cover date periods, stale previews, write races, atomic rollback, undo, Monefy and OFX/QIF/mocked PDF safeguards. No provider or Plaid call is needed; every fixture/response is invented or mocked.
+
+Changes are confined to `backend/` and this appended entry. No mobile, Claude-log, shared, root configuration, workflow, credentials, provider switch, dependency or lockfile edits. No deployment, production migration or real-data operation. Full-check results are recorded below before the sole branch push.
+
+**Final validation: `npm run check` passed — 1,462 tests** (shared 118, connectors 346, Worker 360 including all 15 new layout cases, deployment/runtime/recovery 46, mobile 592), plus typecheck, lint and formatting. Node **24.22.1**, npm **11.9.0**. Checks used process-local `NODE_OPTIONS=--max-old-space-size=6144`, `EXPO_OFFLINE=1`, `XDG_CONFIG_HOME=/tmp/manaclaude-test-config`, `WRANGLER_LOG_PATH=/tmp/manaclaude-wrangler` and `WRANGLER_SEND_METRICS=false`; no repository or published environment settings changed. Main remained `61084af` at the final fetch. Only this validation paragraph was appended after the full gate and checked for formatting; the tested implementation is unchanged. The original log bytes are preserved, and `git diff --check` passes. Open and attach this single focused PR, then stop; do not merge, deploy or start further backlog work.
