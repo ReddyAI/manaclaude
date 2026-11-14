@@ -22,6 +22,8 @@ import { linkManually } from '../../src/services/links';
 import { previewImport, commitImport, undoImport, discardImport } from '../../src/imports/service';
 import { uploadReceipt } from '../../src/receipts/service';
 import { loadCredentials, saveCredentials } from '../../src/sync/credentials';
+import { createSession, getSession, type LinkSession } from '../../src/link/sessions';
+import { sophtronStatus } from '../../src/link/sophtron';
 import { runNightlyStep, type NightlyState } from '../../src/nightly';
 import { backfillMissingHistory } from '../../src/fx/service';
 import { loadDataset } from '../../src/services/dataset';
@@ -51,6 +53,8 @@ let sql: string;
 let bundle: string;
 let digest: string;
 const requests: string[] = [];
+let finalizingLink: LinkSession;
+let completedLink: LinkSession;
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'manaclaude-recovery-test-'));
@@ -177,6 +181,37 @@ beforeAll(async () => {
     .bind('invented-link-session', 'simplefin', 'done', now, now, now)
     .run();
   await saveCredentials(env, 'invented-connection', { token: 'invented-provider-token' });
+  finalizingLink = await createSession(env, {
+    connectorId: 'sophtron',
+    status: 'finalizing',
+    minutes: 30,
+    now: new Date(now),
+    secret: { jobId: 'invented-job', userInstitutionId: 'invented-login' },
+  });
+  await env.DB.prepare(
+    'UPDATE link_sessions SET lease_token = ?, lease_expires_at = ? WHERE id = ?',
+  )
+    .bind('invented-abandoned-poll', '2026-11-12T12:02:00.000Z', finalizingLink.id)
+    .run();
+  completedLink = await createSession(env, {
+    connectorId: 'sophtron',
+    status: 'finalizing',
+    minutes: 30,
+    now: new Date(now),
+    secret: { userInstitutionId: 'invented-completed-login' },
+  });
+  await sophtronStatus(
+    env,
+    completedLink,
+    {
+      secrets: {},
+      now: () => new Date(now),
+      fetch: async () => {
+        throw new Error('No provider calls');
+      },
+    },
+    () => new Date(now),
+  );
   // An interrupted FX owner plus previously committed progress must survive a backup.
   await env.DB.prepare(
     "INSERT INTO fx_backfill_progress VALUES ('INR', '2026-11-01', '2026-11-03')",
@@ -265,12 +300,12 @@ describe('private D1 and original-file recovery', () => {
       '--manifest-sha256',
       digest,
     ]);
-    expect(JSON.parse(stdout)).toEqual({ tables: 48, files: 4 });
+    expect(JSON.parse(stdout)).toEqual({ tables: 49, files: 4 });
   });
   it('restores all records, balances, notes, categories, splits, transfers and originals to new local D1/R2', async () => {
     const restored = join(root, 'restored');
     const result = await restoreLocal(bundle, digest, restored);
-    expect(result).toEqual({ tables: 48, files: 4 });
+    expect(result).toEqual({ tables: 49, files: 4 });
     const target = await getPlatformProxy<Env>({
       configPath: join(restored, 'wrangler.json'),
       remoteBindings: false,
@@ -316,6 +351,36 @@ describe('private D1 and original-file recovery', () => {
         expect(copy!.httpMetadata).toEqual(original!.httpMetadata);
         expect(copy!.customMetadata ?? {}).toEqual(original!.customMetadata ?? {});
       }
+      const restoredEnv = { ...target.env, CREDENTIALS_SECRET: env.CREDENTIALS_SECRET };
+      const linkClock = () => new Date('2026-11-12T12:03:00.000Z');
+      const linkContext = {
+        secrets: {},
+        now: linkClock,
+        fetch: async () => {
+          throw new Error('No provider calls during restored completion');
+        },
+      };
+      const unfinished = await getSession(restoredEnv, finalizingLink.id, 'sophtron', linkClock());
+      const finished = await sophtronStatus(restoredEnv, unfinished!, linkContext, linkClock);
+      expect(finished).toEqual({
+        linkId: finalizingLink.id,
+        status: 'done',
+        connectionIds: [`conn_${finalizingLink.id.slice(5)}`],
+        repaired: false,
+      });
+      expect(await loadCredentials(restoredEnv, finished.connectionIds![0]!)).toEqual({
+        SOPHTRON_USER_INSTITUTION_ID: 'invented-login',
+      });
+      expect((await getSession(env, finalizingLink.id, 'sophtron', linkClock()))?.status).toBe(
+        'finalizing',
+      );
+      const replay = await getSession(restoredEnv, completedLink.id, 'sophtron', linkClock());
+      expect(await sophtronStatus(restoredEnv, replay!, linkContext, linkClock)).toEqual({
+        linkId: completedLink.id,
+        status: 'done',
+        connectionIds: [`conn_${completedLink.id.slice(5)}`],
+        repaired: false,
+      });
       const fxCalls: string[] = [];
       await backfillMissingHistory(
         target.env,

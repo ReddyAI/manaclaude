@@ -620,3 +620,103 @@ Changes are confined to `backend/` and this log. No mobile/Claude log/shared/roo
 **Final validation: `npm run check` passed — 1,202 tests** (shared 118, connectors 345, Worker 313 including 42 account-management cases, deployment/runtime/recovery 46, mobile 380), plus typecheck, lint and formatting. The final gate passed on the final implementation; only this validation note was appended afterward and checked for formatting. Initial targeted checks passed 135 cases; the expanded account suite passed 42, and the 48-table recovery suite passed 11. One full-check attempt found the new provenance table sorting before its foreign-key parent during restore; naming it `manual_balance_overrides` keeps it after `accounts`, and the full gate now passes. No recovery safeguards were weakened. The actual Worker startup/authentication smoke test passes.
 
 Main remained **`f095391`** at the final fetch. Claude's **open #23 (F)** touches mobile/shared API declarations/Claude's log only, so this PR does not depend on or include it. Checks used process-local `NODE_OPTIONS=--max-old-space-size=6144`, `EXPO_OFFLINE=1`, `XDG_CONFIG_HOME=/tmp/manaclaude-test-config`, `WRANGLER_LOG_PATH=/tmp/manaclaude-wrangler` and `WRANGLER_SEND_METRICS=false`; no published environment settings changed. `git diff --check` passes. Older Workers do not understand the new balance overrides or deletion tombstones: retaining additive tables alone does not make a Worker rollback preserve these new behaviors. Stop after opening this one PR; do not merge it or start item 3.
+
+## 2026-11-14 — Item 3: recoverable Sophtron completion and verified SnapTrade repair
+
+Read `CLAUDE.md`, `AGENTS.md` and both complete handoff logs in that order, including every Claude backend-request section and PR #17's “Still needed from Codex for findings 10 and 11”. After fetching, also read the newly merged I/J/K entry. GitHub confirms **PR #24 is merged**, with head **`2e25a4099661519f350a117b3784db5e777d6202`** on `codex/account-editing` and merge commit **`ba3ea67552b9e3b538676ddc3482a4401b2cb2e4`**. The merge commit is an ancestor of fetched main, and its backend/log trees match that implementation commit. Started `codex/link-completion-recovery` from latest main **`7935548`**, including merged #23–#26. No unmerged Claude work is assumed. This implements queue item **3 only**, the backend halves of findings **10 and 11**. Item 4 is not started.
+
+### Implementation and defaults
+
+- `backend/src/link/sophtron.ts` owns status polling and finalization. A persisted **two-minute lease** serializes polls across Workers. Overlapping callers return pending (or the saved terminal result); they do not call the provider. Expiry permits takeover after an interrupted Worker. Every state/effect batch verifies the current token and expiry. A delayed owner's success, failure or MFA reply cannot overwrite its replacement, and its cleanup cannot release the replacement's lease.
+- After provider success, the session becomes internal `finalizing` while its encrypted job/login information remains. A later poll resumes finalization without querying the already completed provider job. The final atomic D1 batch creates/repairs the connection, saves credentials when needed, increments a new connection's slot exactly once, stores `{ connectionIds, repaired }`, marks `done` and deletes the session secret. Any failed batch rolls all of those effects back. New connection IDs are stable for the session. No connection is exposed before its credentials exist. Existing account IDs, history, cursors and successful-sync timestamps survive repair.
+- Subsequent completed polls replay the saved result exactly, including `repaired`, without provider requests or writes to the connection. They cannot reset a connection that has since synced or acquired another error. Immediate Sophtron refreshes without a returned job now also create a real replayable link ID (previously `linkId: ''`).
+- `backend/migrations/0009_link_completion.sql` adds three nullable session columns (result and lease metadata) and an ephemeral `link_write_guard` table. `link/writes.ts` performs the constraint-guarded atomic writes. **Apply 0009 before this Worker.** Existing records are not rewritten. No production migration/deployment was performed. Rolling back to an older Worker loses these semantics; drain link attempts before a rollback instead of expecting the old Worker to understand `finalizing`.
+- `backend/src/sync/credentials.ts` exposes `prepareCredentials` so the existing encrypted INSERT/UPDATE can join that atomic batch. `saveCredentials` still prepares and runs exactly that write. **`CREDENTIALS_SECRET` usage, HKDF inputs, AES-GCM, IV generation, encoding, merge/replace behavior and decryption are unchanged**; no key rotation, plaintext staging or alternative encryption is introduced.
+- `backend/src/link/snaptrade.ts` verifies exactly the saved authorization with its saved SnapTrade user. Repair start refuses missing saved identity, opens the portal for that identity, and saves an encrypted session snapshot. Completion requires exactly one matching authorization with explicit `disabled: false`. Missing/disabled/unknown/duplicate matches refuse; provider HTTP, network and malformed-response failures also leave connection state untouched. A changed saved identity is rejected before completion, including changes while provider verification is in flight. Session completion and clearing the connection's repair error commit atomically. Overlapping completions cannot clear a newer error twice.
+- `connectors/src/link/snaptrade.ts` fails closed on missing/nonboolean `disabled`; malformed list elements produce a controlled provider error. This also prevents new-link completion from accepting an authorization whose enabled state is unknown. No new provider endpoint is called.
+- Session lifetime remains **30 minutes from creation**, including result replay and finalization retries; polling does not extend it. Expired attempts/results are unavailable and existing session creation cleanup removes them. Results do not expose provider identifiers or credentials. A **legacy `done` session without a saved result returns 409 `link_result_unavailable`** rather than claiming success without IDs or guessing which existing connection belongs to it. Such historical results cannot be reliably reconstructed; inspect Accounts before a deliberate new attempt. This compatibility limit does not apply to sessions completed by this implementation.
+
+### API contract for Claude
+
+All routes below require `Authorization: Bearer <APP_API_TOKEN>`. Errors are exactly `{ error: string, message: string }`. Common errors on every listed route: **401 `unauthorized`**, **503 `not_configured`** (app/provider/encryption configuration), **500 `internal`** (unexpected server/storage failure), **502 `provider_error`** (provider HTTP/network/malformed response), and **429 `rate_limited`**. Provider bodies and secrets are never echoed. JSON start/answer routes additionally return **400 `bad_request`** for malformed JSON and **400 `invalid_body`** for schema validation. Empty bodies are parsed as `{}`; unknown object keys are stripped under the existing schemas, not newly rejected. No new shared types were edited; Claude owns any shared declarations and screens after merge.
+
+#### POST /v1/link/sophtron/start
+
+Exact accepted JSON fields:
+
+```ts
+{
+  institutionId?: string;   // 1–100 characters
+  institutionName?: string; // 1–120
+  username?: string;        // 1–200
+  password?: string;        // 1–500, sent to provider only, never stored
+  pin?: string;             // at most 50, provider only
+  connectionId?: string;    // /^[a-z]+_[A-Za-z0-9]+$/, at most 80
+  refresh?: boolean;
+}
+```
+
+A new login or repair with new credentials requires institutionId/username/password. Refresh requires connectionId and its saved Sophtron login; it ignores new sign-in fields. **200** is exactly one of the four status objects documented for GET below. Even immediate refresh completion now returns a nonempty real `linkId`. Additional errors: **400 `bad_request`** for absent required sign-in/refresh fields; **404 `not_found`** for a missing/wrong-provider connection or an attempt expiring during the initial poll; **409 `conflict`** for a refresh without saved login; **409 `unavailable`/`no_slots`** from the existing new-link eligibility check; **409 `link_result_unavailable`** for missing saved job/login information during status handling.
+
+Retry: **start has no idempotency key** and may create a provider login before its response is lost. Never blindly resend start after an uncertain outcome. Once a linkId is received, retain it and retry GET on that ID. The replay guarantee is per link session, not deduplication across independent sign-ins. After an unknown start outcome, reload Accounts and require a deliberate decision before starting again.
+
+#### GET /v1/link/sophtron/:linkId
+
+No request body. **200** is exactly one of:
+
+```ts
+{ linkId: string; status: 'pending' }
+{ linkId: string; status: 'mfa'; challenge: {
+    securityQuestions: string[]; tokenMethods: string[]; tokenSent: boolean;
+    tokenRead: string | null; captchaImage: string | null;
+} }
+{ linkId: string; status: 'failed'; message: string }
+{ linkId: string; status: 'done'; connectionIds: [string]; repaired: boolean }
+```
+
+`pending` includes a poll/finalization already in progress; internal lease/finalizing states are not public enum additions. `done` **always includes the saved single connection ID and repaired flag**. It proves sign-in completion, not successful account sync; keep the existing sync step. The first failed job response uses the provider adapter's safe reason; later failed polls use the existing generic ended-attempt message. Additional errors: **404 `not_found`** for invalid/missing/wrong-provider/expired link IDs or a repair target that no longer exists; **409 `link_result_unavailable`** for old done-without-result sessions or missing saved job/login data. Common errors above apply.
+
+Retry: serialize requests and use the existing three-second pause. Retry this **same GET and linkId** after a timeout, 5xx, or uncertain successful response. A live overlapping poll returns pending; an abandoned lease is reclaimable after two minutes. A recorded provider success resumes only the database finalization. A committed success replays exactly with no second connection, slot, credential change or repair reset. On 429 wait before polling again. A 404 ends this session. On `link_result_unavailable`, reload Accounts and explain that the older outcome is unconfirmed; never infer a new connection or automatically start another login. All replay/resume is limited to the original 30-minute lifetime.
+
+#### POST /v1/link/sophtron/:linkId/answer
+
+Existing accepted body remains exactly one of:
+
+```ts
+{ type: 'security_answer'; answers: string[] } // 1–10 trimmed answers, each 1–256
+{ type: 'token_choice'; choice: string }      // 1–200
+{ type: 'token_input'; code: string }         // trimmed, 1–64
+{ type: 'verify_phone' }
+{ type: 'captcha'; text: string }             // trimmed, 1–64
+```
+
+**200** exactly `{ linkId: string, status: 'pending' }`. Additional **404 `not_found`** for invalid/missing/expired/nonpending attempts or missing job data, including a session already finalizing or done. Common/body errors above apply. This POST has no answer replay key: after an uncertain answer or a 404 racing completion, GET the same linkId to discover MFA/pending/done before deciding whether another answer is needed. Do not send answers after completion; status replay does not resend an MFA answer.
+
+#### POST /v1/link/snaptrade/start
+
+Exact JSON body `{ returnUrl?: string, connectionId?: string }`; returnUrl at most 500 characters, connectionId uses the same regex/80-character limit above. Existing safe-return-address filtering remains (an unapproved URL is discarded). Omit connectionId for a new link; supply it for repair. **200** exactly `{ linkId: string, url: string }`, with the portal HTTPS URL. Additional errors: **404 `not_found`** for a missing/wrong-provider connection; **409 `repair_not_finished`** when the repair has no complete saved authorization/user identity; existing new-link **409 `unavailable`/`no_slots`**. Common/body errors above apply. A repair never registers a replacement SnapTrade user or silently opens a new-login portal when its saved identity is missing.
+
+Retry: start is not idempotent. Keep the returned linkId/URL; do not automatically open new attempts after uncertain responses. A fresh intentional repair must be started if the saved identity changed. A successful browser redirect alone remains insufficient proof of repair; the complete route below verifies the provider. No new browser-status route is introduced.
+
+#### POST /v1/link/snaptrade/:linkId/complete
+
+No body required or read (existing behavior). Repair success: **200** exactly `{ connectionIds: [string], repaired: true }`, with the same saved connection ID. New-link success remains **201** exactly `{ connectionIds: string[], repaired: false }`, containing each newly accepted enabled authorization's connection. Additional errors:
+
+- **404 `not_found`**: invalid/missing/expired/already completed/failed session, or missing/wrong-provider repair connection.
+- **409 `repair_not_finished`**: missing saved identity, no exact authorization match, duplicate exact matches, disabled authorization, or missing/nonboolean enabled flag. The existing connection, error, credentials, accounts, history and slots stay unchanged; the session remains retryable until expiry.
+- **409 `connection_changed`**: saved identity differs from the repair-start snapshot, changes during verification, the connection disappears/changes provider during the write, or another request completes/expires the attempt before the guarded commit. Reload Accounts before deciding whether to start a new repair.
+- Existing new-link **409 `not_finished`** when no new explicitly enabled brokerage is found; **409 `unavailable`/`no_slots`** for new-link eligibility; **409 `conflict`** when another new-link completion took the session. Common provider/config/auth/server errors above apply. Malformed provider lists return **502 `provider_error`**, not successful repair.
+
+Retry: after `repair_not_finished`, finish the exact reconnect in SnapTrade and deliberately retry complete on the same linkId. Provider errors allow a later retry and do not clear the repair-needed state. Cancelled/closed-browser handling from Claude #17 stays in place. After timeout/500/lost success, reload Accounts before retrying; unlike Sophtron status, SnapTrade completion has **no success replay contract** and a committed retry returns 404. Atomic repair ensures a failure during its final write leaves both connection and session unchanged; an uncertain committed write is visible through Accounts. New-link multi-authorization completion retains its pre-existing behavior and is not redesigned by this repair fix.
+
+### Regression checks and rollout
+
+- Invented/mocked tests exercise new Sophtron login, both repair modes, immediate refresh, exact replay after later sync changes, five overlapping polls, interrupted/lost final commits, credential/result/slot rollback, expired lease takeover, delayed success/failure/MFA fencing, session expiry and legacy result refusal. SnapTrade covers pending/returned cancellation outcomes, exact identity/user, absent/disabled/unknown/duplicate authorizations, provider errors, unchanged repair-needed state and credentials, identity races, overlapping completions and atomic rollback. Existing response/log leak checks remain in force.
+- Sophtron new/repair completion is metered below **35 D1 statements** including each statement inside batches, within the existing Free-plan 50-query allowance. This is a local query bound, not production CPU/quota certification. The provider's existing HTTP retry policy remains unchanged.
+- Recovery now covers **49 tables** including the migration journal and four invented originals. It retains both a completed replay result and an abandoned finalization lease with encrypted login material, then replays/resumes **only on the disposable restored target without provider calls**. Source data stays untouched. Use matching recovery code/schema; no private production backup or remote migration/deployment was performed.
+- Changes are confined to `backend/`, `connectors/` and this log. No mobile, Claude-log, shared API/model, root configuration, workflow, dependency or lockfile changes. No real provider/Plaid calls, private data or switch changes. Node **24.22.1**, npm **11.9.0**. Local Worker tests require loopback permission; the initial sandbox-only run could not bind a test port and was rerun with that permission. Checks use process-local heap/Expo/Wrangler temp-directory settings only.
+- Targeted checks passed: **47 backend link tests**, **14 connector link tests**, and **11 recovery tests** before the final three additional regressions and recovery-fixture strengthening. Final whole-repository validation follows below. Stop after opening/attaching the focused PR; do not merge, deploy or start queue item 4.
+
+The first full-check attempt stopped at mobile typecheck because this workspace lacked `expo-clipboard`, already declared in merged main #26. Refreshed the installed dependencies with `npm ci` using the committed lockfile; no manifest/lockfile changes. The final full gate was then rerun.
+
+**Final validation: `npm run check` passed — 1,383 tests** (shared 118, connectors 346, Worker 345, deployment/runtime/recovery 46, mobile 528), plus typecheck, lint and formatting. The expanded backend link suites now contain **50 passing tests**. The final recovery fixture stores a real completed Sophtron connection/result and verifies replay as well as interrupted finalization on restoration. The real local Worker startup/authentication smoke check passes. Main remained `7935548` at the final fetch. This validation note was appended after the full gate and checked for formatting; the implementation tested is the implementation committed. `git diff --check` passes. No production operations or later queue work were performed.

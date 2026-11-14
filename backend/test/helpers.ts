@@ -27,6 +27,7 @@ export const testEnv = workerEnv as unknown as Env & {
 export const db = testEnv.DB;
 
 const TABLES = [
+  'link_write_guard',
   'manual_balance_overrides',
   'deleted_manual_accounts',
   'account_write_guard',

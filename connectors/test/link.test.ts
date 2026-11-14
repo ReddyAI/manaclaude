@@ -193,6 +193,23 @@ describe('SnapTrade linking', () => {
   const ST = { SNAPTRADE_CLIENT_ID: 'DEMO-CLIENT', SNAPTRADE_CONSUMER_KEY: 'demo-consumer-key' };
   const user = { userId: 'billionaire-demo', userSecret: 'demo-user-secret' };
 
+  it('requires an explicit disabled:false and rejects malformed authorization lists', async () => {
+    for (const disabled of [undefined, null, true, 0, 'false', false]) {
+      const fetch = fakeFetch({
+        'GET api.snaptrade.com/api/v1/authorizations': {
+          json: [{ id: 'invented-auth', disabled }],
+        },
+      });
+      expect((await listSnaptradeAuthorizations(makeCtx(ST, fetch), user))[0]?.disabled).toBe(
+        disabled !== false,
+      );
+    }
+    const fetch = fakeFetch({ 'GET api.snaptrade.com/api/v1/authorizations': { json: [null] } });
+    await expect(listSnaptradeAuthorizations(makeCtx(ST, fetch), user)).rejects.toThrow(
+      /authorizations/,
+    );
+  });
+
   it('registers the user, opens the portal and lists authorizations, all signed', async () => {
     const fetch = fakeFetch({
       'POST api.snaptrade.com/api/v1/snapTrade/registerUser': { json: user },

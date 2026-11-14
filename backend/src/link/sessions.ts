@@ -1,4 +1,5 @@
 import type { Env } from '../env';
+import type { LinkDoneResponse } from '@manaclaude/shared';
 import {
   deleteCredentials,
   loadCredentials,
@@ -17,7 +18,8 @@ export interface LinkSession {
   id: string;
   connectorId: string;
   connectionId: string | null;
-  status: 'pending' | 'returned' | 'done' | 'failed';
+  status: 'pending' | 'returned' | 'finalizing' | 'done' | 'failed';
+  completion: LinkDoneResponse | null;
   institutionName: string | null;
   returnUrl: string | null;
   expiresAt: string;
@@ -31,6 +33,7 @@ interface Row {
   institution_name: string | null;
   return_url: string | null;
   expires_at: string;
+  completion_json: string | null;
 }
 
 const fromRow = (r: Row): LinkSession => ({
@@ -41,12 +44,14 @@ const fromRow = (r: Row): LinkSession => ({
   institutionName: r.institution_name,
   returnUrl: r.return_url,
   expiresAt: r.expires_at,
+  completion: r.completion_json ? (JSON.parse(r.completion_json) as LinkDoneResponse) : null,
 });
 
 export async function createSession(
   env: Env,
   input: {
     connectorId: string;
+    status?: 'pending' | 'finalizing';
     connectionId?: string | null;
     institutionName?: string | null;
     returnUrl?: string | null;
@@ -60,7 +65,8 @@ export async function createSession(
     id: newId('link'),
     connectorId: input.connectorId,
     connectionId: input.connectionId ?? null,
-    status: 'pending',
+    status: input.status ?? 'pending',
+    completion: null,
     institutionName: input.institutionName ?? null,
     returnUrl: input.returnUrl ?? null,
     expiresAt: new Date(now.getTime() + input.minutes * 60_000).toISOString(),
