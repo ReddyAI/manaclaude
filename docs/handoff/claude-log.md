@@ -804,3 +804,114 @@ Started from `main` at `b984339` (PR #27 merged), on the same branch name restar
 2. Home: the spending card names the expense, and the total doesn't change.
 3. Budgets and Month in review: the same line.
 4. Settings, Exchange rates, "Refresh rates now". If a CHF rate arrives, the lines go away and the expense is counted.
+
+## 2026-11-14: Blocks N, O and P (linking after Codex's #28, the last missing-rate totals, saved file layouts)
+
+Started from `main` at `f5b54ae`. GitHub shows PRs #26, #27, #28 (Codex's, head `03436ad`) and #29 merged; main did not move during the work. One branch (`claude/gracious-mccarthy-icwche`), one pull request, one commit per block. Every screen uses routes already in `backend/src/api/`: `/v1/link/sophtron/*`, `/v1/link/snaptrade/*`, `GET /v1/dataset`, `POST /v1/connections/:id/sync` and `GET /v1/import-mappings`. Changed: `apps/mobile/`, `packages/shared/src/api/index.ts` (two additive types) and this log. No backend, connector, workflow, root-config, dependency or lockfile changes.
+
+### Shared types added
+
+`ImportMapping` (`{ signature, name, accountId: Id | null, mapping: CsvMapping, updatedAt }`) and `ImportMappingsResponse` (`{ mappings }`), exactly as `GET /v1/import-mappings` sends them. Nothing renamed, removed or reshaped. The link types already matched Codex's contract, so they were not touched.
+
+### Block N: Sophtron and SnapTrade linking (app side of findings 10 and 11)
+
+Built from the "API contract for Claude" in codex-log, "Item 3: recoverable Sophtron completion and verified SnapTrade repair".
+
+Sophtron (`features/link/sophtronPoll.ts`, `SophtronFlow.tsx`):
+
+- The linkId from start is kept for the whole sign-in and every later request is about it. Status requests stay one at a time with the 3-second pause. A timeout, no answer or a 5xx asks the same linkId again (three in a row stop with Check again, as before). A 429 waits 15 seconds before the same question and is not counted as a failure.
+- A "done" answer goes on to the existing sync step only when it names the connection and says `repaired`. A repair must name the connection being repaired with `repaired: true`; a new login must say `repaired: false`. Anything else is treated as unconfirmed. The old reload-and-guess fallback from PR A (#17) is removed: the app no longer infers a new connection from the data.
+- 409 `link_result_unavailable` (on start or status), or a done without its connection: the screen says "Your Worker can't confirm how this sign-in ended, so the app has not linked anything and has not started another sign-in", reloads Accounts and says what to look for there. Start over appears only after the reload worked, and is your own tap. If the reload fails, a Reload Accounts button comes first.
+- Start whose answer was lost (no answer, timeout, 5xx or 429): nothing is sent again; the same screen says a sign-in may have started at the bank anyway and reloads Accounts.
+- A 404 on status ends the sign-in, back to the start with the Worker's message.
+- MFA: an answer refused outright (400, 401) stays on the question with the reason. Any other failure (no answer, 5xx, 429, or 404 racing completion) hides the question, says the answer may or may not have reached the bank, and asks the status of the same linkId before anything else; after a 429 it waits 15 seconds first. Only one answer is ever on its way (two quick taps send one), and nothing is answered once the status says done.
+
+SnapTrade repair (`features/link/BrowserFlow.tsx`):
+
+- 200 with `repaired: true` naming this connection is a finished repair and goes to the sync step. An answer that does not name this connection as repaired is not taken as a repair (reload and say so).
+- 409 `repair_not_finished`: "SnapTrade has not finished the reconnect yet, so nothing was changed. Finish reconnecting your brokerage in SnapTrade (open it again if you closed it), then tap Check again." Check again sends complete on the same linkId, on your tap.
+- 409 `connection_changed`: reloads Accounts, says the repair was not saved and to start a new repair if it still needs one. The linkId is dropped: no Check again, no Done.
+- No answer, timeout or 500: Accounts is reloaded first. If it shows the connection working again (healthy or syncing), the repair was saved and the sync step follows, with no second complete. If it still needs repair, Check again is offered. If the reload fails, only Reload Accounts is offered.
+- 404 (attempt over): reload; a saved repair goes on to the sync step, otherwise "This SnapTrade attempt has ended" with no retry.
+- 502 and 429: the Worker's message, and Check again (SnapTrade failed, nothing was saved). 503: the message only.
+- Kept from #17: a closed or cancelled window on the phone completes nothing; a repair offers no "I finished" after a cancel; the web's Done is your own tap; the sync after a repair is still the proof.
+
+### Block O: the last totals that leave out an amount with no exchange rate
+
+Numbers are unchanged; each total now names what it leaves out, with the wording in `features/currency/missingRates.ts` (`skippedItemsText` takes an optional noun; new `savingsNoRateText` and `billNoRateText`).
+
+- Spending plan (`features/budgets/SpendingPlanView.tsx`): a line under the totals for active bills, subscriptions and income items with no rate ("Leaves out "Xfinity internet" (CHF): there is no CHF to USD exchange rate yet..."); a line when savings is set in a currency with no rate ("Savings is set in CHF, and there is no CHF to USD exchange rate yet, so it counts as 0 here..."); and on each such bill's row: "No CHF to USD rate yet, so it is not in the plan". The month's transactions were already named by block M's line on Budgets.
+- Investments (`features/networth/InvestmentsScreen.tsx`): "Value, cost and gains: Leaves out ..." under the Invested total (also covers the allocation chart), "Realized gains: ..." under the realized total (follows the year chosen), "Dividends: ..." under the dividends, each named by symbol once. A position's lot sheet says when its report-currency amounts show 0 for want of a rate.
+
+### Block P: saved file layouts
+
+- Import screen: a third tab, "File layouts" (`features/import/SavedLayouts.tsx`), reads `GET /v1/import-mappings`. Each layout shows its name (the file that first saved it), where its rows went ("Into "Everyday Checking"", "No account saved with it", or "Into an account not on this device"), "Last used" with the day, and the columns it reads (date order, one amount column or two, lines skipped). Newest first, as the Worker sends them.
+- Read-only. It says removing one is not possible from the app yet. Empty, loading and error states, with Try again. A backend change loads the list again; an answer or error for the previous request is dropped.
+
+### Defaults chosen
+
+- The wait after a 429 is 15 seconds; the Worker sends no Retry-After the app could read.
+- A lost or 429 Sophtron start counts as "may have started" (a 429 can come from the provider poll inside start, after the login was created).
+- A Sophtron "done" without a valid connection and flag is never guessed from the data, even when a new connection appears there.
+- For SnapTrade, a connection showing healthy or syncing after a reload counts as repaired, because Codex's repair commit sets `syncing` and clears the error; the sync step that follows is still the proof shown.
+- New SnapTrade links get the same reload-before-retry after a lost answer, so a brokerage is not linked twice.
+- Block O lines speak of the report currency in the chip (the main one in Both mode), as in blocks L and M. Savings of 0 and paused items get no line.
+- File layouts live in the import flow, not Settings: that is where they are used, and Settings has no import section.
+
+### Validation
+
+- `npm run check` passed before the push: typecheck, lint, format and **1,447 tests** (shared 118, connectors 346, backend 345, deployment, runtime and recovery 46, mobile 592, up from 546). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192`; no config change.
+- New mobile tests, all invented data: `link/__tests__/linkRecovery.test.tsx` (34), `currency/__tests__/planInvestmentsNoRate.test.tsx` (12), `import/__tests__/savedLayouts.test.tsx` (7). `linkSafety.test.tsx` lost the seven tests of the removed guessing fallback; its done answers now carry `repaired`.
+- Each of 60 new guards was removed once by a script that ran the tests and put it back; every removal made a test fail (N 30, O 20, P 10). Three survived at first and got tests: a done with an empty ID list, Done hidden on the web while Accounts must be reloaded, and an error from a previous backend's list. Two P guards were unreachable (an old backend's list never arrives because `api()` drops it as superseded) and were removed.
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars` with `ALLOW_SAMPLE_SEED=true` and an invented `CREDENTIALS_SECRET`, migrations 0001 to 0009, `POST /v1/dev/seed`, a fresh database per width), at 412 px and 1280 px. **60 of 60 checks passed (30 at each width).** The first run at 412 px had 3 failures, all in the test script (it read the sync headline after the sync had already ended, used a check that does not wait, and expected 200 where the Worker answers a new import preview with 201); fixed and rerun on fresh databases.
+  - N, real Worker: Sophtron institutions and SnapTrade start both answered 503 `not_configured` (no provider keys). For SnapTrade the screen showed the Worker's message; for Sophtron the check confirmed the 503 only.
+  - N, played: status answered 500, 429, then done. One start; three status requests, all for the same linkId, never two at once; the next request came 4.5 s after the 500 (1.5 s answer plus the 3 s pause) and 15.4 s after the 429. The real sync then ran on the named connection and showed "The repair is not confirmed" (the Worker has no Sophtron keys; its status stayed `needs_repair`).
+  - N, played: 409 `link_result_unavailable` reloaded Accounts from the Worker and showed the plain words; start once, status once, nothing more in 7 s. A lost start: sent once, no status request. MFA: after a lost answer the same linkId was asked before the next question; two answers in all, none after done.
+  - N, SnapTrade, played complete answers: `repair_not_finished`, then Check again on the same linkId and a 200 repair went to the real sync. `connection_changed` reloaded Accounts and offered no retry. A lost answer with the connection set to `needs_repair` in the local database: reloaded, "still needs repair", sent once; Check again then got a played 404 and offered nothing more. A lost answer with the connection healthy on the Worker: straight to the real sync, no second complete.
+  - O: in the local database, the Xfinity bill, VTI's holding, lots and activities were set to CHF; the Worker's own dataset showed them in CHF with no CHF rate. Spending plan, Investments and the VTI lot sheet showed every line above. The CHF savings came from the browser's own settings (planning is a device setting, not stored on the Worker).
+  - P: the tab showed "No saved layouts yet" while the Worker had none. A real CSV import through the Worker (preview 201, commit 200) saved one layout; the tab then showed its name, "Into "Everyday Checking"" (the Worker's `accountId`) and "Last used Nov 14" (its `updatedAt`).
+- **Played in the browser:** every `/v1/link/sophtron/*` and `/v1/link/snaptrade/*` answer except the two real 503s. No provider was called and no real credential was used (the sign-in fields held "demo-user" and "demo-password").
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted; none is committed.
+- **No Android device or emulator was used.** The phone-only browser paths (Custom Tab closed, cancelled, `status=ok`) are covered by Jest with a stand-in browser.
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **Saved file layouts:** no route deletes one (for example `DELETE /v1/import-mappings/:signature`). The layout's name stays the first file's name; later imports update only the mapping, account and time.
+- **SnapTrade complete:** no replay. After a lost answer the app can only read Accounts; replaying a committed repair's answer, as Sophtron status now does, would remove that step.
+- **Sophtron start and MFA answers:** no retry key. A lost start leaves a sign-in the app can't find again; a key the app sends would let it recover the linkId.
+- **429:** no Retry-After on the Worker's answer; the app waits a fixed 15 seconds.
+- **Web SnapTrade:** still no status the app could read for a browser session, so the web build can't tell a finished login from a closed tab.
+- Unchanged from earlier entries: the items listed under blocks D to K and before.
+
+### Remaining app work
+
+- The S&P 500 comparison on Investments was not checked for a currency with no rate.
+
+### Not possible until Codex's routes exist (not built)
+
+Category merging; export and backup in the app; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file; deleting goals or recurring items; deleting saved file layouts; listing or deleting MCP clients; reading a receipt's candidates after the upload.
+
+### How to test on the phone
+
+Sophtron:
+
+1. Accounts, a Sophtron connection that needs repair, Repair, "Answer the bank's question".
+2. Turn on airplane mode for a few seconds while it says "Signing in". It keeps asking about the same sign-in and never starts a second one.
+3. If it says "Not confirmed", open Accounts and look for the bank before tapping Start over.
+
+SnapTrade repair:
+
+1. Accounts, a SnapTrade connection that needs repair, Repair, Open SnapTrade.
+2. Close SnapTrade before finishing. The app says nothing was changed and offers only Open SnapTrade.
+3. Open it again and finish. If the app says SnapTrade has not finished the reconnect, finish it there and tap Check again. "Repaired and synced" appears only after the sync works.
+
+Missing rates:
+
+1. Make a bill or subscription in a currency your Worker has no rate for, or hold an investment in one.
+2. Budgets, Spending plan: a line under the totals names it, and its row says it is not in the plan.
+3. Net worth, Investments: lines under Invested, Realized gains and Dividends name it.
+
+Saved file layouts:
+
+1. Import a bank CSV (Accounts, Import a statement) and save it.
+2. Tap the "File layouts" tab: the file's layout is listed with its account and today's date.

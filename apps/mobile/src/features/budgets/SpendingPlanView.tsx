@@ -18,6 +18,7 @@ import { Text } from '../../design/components/Text';
 import { useLookups, useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { DualAmount } from '../currency/Amount';
+import { billNoRateText, savingsNoRateText, skippedItemsText } from '../currency/missingRates';
 import { pickDual, useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { updatePlanning, usePlanning } from '../planning/usePlanning';
 import { spentByCategory } from './useBudgetData';
@@ -60,6 +61,27 @@ export function SpendingPlanView({ month }: { month: YearMonth }) {
         .sort((a, b) => Math.abs(monthlyEquivalent(b)) - Math.abs(monthlyEquivalent(a))),
     [data.recurring],
   );
+
+  // What the plan's totals leave out for want of an exchange rate (they add 0).
+  const noRate = useMemo(() => {
+    const cur = display.reportCurrency;
+    const counted = (r: (typeof data.recurring)[number]) =>
+      r.status === 'active' &&
+      (r.kind === 'income' || r.kind === 'bill' || r.kind === 'subscription');
+    const items = data.recurring.filter(
+      (r) =>
+        counted(r) && convertAmount(monthlyEquivalent(r), r.currency, cur, data.fxRates) === null,
+    );
+    const savings =
+      planning.monthlyContribution !== 0 &&
+      convertAmount(planning.monthlyContribution, planning.currency, cur, data.fxRates) === null;
+    return {
+      currency: cur,
+      ids: new Set(items.map((r) => r.id)),
+      items: skippedItemsText(items, cur),
+      savings: savings ? savingsNoRateText(planning.currency, cur) : null,
+    };
+  }, [data, display.reportCurrency, planning.monthlyContribution, planning.currency]);
 
   const commitSavings = () => {
     const parsed = parseMoneyInput(savingsText, planning.currency);
@@ -112,6 +134,16 @@ export function SpendingPlanView({ month }: { month: YearMonth }) {
           {row('Savings', '−', (v) => v.savings, 'savings')}
           {row('You can spend', '=', (v) => v.leftToSpend, 'left')}
         </Card>
+        {noRate.items ? (
+          <Text variant="caption" tone="muted" testID="plan-items-no-rate">
+            {noRate.items}
+          </Text>
+        ) : null}
+        {noRate.savings ? (
+          <Text variant="caption" tone="muted" testID="plan-savings-no-rate">
+            {noRate.savings}
+          </Text>
+        ) : null}
 
         <Card>
           <VStack gap="sm">
@@ -140,9 +172,12 @@ export function SpendingPlanView({ month }: { month: YearMonth }) {
                 <ListRow
                   key={r.id}
                   title={r.name}
-                  subtitle={
-                    r.frequency === 'monthly' ? 'Monthly' : `${r.frequency}, per month shown`
-                  }
+                  subtitle={[
+                    r.frequency === 'monthly' ? 'Monthly' : `${r.frequency}, per month shown`,
+                    noRate.ids.has(r.id) ? billNoRateText(r.currency, noRate.currency) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                   leading={<IconBadge icon={cat?.icon ?? 'repeat'} color={cat?.color ?? 'c1'} />}
                   trailing={
                     <DualAmount

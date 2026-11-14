@@ -30,6 +30,7 @@ import { useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { Amount, DualAmount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { skippedItemsText } from '../currency/missingRates';
 import { pickDual, useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { BackAction } from '../planning/BackAction';
 
@@ -153,6 +154,40 @@ export function InvestmentsScreen() {
     [activity.dividends, display],
   );
 
+  // What each total leaves out for want of an exchange rate to the report
+  // currency (it adds 0), named by symbol, once per symbol.
+  const noRate = useMemo(() => {
+    const symbol = (id: string | null, fallback: string) =>
+      (id ? securities.get(id)?.symbol : undefined) ?? fallback;
+    const once = (list: { name: string; currency: string }[]) => [
+      ...new Map(list.map((x) => [`${x.name}|${x.currency}`, x])).values(),
+    ];
+    const holdings = once(
+      data.holdings
+        .filter((h) => display.convert(h.marketValue, h.currency, currency) === null)
+        .map((h) => ({ name: symbol(h.securityId, h.securityId), currency: h.currency })),
+    );
+    const sold = once(
+      activity.realized
+        .filter((r) => year === 'all' || Number(r.soldOn.slice(0, 4)) === year)
+        .filter((r) => display.convert(r.gain, r.currency, currency, r.soldOn) === null)
+        .map((r) => ({ name: symbol(r.securityId, r.securityId), currency: r.currency })),
+    );
+    const paid = once(
+      activity.dividends
+        .filter((d) => display.convert(d.amount, d.currency, currency, d.date) === null)
+        .map((d) => ({
+          name: symbol(d.securityId, d.type === 'interest' ? 'Interest' : 'Dividend'),
+          currency: d.currency,
+        })),
+    );
+    return {
+      holdings: skippedItemsText(holdings, currency, 'holdings'),
+      realized: skippedItemsText(sold, currency, 'holdings'),
+      dividends: skippedItemsText(paid, currency, 'holdings'),
+    };
+  }, [data.holdings, activity, securities, year, display, currency]);
+
   const benchSecurity = data.securities.find((s) => s.isBenchmark) ?? null;
   const bench = useMemo(() => {
     if (!benchSecurity) return null;
@@ -240,6 +275,11 @@ export function InvestmentsScreen() {
               </HStack>
             ))}
           </VStack>
+          {noRate.holdings ? (
+            <Text variant="caption" tone="muted" testID="invest-holdings-no-rate">
+              {`Value, cost and gains: ${noRate.holdings}`}
+            </Text>
+          ) : null}
         </VStack>
       </Card>
 
@@ -437,6 +477,11 @@ export function InvestmentsScreen() {
             onPress={() => setShowAllRealized((v) => !v)}
           />
         ) : null}
+        {noRate.realized ? (
+          <Text variant="caption" tone="muted" testID="invest-realized-no-rate">
+            {`Realized gains: ${noRate.realized}`}
+          </Text>
+        ) : null}
         <Text variant="caption" tone="faint">
           First in, first out. Converted with the rate on the day of each sale.
         </Text>
@@ -469,6 +514,11 @@ export function InvestmentsScreen() {
             ))
           )}
         </Card>
+        {noRate.dividends ? (
+          <Text variant="caption" tone="muted" testID="invest-dividends-no-rate">
+            {`Dividends: ${noRate.dividends}`}
+          </Text>
+        ) : null}
       </View>
 
       <BottomSheet
@@ -530,6 +580,11 @@ export function InvestmentsScreen() {
                 format={{ cents: 'never', sign: 'always' }}
               />
             </HStack>
+            {display.convert(0, open.currency, currency) === null ? (
+              <Text variant="caption" tone="muted" testID="position-no-rate">
+                {`There is no ${open.currency} to ${currency} exchange rate yet, so the ${currency} amounts below add nothing and show 0. Refresh rates in Settings, Exchange rates.`}
+              </Text>
+            ) : null}
             <HStack style={styles.lotHeader}>
               {['Acquired', 'Qty', 'Cost', 'Gain / loss', 'Term'].map((h) => (
                 <Text key={h} variant="micro" tone="muted" uppercase style={styles.lotCell}>
