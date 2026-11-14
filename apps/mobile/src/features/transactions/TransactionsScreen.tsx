@@ -13,6 +13,7 @@ import { breakpoints } from '../../design/themes';
 import { useLookups, useToday } from '../../data/selectors';
 import { useFinance } from '../../data/store';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { goTo } from '../planning/navigate';
 import { CashQuickAddButton } from './CashQuickAdd';
 import { groupByDay } from './display';
 import { ReviewQueueList } from './ReviewQueue';
@@ -20,6 +21,7 @@ import { reviewCount } from './reviewQueue';
 import { TransactionDetailSheet } from './TransactionDetailSheet';
 import { TransactionRow } from './TransactionRow';
 import { TransactionsTable } from './TransactionsTable';
+import { openSuggestions } from './transfers';
 
 type Filter = 'all' | 'review' | 'pending';
 
@@ -56,6 +58,7 @@ export function TransactionsScreen() {
     [data.transactions, lookups],
   );
   const reviewing = filter === 'review';
+  const possible = useMemo(() => openSuggestions(data).length, [data]);
 
   return (
     <Screen
@@ -87,6 +90,14 @@ export function TransactionsScreen() {
             selected={filter === 'pending'}
             onPress={() => setFilter('pending')}
           />
+          {possible > 0 ? (
+            <Chip
+              label={`Possible transfers · ${possible}`}
+              icon="link"
+              onPress={() => goTo('/transactions/transfers')}
+              testID="open-possible-transfers"
+            />
+          ) : null}
         </HStack>
       </View>
       {reviewing ? (

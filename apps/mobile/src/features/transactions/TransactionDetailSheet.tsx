@@ -16,6 +16,8 @@ import { Amount } from '../currency/Amount';
 import { setCategory, setReviewed, undoSplit } from './actions';
 import { CategoryPicker } from './CategoryPicker';
 import { activeLink, suggestedLink, transferTitle } from './display';
+import { kindLabel } from './edit';
+import { EditTransactionSheet } from './EditTransactionSheet';
 import { LOW_CONFIDENCE } from './reviewQueue';
 import { ReceiptSection } from './ReceiptSection';
 import { TransferSection } from './TransferSection';
@@ -35,7 +37,10 @@ export function TransactionDetailSheet({
 }) {
   const data = useFinance();
   const [picking, setPicking] = useState(false);
+  const [editing, setEditing] = useState(false);
   const current = txn ? (lookups.transactionsById.get(txn.id) ?? txn) : null;
+  // The edit form belongs to the transaction it was opened on.
+  if (!current && editing) setEditing(false);
   const link = current ? activeLink(current, lookups) : null;
   const suggestion = current ? suggestedLink(current, lookups) : null;
   const children = current?.isSplitParent
@@ -79,8 +84,9 @@ export function TransactionDetailSheet({
                   />
                 </Text>
               ) : null}
-              <HStack gap="xs">
+              <HStack gap="xs" wrap justify="center">
                 {current.pending ? <Badge label="Pending" tone="pending" /> : null}
+                {current.excluded ? <Badge label="Left out of reports" tone="neutral" /> : null}
                 {current.reviewed ? (
                   <Badge label="Reviewed" tone="income" icon="check" />
                 ) : (
@@ -123,7 +129,30 @@ export function TransactionDetailSheet({
               )
             ) : null}
             <Field label="Bank description" value={current.rawName} />
+            {current.kind !== 'regular' ? (
+              <Field label="Kind" value={kindLabel(current.kind)} />
+            ) : null}
+            {current.tagIds.length > 0 ? (
+              <Field
+                label="Tags"
+                value={current.tagIds
+                  .map(
+                    (id) => data.tags.find((t) => t.id === id)?.name ?? 'A tag not on this device',
+                  )
+                  .join(', ')}
+              />
+            ) : null}
             {current.notes ? <Field label="Notes" value={current.notes} /> : null}
+            <HStack>
+              <Button
+                label="Edit"
+                icon="sliders-horizontal"
+                variant="secondary"
+                size="sm"
+                onPress={() => setEditing(true)}
+                testID="edit-transaction"
+              />
+            </HStack>
 
             <TransferSection txn={current} link={link} suggestion={suggestion} lookups={lookups} />
 
@@ -180,6 +209,9 @@ export function TransactionDetailSheet({
           </VStack>
         ) : null}
       </BottomSheet>
+      {current ? (
+        <EditTransactionSheet txn={current} visible={editing} onClose={() => setEditing(false)} />
+      ) : null}
       {current ? (
         <CategoryPicker
           visible={picking}

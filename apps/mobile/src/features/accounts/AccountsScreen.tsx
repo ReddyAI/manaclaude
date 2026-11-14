@@ -26,6 +26,7 @@ import { Amount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
 import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { CashQuickAddButton } from '../transactions/CashQuickAdd';
+import { CashAccountSheet } from './CashAccountSheet';
 import { ConnectorsList } from './ConnectorsList';
 import { connectionHealth, timeAgo } from './health';
 
@@ -65,6 +66,7 @@ export function AccountsScreen() {
   const display = useMoneyDisplay();
   const [tab, setTab] = useState<'accounts' | 'connectors'>('accounts');
   const [repairNote, setRepairNote] = useState<Record<string, string>>({});
+  const [addingCash, setAddingCash] = useState(false);
   const refreshControl = useRefreshControl();
   const connectionsById = new Map(data.connections.map((c) => [c.id, c]));
 
@@ -213,6 +215,14 @@ export function AccountsScreen() {
               onPress={() => router.push('/import')}
             />
             <Button
+              label="Add a cash account"
+              icon="wallet"
+              size="sm"
+              variant="secondary"
+              onPress={() => setAddingCash(true)}
+              testID="add-cash-account"
+            />
+            <Button
               label="Stored statements"
               icon="paperclip"
               size="sm"
@@ -221,6 +231,7 @@ export function AccountsScreen() {
               testID="open-vault"
             />
           </HStack>
+          <CashAccountSheet visible={addingCash} onClose={() => setAddingCash(false)} />
           <ConnectionsCard />
           <ConnectorsList />
         </>

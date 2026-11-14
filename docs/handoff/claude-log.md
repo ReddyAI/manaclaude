@@ -419,3 +419,70 @@ Entering a balance later for an account made as unknown; renaming or removing a 
 ### Next (in the order Sankar set, one chat each)
 
 F: the transaction editing controls that `PATCH /v1/transactions/:id` supports and the app does not expose (name, date, amount, notes, kind, tags, exclude), plus making a cash account (`POST /v1/accounts/cash`), refreshing rates now (`POST /v1/fx/refresh`) and rejecting a suggested transfer (`POST /v1/transfer-links/:id/reject`). G: screens for the account editing routes, once Codex's contract for them is merged.
+
+## 2026-11-14: Block F (transaction editing, cash accounts, rates now, suggested transfers)
+
+Started from `main` at `f095391` (PRs #21 and #22 merged; #22 is Codex's bounded nightly work, whose log says no route or contract changed) on `claude/fervent-hypatia-vl2qsq`, restarted from main after #21 merged. One pull request, one commit. Everything uses routes already on main: `PATCH /v1/transactions/:id`, `POST /v1/accounts/cash`, `GET /v1/fx/latest`, `POST /v1/fx/refresh`, `POST /v1/transfer-links/:id/confirm` and `/reject`. Changed: `apps/mobile/`, `packages/shared/src/api/index.ts` (two additive types) and this log. No backend, connector, workflow, root-config, dependency or lockfile changes.
+
+### Shared types added
+
+`TransactionResponse` (`{ transaction }`, the answer of PATCH, review and category) and `FxRefreshResponse` (`{ openExchangeRates, frankfurter }`, the counts POST /v1/fx/refresh sends). Nothing renamed, removed or reshaped.
+
+### What changed
+
+Editing a transaction (`PATCH /v1/transactions/:id`):
+
+- `apps/mobile/src/features/transactions/edit.ts` (new): the form and its checks. One save sends only the fields that changed, because the Worker marks every field it receives as edited by hand and nothing changes it again.
+- `EditTransactionSheet.tsx` (new), opened by a new "Edit" button on the transaction's detail sheet: name, date, amount (money out or in, in the transaction's own currency), kind (the five kinds), tags (existing tags only), "Leave out of reports and budgets", notes.
+- What the Worker refuses is not offered: no amount on a linked transfer or a part of a split, no kind on a linked transfer, and on a split whole only name and notes.
+- `actions.ts`: `editTransaction` changes the screen at once and sends the PATCH through the existing `persist`, so a refused save is undone and the banner says why. The detail sheet now also shows the kind (when not regular), the tags and a "Left out of reports" badge.
+
+Suggested transfers (`POST /v1/transfer-links/:id/confirm` and `/reject`):
+
+- Found while reading the matcher: the Worker stores a suggested pair without setting `transfer_link_id` on either transaction (`backend/src/services/matcher.ts`), but the app looked for suggestions only through that field. So suggestions from the Worker were never shown, and the old "Not a transfer" button sent `POST /v1/transactions/:id/unlink`, which answers 400 "This transaction is not linked." for them (checked on the local Worker).
+- `transfers.ts`: `suggestionsFor` and `openSuggestions` find suggested pairs by their two ids. `applyRejectSuggestion` marks only that pair rejected. `applyConfirmTransfer` now does what the Worker does: points both sides at the pair and drops the other suggestions involving either side.
+- `TransferSection.tsx`: every suggested pair is shown with the other side's account, name, date and amount, and its own "Confirm" and "Not this one" ("Not a transfer" when there is one). Turning down uses the reject route.
+- `PossibleTransfersScreen.tsx` (new) and route `src/app/transactions/transfers.tsx`: all open suggestions grouped by the payment out. Reached from a "Possible transfers · N" chip on Transactions, shown only when there are some.
+
+Cash accounts (`POST /v1/accounts/cash`):
+
+- `features/accounts/cashAccount.ts`, `actions.ts`, `CashAccountSheet.tsx` (new), opened by "Add a cash account" on Accounts, Connectors tab: name, currency (USD, INR, then any other in use), cash on hand now, and "Use for quick cash entries in X". Made on the Worker first, then put into the app's data (never into sample data) and the data reloaded.
+
+Exchange rates (`GET /v1/fx/latest`, `POST /v1/fx/refresh`):
+
+- `features/currency/fxApi.ts` and `features/settings/sections/ExchangeRatesSection.tsx` (new, one line in `SettingsScreen.tsx`, below Display): the USD to INR rate the Worker has, when and by whom it was published, and "Refresh rates now", which says in plain words what each source gave, then reloads the rate (and the app's data when something came back).
+
+### Defaults chosen
+
+- Dates: a real calendar day, not after today. Amounts: not zero, at most the currency's decimals, typed without a sign with "Money out" or "Money in".
+- Notes cleared to empty are sent as `null`. Tags are compared as a set; a tag the device does not know stays on the transaction.
+- The edit form always opens from the transaction as it is now; "Cancel" keeps nothing.
+- The edit sheet says that editing an amount does not change the account balance (the route does not).
+- Suggestions are listed best match first. A pair whose other side is not in the app's data is not shown, since it could not be judged.
+- Cash account: the cash on hand is required (0 is accepted, below 0 is not), the name must not be one an account already has, and "quick cash entries" is offered only when that currency has no such account yet, because the Worker does not take the mark off the other one. A second tap before the answer is ignored. When the answer is lost the form says the account may exist and asks to check Accounts before trying again; it never sends again by itself.
+- Rates: the pair shown is USD to INR. No button when no backend is set.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **1,200 tests** (shared 118, connectors 345, backend 271, deployment, runtime and recovery 46, mobile 420, up from 380). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192` in the cloud container; no config change.
+- 40 new mobile tests, all with invented data: `transactions/__tests__/edit.test.ts` (11), `editSheet.test.tsx` (6), `suggestions.test.tsx` (7, suggestions in the Worker's shape, without the pointer), `accounts/__tests__/cashAccount.test.tsx` (9), `settings/sections/__tests__/exchangeRates.test.tsx` (6), and one in `accounts.test.tsx` for the new button. A small helper (`transactions/__tests__/live.ts`) loads invented data from a stand-in Worker so saves really go out.
+- Each of 27 new guards was removed once to confirm a test fails without it: only changed fields sent (7 failures), real date (2), not after today (1), not zero (1), sign from money out or in (7), amount lock (1), kind lock (1), split whole (1), tags as a set (1), unknown tags kept (1), fields marked as edited (1), form reset on open (1), suggestions found by ids (2), the reject route (2), confirm drops other suggestions (1), confirm points both sides (2), reject marks only that pair (3), suggestions with a side not on the device left out (1), cash default only when none (1), cash double tap (1), cash form waits for this backend's data (1), lost-answer wording (1), cash account never into sample data (1), negative cash refused (1), duplicate cash name refused (1), app data reloaded only when rates came back (1), rate reloaded after a refresh (1). Three of these had no test at first (kind lock, a side not on the device, sample data); the tests were added.
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars`, `ALLOW_SAMPLE_SEED=true`, `POST /v1/dev/seed`, a fresh database per run), at 412 px and 1280 px. Every result was read back from the Worker's own API. **46 of 46 checks passed (23 at each width).** The ambiguous pair was made with the Worker's own PATCH route (two arrivals of the same amount on the same day in two accounts) and `POST /v1/transfer-links/run`, which reported 2 suggestions.
+  - Editing: an impossible date refused with nothing sent; one PATCH carrying exactly name, notes, amount, excluded and tags; all stored, each listed in `userEditedFields`; a rule made afterwards to rename that transaction left the edited name alone; a date change stored; a linked transfer offered no amount.
+  - Suggestions: "Possible transfers · 1" on Transactions; both pairs on the payment's detail; "Not this one" sent only `POST /v1/transfer-links/<id>/reject` (no unlink), and the Worker held that pair rejected and the other still suggested; "Confirm" on the list confirmed it on the Worker with both sides pointing at it; the list then read "Nothing to check"; running the matcher again suggested nothing.
+  - Cash account: INR already had a quick-entry account, so the switch was not offered; a double tap sent one POST with `{ name, currency: 'INR', balance: 250000, isDefault: false }`; exactly one cash account on the Worker; listed on the Accounts tab.
+  - Rates: Settings showed the Worker's own USD to INR rate. The refresh answer was played by the browser (`{ openExchangeRates: 0, frankfurter: 30 }`), so no public rate source was called; the result text and the reload of the rate were checked. **The real `POST /v1/fx/refresh` was not called.**
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted afterwards; none is committed.
+- **No Android device or emulator was used.**
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **Transactions:** `PATCH /v1/transactions/:id` checks the date only by its shape (it takes 2026-02-30 and any future date) and does not check that tag ids exist. It lets the kind change on a linked transfer and on a split whole, and "excluded" on a split whole. Editing the amount of a cash transaction does not move the cash account's balance, though `POST /v1/cash` does.
+- **Transfers:** confirming a suggestion (`activate` in `links.ts`) sets the link but leaves the transactions' `kind` as it was (read in the code, not run). The app sets the kind on screen when confirming, and a reload brings back the Worker's. There is no read that returns a transaction's suggestions; the app works them out from the dataset's links.
+- **Cash accounts:** `POST /v1/accounts/cash` has no retry key, so a lost answer can lead to a second account. `isDefault: true` does not take the mark off another cash account in the same currency, after which `defaultCashAccount` picks either. The route accepts a negative balance, an untrimmed name and a name already in use.
+- **Rates:** `POST /v1/fx/refresh` turns every failure into 0, so "no key" and "not reachable" look the same, and the counts include rates that were only written again.
+- Unchanged from earlier entries: the items listed under blocks D and E and before.
+
+### Not possible until Codex's routes exist (not built)
+
+Block G (screens for the account editing routes) waits for Codex's contract to be merged. Also still waiting: entering a balance later for an account made as unknown; renaming or removing a hand-made account; cash deletion; category merging; export and backup in the app; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file.

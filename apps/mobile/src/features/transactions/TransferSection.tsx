@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Transaction, TransferLink } from '@manaclaude/shared';
+import { formatShortDate, type Transaction, type TransferLink } from '@manaclaude/shared';
 import { Banner } from '../../design/components/Decor';
 import { Button } from '../../design/components/Button';
 import { HStack, VStack } from '../../design/components/Layout';
@@ -7,14 +7,16 @@ import { MoneyText } from '../../design/components/MoneyText';
 import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
 import type { Lookups } from '../../data/selectors';
-import { confirmTransfer, unlinkTransfer } from './actions';
-import { transferTitle } from './display';
+import { useFinanceSelector } from '../../data/store';
+import { confirmTransfer, rejectSuggestion, unlinkTransfer } from './actions';
 import { LinkTransferSheet } from './LinkTransferSheet';
+import { suggestionsFor } from './transfers';
 
 /**
  * Transfer controls on the transaction detail:
  * - a linked transfer shows both sides and can be unlinked;
- * - a suggested link (several candidates) can be confirmed or rejected;
+ * - each pair the matcher suggested (it found several candidates) can be
+ *   confirmed or turned down on its own;
  * - anything else can be linked by hand.
  */
 export function TransferSection({
@@ -29,6 +31,7 @@ export function TransferSection({
   lookups: Lookups;
 }) {
   const [linking, setLinking] = useState(false);
+  const allLinks = useFinanceSelector((d) => d.transferLinks);
 
   if (link) {
     return (
@@ -71,38 +74,72 @@ export function TransferSection({
     );
   }
 
-  if (suggestion) {
+  // The Worker's suggestions are found by the pair's ids; `suggestion` covers one the
+  // transaction points at (made on this device).
+  const found = suggestionsFor(allLinks, txn.id);
+  const suggestions =
+    suggestion && !found.some((l) => l.id === suggestion.id) ? [suggestion, ...found] : found;
+  if (suggestions.length > 0) {
     return (
       <VStack gap="sm" testID="transfer-suggestion">
         <Banner icon="link">
-          <Text variant="bodyStrong">{transferTitle(suggestion, lookups)}</Text>
+          <Text variant="bodyStrong">
+            {suggestions.length === 1
+              ? 'Looks like a transfer between your accounts'
+              : `Looks like a transfer: ${suggestions.length} possible matches`}
+          </Text>
           <Text variant="caption" tone="muted">
-            Looks like a transfer between your accounts, but there were several possible matches. It
-            counts as spending or income until you confirm.
+            It counts as spending or income until you confirm one. Turning a pair down keeps it from
+            being suggested again.
           </Text>
         </Banner>
-        <HStack gap="sm">
-          <Button
-            label="Confirm transfer"
-            icon="check"
-            size="sm"
-            onPress={() => {
-              haptic('confirm');
-              confirmTransfer(suggestion.id);
-            }}
-            testID="confirm-transfer"
-          />
-          <Button
-            label="Not a transfer"
-            variant="secondary"
-            size="sm"
-            onPress={() => {
-              haptic('tap');
-              unlinkTransfer(suggestion.id);
-            }}
-            testID="reject-transfer"
-          />
-        </HStack>
+        {suggestions.map((s) => {
+          const otherId = s.outTransactionId === txn.id ? s.inTransactionId : s.outTransactionId;
+          const other = lookups.transactionsById.get(otherId);
+          return (
+            <VStack key={s.id} gap="xs" testID={`suggestion-${s.id}`}>
+              <HStack justify="space-between" align="center">
+                <VStack flex={1}>
+                  <Text variant="body" numberOfLines={1}>
+                    {other
+                      ? (lookups.accountsById.get(other.accountId)?.name ?? 'Another account')
+                      : 'A transaction not on this device'}
+                  </Text>
+                  {other ? (
+                    <Text variant="caption" tone="muted" numberOfLines={1}>
+                      {`${other.name} · ${formatShortDate(other.date)}`}
+                    </Text>
+                  ) : null}
+                </VStack>
+                {other ? (
+                  <MoneyText amount={other.amount} currency={other.currency} colorize="signed" />
+                ) : null}
+              </HStack>
+              <HStack gap="sm">
+                <Button
+                  label="Confirm"
+                  icon="check"
+                  size="sm"
+                  onPress={() => {
+                    haptic('confirm');
+                    confirmTransfer(s.id);
+                  }}
+                  testID={`confirm-transfer-${s.id}`}
+                />
+                <Button
+                  label={suggestions.length === 1 ? 'Not a transfer' : 'Not this one'}
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    haptic('tap');
+                    rejectSuggestion(s.id);
+                  }}
+                  testID={`reject-transfer-${s.id}`}
+                />
+              </HStack>
+            </VStack>
+          );
+        })}
       </VStack>
     );
   }

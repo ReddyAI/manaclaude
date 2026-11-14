@@ -210,7 +210,10 @@ export function applyUnlinkTransfer(
   };
 }
 
-/** Confirm a link the matcher only suggested. */
+/**
+ * Confirm a link the matcher only suggested. Like the Worker: both sides now
+ * point at it, and every other suggestion that involves either side is gone.
+ */
 export function applyConfirmTransfer(
   data: FinanceDataset,
   linkId: string,
@@ -219,15 +222,84 @@ export function applyConfirmTransfer(
   const link = data.transferLinks.find((l) => l.id === linkId);
   if (!link || link.status !== 'suggested') return data;
   const kind = KIND_OF_LINK[link.kind];
+  const sides = [link.outTransactionId, link.inTransactionId];
   return {
     ...data,
-    transferLinks: data.transferLinks.map((l) =>
-      l.id === linkId ? { ...l, status: 'confirmed', matchedBy: 'user', updatedAt: now } : l,
-    ),
+    transferLinks: data.transferLinks
+      .filter(
+        (l) =>
+          l.id === linkId ||
+          l.status !== 'suggested' ||
+          !(sides.includes(l.outTransactionId) || sides.includes(l.inTransactionId)),
+      )
+      .map((l) =>
+        l.id === linkId ? { ...l, status: 'confirmed', matchedBy: 'user', updatedAt: now } : l,
+      ),
     transactions: data.transactions.map((t) =>
-      t.id === link.outTransactionId || t.id === link.inTransactionId
-        ? { ...t, kind, reviewed: true, reviewedAt: now, updatedAt: now }
+      sides.includes(t.id)
+        ? { ...t, transferLinkId: linkId, kind, reviewed: true, reviewedAt: now, updatedAt: now }
         : t,
     ),
   };
+}
+
+/**
+ * Turn down one suggested pair (POST /v1/transfer-links/:id/reject). The pair
+ * is kept as rejected so the matcher never proposes it again; nothing else
+ * about either transaction changes.
+ */
+export function applyRejectSuggestion(
+  data: FinanceDataset,
+  linkId: string,
+  now: string,
+): FinanceDataset {
+  const link = data.transferLinks.find((l) => l.id === linkId);
+  if (!link || link.status !== 'suggested') return data;
+  return {
+    ...data,
+    transferLinks: data.transferLinks.map((l) =>
+      l.id === linkId ? { ...l, status: 'rejected', updatedAt: now } : l,
+    ),
+    transactions: data.transactions.map((t) =>
+      t.transferLinkId === linkId ? { ...t, transferLinkId: null, updatedAt: now } : t,
+    ),
+  };
+}
+
+/**
+ * Every pair the matcher suggested that involves this transaction, best
+ * match first. The Worker stores suggestions without pointing the
+ * transactions at them, so they are found by the pair's two ids.
+ */
+export function suggestionsFor(
+  links: readonly TransferLink[],
+  transactionId: string,
+): TransferLink[] {
+  return links
+    .filter(
+      (l) =>
+        l.status === 'suggested' &&
+        (l.outTransactionId === transactionId || l.inTransactionId === transactionId),
+    )
+    .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.id.localeCompare(b.id));
+}
+
+/** Suggested pairs grouped by the side money left, for the list of possible transfers. */
+export function openSuggestions(
+  data: Pick<FinanceDataset, 'transferLinks' | 'transactions'>,
+): { outTransactionId: string; links: TransferLink[] }[] {
+  const byId = new Set(data.transactions.map((t) => t.id));
+  const groups = new Map<string, TransferLink[]>();
+  for (const l of data.transferLinks) {
+    if (l.status !== 'suggested') continue;
+    // Both sides must be in the data on this device to be shown and decided.
+    if (!byId.has(l.outTransactionId) || !byId.has(l.inTransactionId)) continue;
+    groups.set(l.outTransactionId, [...(groups.get(l.outTransactionId) ?? []), l]);
+  }
+  return [...groups.entries()].map(([outTransactionId, links]) => ({
+    outTransactionId,
+    links: links.sort(
+      (a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0) || a.id.localeCompare(b.id),
+    ),
+  }));
 }
