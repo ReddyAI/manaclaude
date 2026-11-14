@@ -1,0 +1,45 @@
+# Browser tests
+
+Playwright tests for the exported web build, run against a local Worker. They live here, not in `npm run check`; GitHub runs them as the separate "Browser tests" check on pull requests (`.github/workflows/e2e.yml`).
+
+## Run them
+
+```bash
+export PATH=/opt/node24/bin:$PATH        # in the cloud container
+npm run e2e -w @manaclaude/mobile
+```
+
+Playwright needs Chromium once: `npx playwright install chromium` (the cloud container already has it). One run takes a few minutes, most of it the web export.
+
+Options, all environment variables:
+
+- `E2E_WEB_DIR=<folder>`: use a web export you already made (`npx expo export --platform web --output-dir <folder>`) instead of exporting again.
+- `E2E_PORT_BASE=8790`: the static server uses this port, the 412 px Worker the next one and the 1280 px Worker the one after.
+- `E2E_OUT_DIR=<folder>`: where failure screenshots (and on CI the HTML report) go. Defaults to a folder in the system's temporary directory, never the repo.
+- `E2E_KEEP_RUN_DIR=1`: keep the run folder (Worker logs, databases) instead of deleting it.
+
+## What one run does
+
+`harness/globalSetup.ts`:
+
+1. Makes a temporary folder outside the repo.
+2. Exports the web build into it (unless `E2E_WEB_DIR` is set) and serves it.
+3. Writes a throwaway `.dev.vars` there with invented values and `ALLOW_SAMPLE_SEED=true`. No provider key is set.
+4. For each screen width: applies every migration to a fresh database, starts `wrangler dev --local`, calls `POST /v1/dev/seed`, then plants what the tests look for (`harness/plant.ts` through the Worker's routes, `fixtures/plant.sql` for rows no route can make).
+5. Stops the Workers and deletes the folder when the run ends.
+
+Each test opens the app with the Worker's address and token in the browser's `localStorage` (`billionaire.backendUrl`, `billionaire.apiToken`), waits for `GET /v1/dataset`, and fails on any page error or console error. Results are read back from the Worker's own API.
+
+## What is planted
+
+The local Worker's sample rates cover USD, INR and EUR only, so CHF has no rate:
+
+- a CHF cash wallet "Zurich wallet" with a CHF expense "Migros" today, and a CHF budget on "Fees" this month;
+- VTI held, bought and priced in CHF, and the "Xfinity internet" bill in CHF;
+- two unlinked halves of a transfer between Everyday Checking and High-Yield Savings.
+
+## Files
+
+- `screens.spec.ts`: every main screen loads.
+- `missing-rates.spec.ts`: the lines from blocks L, M, O and R that name what a total leaves out.
+- `actions.spec.ts`: adding an account by hand, Look for transfers now, Run AI jobs now, the File layouts tab.
