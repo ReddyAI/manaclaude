@@ -115,7 +115,7 @@ describe('saved file layouts', () => {
   it('says what the columns are', () => {
     expect(layoutColumnsText(layouts[0]!)).toBe('Dates day first (31/12/2026) · one amount column');
     expect(layoutColumnsText(layouts[1]!)).toBe(
-      'Dates year first (2026-12-31) · money out and in in two columns · skips 2 lines first',
+      'Dates year first (2026-12-31) · money out and in in two columns · last file had 2 lines above the header',
     );
     expect(layoutAccountText(null, [])).toBe('No account saved with it');
   });

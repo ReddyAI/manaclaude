@@ -30,7 +30,11 @@ export function layoutColumnsText(layout: ImportMapping): string {
   return [
     `Dates ${dateFormatLabel(m.dateFormat).toLowerCase()}`,
     m.amountMode === 'debit_credit' ? 'money out and in in two columns' : 'one amount column',
-    m.skipRows > 0 ? `skips ${m.skipRows} ${m.skipRows === 1 ? 'line' : 'lines'} first` : null,
+    // Since Codex's #31 the Worker reads each new file from the lines above
+    // its own header; the stored count only describes the last file saved.
+    m.skipRows > 0
+      ? `last file had ${m.skipRows} ${m.skipRows === 1 ? 'line' : 'lines'} above the header`
+      : null,
   ]
     .filter(Boolean)
     .join(' · ');
