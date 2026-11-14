@@ -8,12 +8,14 @@ import {
   firstDayOfMonth,
   lastDayOfMonth,
   monthOf,
+  reportTreatment,
   summarizeSpending,
   type CurrencyCode,
   type FinanceDataset,
   type LocalDate,
   type MinorUnits,
   type SpendingSummary,
+  type Transaction,
   type TreatmentContext,
   type YearMonth,
   type Account,
@@ -126,6 +128,29 @@ export function netWorthHistory(data: FinanceDataset, currency: CurrencyCode): S
     .map(([date, value]) => ({ date, value }));
 }
 
+/**
+ * Transactions a spending or income total in `currency` leaves out: they
+ * count in reports (reportTreatment) but no exchange rate converts them, so
+ * summarizeSpending skips them (its `missingRate`). Same rule, so a screen
+ * can name them.
+ */
+export function transactionsWithoutRate(
+  data: Pick<FinanceDataset, 'transactions' | 'fxRates'>,
+  ctx: TreatmentContext,
+  from: LocalDate,
+  to: LocalDate,
+  currency: CurrencyCode,
+): Transaction[] {
+  return data.transactions.filter(
+    (t) =>
+      t.date >= from &&
+      t.date <= to &&
+      reportTreatment(t, ctx).kind !== 'excluded' &&
+      convertAmount(t.amount, t.currency, currency, data.fxRates, { mode: 'on', date: t.date }) ===
+        null,
+  );
+}
+
 export interface MonthSpending {
   month: YearMonth;
   summary: SpendingSummary;
@@ -137,6 +162,8 @@ export interface MonthSpending {
   lastMonthToDate: MinorUnits;
   daysInMonth: number;
   dayOfMonth: number;
+  /** This month's transactions the totals leave out for want of an exchange rate. */
+  noRate: Transaction[];
 }
 
 export function monthSpending(
@@ -177,6 +204,7 @@ export function monthSpending(
     lastMonthToDate,
     daysInMonth: days,
     dayOfMonth,
+    noRate: transactionsWithoutRate(data, ctx, firstDayOfMonth(month), today, currency),
   };
 }
 

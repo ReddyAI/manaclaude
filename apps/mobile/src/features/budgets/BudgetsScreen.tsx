@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import {
   addMonthsToMonth,
+  convertAmount,
   daysInMonth,
+  firstDayOfMonth,
   formatMonth,
+  lastDayOfMonth,
   monthOf,
   type BudgetFlexType,
   type BudgetLine,
@@ -19,11 +22,13 @@ import { HStack, VStack } from '../../design/components/Layout';
 import { MoneyText } from '../../design/components/MoneyText';
 import { Screen } from '../../design/components/Screen';
 import { Text } from '../../design/components/Text';
+import { transactionsWithoutRate } from '../../data/metrics';
 import { useLookups, useToday } from '../../data/selectors';
 import { useSettings } from '../../data/settingsStore';
 import { useFinance } from '../../data/store';
 import { DualAmount } from '../currency/Amount';
 import { CurrencyChip } from '../currency/CurrencyChip';
+import { budgetsNoRateText, skippedTransactionsText } from '../currency/missingRates';
 import { pickDual, useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { goTo } from '../planning/navigate';
 import { copyBudgetsFromPreviousMonth } from './actions';
@@ -66,6 +71,23 @@ export function BudgetsScreen() {
   const lastAllowed = addMonthsToMonth(thisMonth > last ? thisMonth : last, 1);
 
   const result = useBudgetData(month);
+  const noRate = useMemo(() => {
+    const cur = display.reportCurrency;
+    const end = lastDayOfMonth(month) < today ? lastDayOfMonth(month) : today;
+    const txns = transactionsWithoutRate(data, lookups.treatment, firstDayOfMonth(month), end, cur);
+    const budgets = data.budgets
+      .filter(
+        (b) => b.month === month && convertAmount(b.amount, b.currency, cur, data.fxRates) === null,
+      )
+      .map((b) => ({
+        name: lookups.categoriesById.get(b.categoryId)?.name ?? b.categoryId,
+        currency: b.currency,
+      }));
+    return {
+      spending: skippedTransactionsText(txns, cur),
+      budgets: budgetsNoRateText(budgets, cur),
+    };
+  }, [data, lookups, month, today, display.reportCurrency]);
   const budget = result.main;
   const progressThroughMonth =
     month < thisMonth ? 1 : month > thisMonth ? 0 : Number(today.slice(8, 10)) / daysInMonth(month);
@@ -136,6 +158,17 @@ export function BudgetsScreen() {
           onPress={() => month < lastAllowed && setMonth(addMonthsToMonth(month, 1))}
         />
       </HStack>
+
+      {noRate.spending ? (
+        <Text variant="caption" tone="muted" testID="budget-spending-no-rate">
+          {noRate.spending}
+        </Text>
+      ) : null}
+      {noRate.budgets ? (
+        <Text variant="caption" tone="muted" testID="budget-amount-no-rate">
+          {noRate.budgets}
+        </Text>
+      ) : null}
 
       {view === 'plan' ? (
         <SpendingPlanView month={month} />
