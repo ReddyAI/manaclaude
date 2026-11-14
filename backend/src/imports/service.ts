@@ -214,7 +214,10 @@ async function parseFile(
         )
           .bind(signature)
           .first<{ mapping: string }>();
-        mapping = saved ? (JSON.parse(saved.mapping) as CsvMapping) : null;
+        // Preamble length belongs to this file, not the saved header layout.
+        mapping = saved
+          ? { ...(JSON.parse(saved.mapping) as CsvMapping), skipRows: input.skipRows ?? 0 }
+          : null;
       }
       const csvInfo = {
         headers: suggestion.headers,
