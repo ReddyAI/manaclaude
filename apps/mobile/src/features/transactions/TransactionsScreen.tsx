@@ -102,6 +102,13 @@ export function TransactionsScreen() {
               onPress={() => goTo('/transactions/transfers')}
               testID="open-possible-transfers"
             />
+          ) : canSaveToBackend() ? (
+            <Chip
+              label="Find transfers"
+              icon="link"
+              onPress={() => goTo('/transactions/transfers')}
+              testID="open-find-transfers"
+            />
           ) : null}
           {toAttach > 0 && canSaveToBackend() ? (
             <Chip

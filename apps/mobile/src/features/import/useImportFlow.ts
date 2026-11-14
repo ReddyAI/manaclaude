@@ -214,7 +214,9 @@ export function useImportFlow() {
         // A column layout saved from an earlier file of this bank carries that
         // file's count of lines above the header. This file's header was found
         // where we said it is, so read it from there: otherwise its first rows
-        // would be skipped without a word.
+        // would be skipped without a word. A Worker with Codex's #31 already
+        // does this (its mapping.skipRows is this request's), so the second
+        // preview below only happens with an older Worker.
         const ownSkip = asked.skipRows ?? 0;
         const savedLayout = next.csv?.usedSavedMapping
           ? true

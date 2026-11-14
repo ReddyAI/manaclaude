@@ -13,6 +13,7 @@ import { useLookups } from '../../data/selectors';
 import { useFinanceSelector } from '../../data/store';
 import { BackAction } from '../planning/BackAction';
 import { confirmTransfer, rejectSuggestion } from './actions';
+import { FindTransfersCard } from './FindTransfersCard';
 import { openSuggestions } from './transfers';
 
 /**
@@ -31,6 +32,7 @@ export function PossibleTransfersScreen() {
       actions={<BackAction fallback="/transactions" />}
       testID="screen-possible-transfers"
     >
+      <FindTransfersCard />
       {groups.length === 0 ? (
         <Card>
           <EmptyState

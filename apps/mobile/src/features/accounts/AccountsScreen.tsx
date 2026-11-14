@@ -29,6 +29,7 @@ import { useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { CashQuickAddButton } from '../transactions/CashQuickAdd';
 import { CashAccountSheet } from './CashAccountSheet';
 import { ConnectorsList } from './ConnectorsList';
+import { ManualAccountSheet } from './ManualAccountSheet';
 import { connectionHealth, timeAgo } from './health';
 
 const GROUPS: { title: string; types: AccountType[] }[] = [
@@ -68,6 +69,7 @@ export function AccountsScreen() {
   const [tab, setTab] = useState<'accounts' | 'connectors'>('accounts');
   const [repairNote, setRepairNote] = useState<Record<string, string>>({});
   const [addingCash, setAddingCash] = useState(false);
+  const [addingByHand, setAddingByHand] = useState(false);
   const refreshControl = useRefreshControl();
   const connectionsById = new Map(data.connections.map((c) => [c.id, c]));
 
@@ -245,6 +247,14 @@ export function AccountsScreen() {
               testID="add-cash-account"
             />
             <Button
+              label="Add an account by hand"
+              icon="home"
+              size="sm"
+              variant="secondary"
+              onPress={() => setAddingByHand(true)}
+              testID="add-manual-account"
+            />
+            <Button
               label="Stored statements"
               icon="paperclip"
               size="sm"
@@ -254,6 +264,7 @@ export function AccountsScreen() {
             />
           </HStack>
           <CashAccountSheet visible={addingCash} onClose={() => setAddingCash(false)} />
+          <ManualAccountSheet visible={addingByHand} onClose={() => setAddingByHand(false)} />
           <ConnectionsCard />
           <ConnectorsList />
         </>

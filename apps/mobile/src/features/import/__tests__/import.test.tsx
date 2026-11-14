@@ -578,6 +578,17 @@ describe('bank CSV layout', () => {
     expect(disabled('import-confirm')).toBe(false);
   });
 
+  it("with Codex's #31 the Worker already reads the file's own lines: one preview, nothing discarded", async () => {
+    const savedCsv = { ...csv, dateFormatAmbiguous: false, usedSavedMapping: true };
+    // The Worker answers with this request's count (0), not the saved file's.
+    preview.mockResolvedValue(makePreview({ csv: savedCsv, mapping: { ...mapping, skipRows: 0 } }));
+    await openWithPreview();
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(discardImport).not.toHaveBeenCalled();
+    expect(screen.getByTestId('import-saved-layout')).toBeTruthy();
+    expect(disabled('import-confirm')).toBe(false);
+  });
+
   it('asks for the columns when they cannot be worked out', async () => {
     preview.mockResolvedValue(
       makePreview({

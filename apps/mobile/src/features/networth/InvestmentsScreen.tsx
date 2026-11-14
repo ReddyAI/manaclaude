@@ -33,6 +33,7 @@ import { CurrencyChip } from '../currency/CurrencyChip';
 import { skippedItemsText } from '../currency/missingRates';
 import { pickDual, useMoneyDisplay } from '../currency/useMoneyDisplay';
 import { BackAction } from '../planning/BackAction';
+import { benchmarkLeftOut } from './benchmarkNoRate';
 
 type BenchRange = '6M' | '1Y' | '2Y';
 const BENCH_MONTHS: Record<BenchRange, number> = { '6M': 6, '1Y': 12, '2Y': 24 };
@@ -196,16 +197,40 @@ export function InvestmentsScreen() {
       .filter((p) => p.securityId === benchSecurity.id && p.date >= from)
       .map((p) => p.date)
       .sort();
-    return display.dual((cur) =>
+    const fx = (cur: string) => (c: string) =>
+      c === cur ? 1 : (findRate(data.fxRates, c, cur)?.rate ?? null);
+    const result = display.dual((cur) =>
       benchmarkComparison({
         activities: data.activities,
         prices: data.prices,
         benchmarkSecurityId: benchSecurity.id,
         dates,
-        fx: (c) => (c === cur ? 1 : (findRate(data.fxRates, c, cur)?.rate ?? null)),
+        fx: fx(cur),
       }),
     );
-  }, [benchSecurity, data.activities, data.prices, data.fxRates, range, today, display]);
+    // What the comparison leaves out for want of a rate to the report
+    // currency, named by symbol.
+    const leftOut = benchmarkLeftOut({
+      activities: data.activities,
+      prices: data.prices,
+      dates,
+      fx: fx(currency),
+    }).map((x) => ({
+      name: securities.get(x.securityId)?.symbol ?? x.securityId,
+      currency: x.currency,
+    }));
+    return { ...result, noRate: skippedItemsText(leftOut, currency, 'holdings') };
+  }, [
+    benchSecurity,
+    data.activities,
+    data.prices,
+    data.fxRates,
+    range,
+    today,
+    display,
+    currency,
+    securities,
+  ]);
 
   const openSecurity = open ? securities.get(open.securityId) : undefined;
   const openSummary = open ? summarizePosition(open, data.taxLots, today) : null;
@@ -336,6 +361,11 @@ export function InvestmentsScreen() {
                 />
                 . Dashed line is the index. Price return only, accounts with trade history.
               </Text>
+              {bench.noRate ? (
+                <Text variant="caption" tone="muted" testID="bench-no-rate">
+                  {`Comparison: ${bench.noRate}`}
+                </Text>
+              ) : null}
               <SegmentedControl
                 accessibilityLabel="Benchmark range"
                 value={range}

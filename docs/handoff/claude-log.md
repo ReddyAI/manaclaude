@@ -915,3 +915,108 @@ Saved file layouts:
 
 1. Import a bank CSV (Accounts, Import a statement) and save it.
 2. Tap the "File layouts" tab: the file's layout is listed with its account and today's date.
+
+## 2026-11-14: Blocks Q, R and S (saved layouts after Codex's #31, the S&P 500 comparison with no rate, gaps against the brief)
+
+Started from `main` at `61084af` (PR #30 merged; PRs #14 to #30 merged). Main moved to `b1b059c` during the work (Codex's PR #31, "Fix saved CSV layouts using stale preamble lengths"); the branch was rebuilt on it and every check below was rerun on the rebuilt branch. One branch (`claude/quirky-franklin-hmkfm7`), one pull request, one commit per block. Every screen uses routes already in `backend/src/api/`: `GET /v1/dataset`, `GET /v1/import-mappings`, `POST /v1/imports`, `POST /v1/accounts/manual`, `POST /v1/transfer-links/run`, `POST /v1/ai/jobs/:job`, `GET /v1/alerts` and `GET /v1/ai/status`. Changed: `apps/mobile/` and this log. No shared types were needed (`MatchRunResponse`, `AiJobResponse`, `ManualAccountRequest` and `ManualAccountResponse` were already there). No backend, connector, workflow, root-config, dependency or lockfile changes.
+
+### Block Q: screens for routes merged since PR #28
+
+Codex's log has one entry newer than "Item 3": "Saved CSV layouts use the current file's preamble" (PR #31, merged). It adds no route and no field, and says no mobile work is required. Two app-side changes follow from it:
+
+- File layouts tab (`features/import/SavedLayouts.tsx`): the stored `mapping.skipRows` now only describes the last file saved, because the Worker reads each new file from the lines above its own header. The tab said "skips 2 lines first" as if it were part of the layout; it now says "last file had 2 lines above the header" (nothing when 0).
+- Import (`features/import/useImportFlow.ts`): the app's own fix for the old bug (a second preview when a saved layout came back with another file's count) is kept for a Worker without #31. With #31 it never runs; a new test checks that only one preview is made and nothing is discarded.
+
+### Block R: the S&P 500 comparison with no exchange rate
+
+`benchmarkComparison` (shared) converts with `findRate` and adds nothing for a holding whose activities are in a currency with no rate to the report currency, and nothing for a buy or sale in such a currency (the money moved into the index line). Nothing said so.
+
+- `features/networth/benchmarkNoRate.ts` (new): `benchmarkLeftOut` finds those, with the comparison's own rules: holdings grouped by account and security, priced in the group's first activity's currency, held (price known, quantity not 0) on a date in the range; buys and sales after the first date and on or before the last.
+- Investments: a line under the card, "Comparison: Leaves out "VTI" (CHF): there is no CHF to USD exchange rate yet. Refresh rates in Settings, Exchange rates.", using `skippedItemsText` from `features/currency/missingRates.ts` as blocks L, M and O do. It follows the 6M, 1Y and 2Y range. The numbers are unchanged.
+
+### Block S: gaps against the brief
+
+Compared `docs/project-brief.md` and `docs/requirements-addendum.md` with the app and with every route in `backend/src/api/`. Items the brief marks "later" are listed but not counted as work for now.
+
+| Gap                                                                                                                                                                                                                                                                                                                      | Kind                            | Done here                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accounts kept by hand (a house, a car with its value, a loan, an NRE or NRO account) could only be made inside the import flow                                                                                                                                                                                           | app only                        | Built                                                                                                                                                                                  |
+| Transfers are matched only after a sync or an import; no way to look again after editing an amount or a date                                                                                                                                                                                                             | app only                        | Built                                                                                                                                                                                  |
+| The AI jobs (merchant names, categorizing, bills and subscriptions, alerts, weekly and monthly recaps) run only at night                                                                                                                                                                                                 | app only                        | Built                                                                                                                                                                                  |
+| Fetching past exchange rates by hand (`POST /v1/fx/backfill`)                                                                                                                                                                                                                                                            | app only                        | Not built: the Worker already backfills history nightly in bounded steps, and Codex's log calls this route an unbounded manual path, so a button could run past the free plan's limits |
+| Splitting from the receipt (`POST /v1/receipts/:id/split`)                                                                                                                                                                                                                                                               | app only                        | Not needed: "Split by items" already splits through `POST /v1/transactions/:id/split`, with lines you can change first                                                                 |
+| Monte Carlo planning                                                                                                                                                                                                                                                                                                     | app only, later in the brief    | Not built                                                                                                                                                                              |
+| Goals: add, change or delete one (Planning shows them read-only)                                                                                                                                                                                                                                                         | needs a route                   | For Codex                                                                                                                                                                              |
+| Bills and subscriptions: add one by hand, or delete one                                                                                                                                                                                                                                                                  | needs a route                   | For Codex                                                                                                                                                                              |
+| Tags: make a new tag                                                                                                                                                                                                                                                                                                     | needs a route                   | For Codex (since blocks D and E)                                                                                                                                                       |
+| Planning assumptions and flex budgeting follow the backend to a second device                                                                                                                                                                                                                                            | needs a route (settings schema) | For Codex (since Phase 1)                                                                                                                                                              |
+| Category merging; export and backup; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file; deleting saved file layouts; listing or deleting MCP clients; reading a receipt's candidates after the upload | needs a route                   | For Codex (earlier entries)                                                                                                                                                            |
+| Gift cards and passes; Amazon and Target orders; the iOS build                                                                                                                                                                                                                                                           | later in the brief              | Not built                                                                                                                                                                              |
+
+Built, best first:
+
+1. **Add an account by hand** (Accounts, Connectors tab). `features/accounts/ManualAccountSheet.tsx` and `manualAccount.ts` (new) reuse the import flow's form (`NewAccountForm` gained an optional `types` list, and says "Value" and "what it is worth" for property and vehicles). All twelve types the route takes, property first. The balance is known or unknown, never assumed to be 0. The request, creation key included, is stored (`billionaire.pendingAccountByHand`, tied to the backend) before it is sent. No answer, a timeout or a 5xx keeps it: "Try again" sends it unchanged, and the Worker answers with the account the first send made ("had already been made by your first try. No second account was made."). A 409 is never sent again: the sheet says to check Accounts, and "Start over" drops it. Any other refusal says why and keeps the form. One request for a fast double tap. The import flow keeps its own stored request, separate from this one.
+2. **Look for transfers now** (`features/transactions/FindTransfersCard.tsx`, new) on Possible transfers. It runs `POST /v1/transfer-links/run`, loads the data again, and says what happened ("Linked 1 transfer; they are out of spending and income now.", "2 possible pairs need you to pick.", "No new transfers found."). Transactions shows a "Find transfers" chip when nothing is suggested and the Worker's data is loaded (before, the screen was reachable only with a suggestion).
+3. **Run AI jobs now** (Settings, AI; `features/ask/AiJobsSheet.tsx` and `aiJobs.ts`, new). Six jobs, one at a time, each with its result in plain words ("Done. 12 items changed or added. It used rules and plain numbers only, no AI.", plus the Worker's note). After a job the data is loaded again; after the alerts job the alerts list too; the AI use count is reloaded. With AI off the sheet says nothing is sent to any AI (the Worker runs the jobs with rules).
+
+### Defaults chosen
+
+- Q: the File layouts tab speaks of the last file's lines above the header, since the Worker no longer applies that count to the next file. The app's second-preview fix stays for older Workers.
+- R: the line names each security once with its currency, in the report currency of the chip (the main one in Both mode), like blocks L, M and O. A holding sold before the range, or with no price, is not named: it adds nothing anyway.
+- S1: the by-hand sheet offers every type the route takes, property first; cash keeps its own form. A new key is made for each new account; Try again never changes it. "Forget it" is offered after a lost answer, with a note to check Accounts first.
+- S2: the run covers every unlinked transaction (the route's default; no date range is sent).
+- S3: jobs run one at a time; results stay on screen until the backend changes.
+- Not built: the manual rate backfill (see the table).
+
+### Validation
+
+- `npm run check` passed on the rebuilt branch: typecheck, lint, format and **1,503 tests** (shared 118, connectors 346, backend 360, deployment, runtime and recovery 46, mobile 633, up from 592). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192`; no config change.
+- New mobile tests, all invented data: `networth/__tests__/benchmarkNoRate.test.tsx` (11), `accounts/__tests__/manualAccount.test.tsx` (15), `transactions/__tests__/findTransfers.test.tsx` (6), `ask/__tests__/aiJobs.test.tsx` (8), one more in `import/__tests__/import.test.tsx`; one wording changed in `savedLayouts.test.tsx`.
+- Each of 42 new guards was removed once by a script that ran the tests and put it back; every removal made a test fail (Q 2, R 8, S 32). Five survived at first and got tests: a payout, and a buy after the range, counted as money into the index (R, one test); the first type offered not being chosen, the Worker's account put into sample data, and the other AI jobs left enabled while one runs (S). One R guard (nothing named when the comparison had no points) could not be reached, because the dates come from the index's own prices, and was removed.
+- Exported web build against a local Worker (`wrangler dev --local`, throwaway `backend/.dev.vars` with `ALLOW_SAMPLE_SEED=true` and an invented `CREDENTIALS_SECRET`, migrations 0001 to 0009, `POST /v1/dev/seed`, a fresh database per width), at 412 px and 1280 px, with every result read back from the Worker's API. **48 of 48 checks passed (24 at each width).** A first run at 412 px had one failure, in the test script: the new Q import ran the Worker's matcher and linked the planted transfer before S2 looked for it. Q was moved to the end and both widths were rerun on fresh databases.
+  - Q, real Worker: a CSV with two lines above its header imported through the API saved a layout with `skipRows: 2`; the tab said "last file had 2 lines above the header". A second file from the same bank with nothing above its header, imported through the app: one preview, all three rows saved (the first included), and the tab then said nothing about lines, as the Worker stored 0.
+  - R: in the local database, VTI's holding, lots and activities were set to CHF (no route makes that); the Worker's dataset showed them in CHF and it had no CHF rate. The card named VTI, and its two numbers matched the shared comparison worked out from the Worker's own dataset (+$14,982 and +$8,173).
+  - S1, real Worker: a car worth INR 6,50,000 was made once, known, in net worth. A plot with an unknown balance: the request reached the Worker and its answer was cut off in the browser (played); the Worker had made it once; Try again sent the identical body and the real Worker answered with the same account; it stayed one account, unknown, out of net worth. A 409 was played: no Try again, nothing more sent, nothing made.
+  - S2, real Worker: two halves of a transfer were planted in the local database; the run linked them ({"linked":1}) and the Worker stored the link; a second run linked nothing.
+  - S3, real Worker: bills and subscriptions (12 changed), alerts (then `GET /v1/alerts` again) and categorizing, each showing the Worker's own answer. The local Worker has no Workers AI binding, so categorizing used rules and showed the Worker's note "Workers AI could not answer (Binding AI needs to be run remotely)."
+- No provider was called. These routes have no `not_configured` answer to test. **Played in the browser:** the cut-off answer and the 409 for `POST /v1/accounts/manual`; everything else was the real Worker.
+- `backend/.dev.vars`, `backend/.wrangler` and the web export were deleted; none is committed.
+- **No Android device or emulator was used.**
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **Goals:** no route makes, changes or deletes a goal; Planning can only show them.
+- **Bills and subscriptions:** no route makes one by hand (only `PATCH /v1/recurring/:id`), and none deletes one.
+- **Rate history:** `POST /v1/fx/backfill` is unbounded (your log says so); the app does not call it. A bounded version, or the nightly backfill's progress as a read, would let the app show how far back day rates go.
+- **AI jobs:** nothing stops the same job running twice at once from two devices; the app runs one at a time on one device only.
+- Unchanged from earlier entries: tags, category merging and the rest of the list below.
+
+### Remaining app work
+
+- None found that is small, clear and possible with today's routes.
+
+### Not possible until Codex's routes exist (not built)
+
+Category merging; export and backup in the app; the status panel; update notices; per-account history dates; attaching a provider account to an existing account; undoing an alert dismissal; deleting a stored file; deleting goals or recurring items; deleting saved file layouts; listing or deleting MCP clients; reading a receipt's candidates after the upload. New this time: making or changing goals, and adding a bill or subscription by hand.
+
+### How to test on the phone
+
+Account by hand:
+
+1. Accounts, Connectors tab, "Add an account by hand".
+2. Name it, pick Vehicle, INR, "I know it", type its value, "Make this account". It says it is ready; the Accounts tab lists it under Property and vehicles.
+3. Make another with airplane mode on just as you tap. It says the Worker didn't answer. Turn airplane mode off and tap Try again: it says the account had already been made, or makes it now. Accounts lists it once.
+
+Transfers:
+
+1. Transactions, the "Find transfers" chip (or "Possible transfers" when some are waiting), "Look for transfers now".
+2. It says what it linked or found. Tap it again: "No new transfers found."
+
+AI jobs:
+
+1. Settings, AI, "Run AI jobs now", then Run next to "Find bills and subscriptions". The result appears under it; Recurring shows anything new.
+
+S&P 500 comparison and saved layouts:
+
+1. With an investment in a currency your Worker has no rate for, Net worth, Investments: a line under "Against the S&P 500" names it.
+2. Import a bank CSV that has lines above its header, then one from the same bank without them. Both import every row. The "File layouts" tab says how many lines the last file had above its header.
