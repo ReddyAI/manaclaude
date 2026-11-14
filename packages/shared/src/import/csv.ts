@@ -161,10 +161,12 @@ export function suggestCsvMapping(
         : [r[debitColumn ?? -1] ?? '', r[creditColumn ?? -1] ?? ''],
     )
     .filter((v) => v.trim());
-  const detection = detectDateFormat(
-    body.map((r) => r[dateColumn ?? -1] ?? ''),
-    { preferDayFirst: options.preferDayFirst },
-  );
+  // Unreadable cells are not date evidence; the parser still reports their rows as errors.
+  // Keep every readable cell so conflicting formats cannot be hidden by a majority guess.
+  const dateSamples = body
+    .map((r) => r[dateColumn ?? -1] ?? '')
+    .filter((value) => detectDateFormat([value]).format !== null);
+  const detection = detectDateFormat(dateSamples, { preferDayFirst: options.preferDayFirst });
   const missing: MappingSuggestion['missing'] = [];
   if (dateColumn === null || !detection.format) missing.push('date');
   if (amountMode === 'single' && amountColumn === null) missing.push('amount');
