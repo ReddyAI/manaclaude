@@ -38,6 +38,9 @@ async function fence(database = db, revision?: string) {
 }
 
 describe('fixed-size history concurrency fence', () => {
+  // Fixture creation plus the full import/sync/review journey exceeds the default
+  // five-second timeout on CI. Row-work assertions below enforce the fence bound;
+  // this timeout only gives the complete integration scenario time to finish.
   it('activates and continues import, sync, boundary review, retry and undo above the old 1 MB limit', async () => {
     const c = await connection(),
       a = await bank();
@@ -111,7 +114,7 @@ describe('fixed-size history concurrency fence', () => {
     expect(
       await db.prepare('SELECT balance FROM accounts WHERE id = ?').bind(a.id).first('balance'),
     ).toBe(98765);
-  });
+  }, 60_000);
 
   it('rejects a stale preview after an edit and its reversal with an unchanged timestamp (no ABA)', async () => {
     const a = await bank(),
