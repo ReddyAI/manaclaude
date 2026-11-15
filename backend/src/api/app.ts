@@ -67,6 +67,14 @@ import { getSettings, updateSettings } from '../services/settings';
 import { splitTransaction, undoSplit } from '../services/splits';
 import { getTransaction, listTransactions } from '../services/transactions';
 import { syncConnection } from '../sync/run';
+import {
+  getHistoryPolicy,
+  previewHistoryPolicy,
+  saveHistoryPolicy,
+  policyPreviewSchema,
+  policySaveSchema,
+} from '../history/service';
+import { bankReviewList, resolveBankReview, bankReviewSchema } from '../history/reviews';
 import { registerEditRoutes } from './edits';
 import { isPublicLinkCallback, registerLinkRoutes } from './link';
 import { ApiError, badRequest, notFound } from '../util/errors';
@@ -324,6 +332,35 @@ export function createApp(deps: AppDeps = {}) {
   // ---- Account-linking callbacks (public paths, built by session E2) ----
   registerLinkRoutes(app);
   registerEditRoutes(app);
+  app.get('/v1/history-policy', async (c) => c.json(await getHistoryPolicy(c.env.DB)));
+  app.post('/v1/history-policy/preview', async (c) => {
+    const input = await body(c, policyPreviewSchema);
+    const { snapshot: _snapshot, ...review } = await previewHistoryPolicy(c.env.DB, input.policy);
+    return c.json(review);
+  });
+  app.put('/v1/history-policy', async (c) =>
+    c.json(
+      await saveHistoryPolicy(
+        c.env.DB,
+        await body(c, policySaveSchema),
+        nowIso(c.get('deps').now?.()),
+      ),
+    ),
+  );
+  app.get('/v1/history-policy/bank-reviews', async (c) => c.json(await bankReviewList(c.env.DB)));
+  app.get('/v1/history-policy/bank-reviews/:id', async (c) =>
+    c.json({ review: (await bankReviewList(c.env.DB, c.req.param('id'))).reviews[0]! }),
+  );
+  app.post('/v1/history-policy/bank-reviews/:id', async (c) =>
+    c.json(
+      await resolveBankReview(
+        c.env.DB,
+        c.req.param('id'),
+        await body(c, bankReviewSchema),
+        nowIso(c.get('deps').now?.()),
+      ),
+    ),
+  );
 
   // ---- Dataset, accounts, transactions -----------------------------------
   app.get('/v1/dataset', async (c) => {

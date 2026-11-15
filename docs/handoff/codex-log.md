@@ -890,3 +890,155 @@ Retry: after a known refusal, deliberately retry the same import with reviewed c
 - All fixtures and external responses are invented/mocked. No provider or Plaid call, flag change, credential change, private data, production migration or deployment. Changes are confined to the authorized CSV function, its new shared/backend regression tests and this append-only log. No preview-retention, layout-deletion, reconciliation or other backlog work. The whole-repository check on updated main follows; only then will this single branch be pushed and its focused PR opened/attached.
 
 **Final validation: `npm run check` passed — 1,655 tests** (shared 147, connectors 346, Worker 375, deployment/runtime/recovery 46, mobile 741), plus typecheck, lint and formatting. This includes all 44 new regressions and all 15 unchanged #31 saved-layout cases. Node **24.22.1**, npm **11.9.0**. Updated installed dependencies with `npm ci` against main's committed lockfile; the first attempt failed on the unavailable default npm cache, and the retry using `/tmp/manaclaude-npm-cache` succeeded without manifest/lockfile changes. Checks used process-local heap/Expo/Wrangler temporary-directory settings and that temporary npm cache only. Main remained `0ca2c03` at the final fetch. The full gate passed on the final implementation; only this validation paragraph was appended afterward and checked for formatting. The original handoff bytes are preserved and `git diff --check` passes. No browser/physical-device run was performed for this parser-only change. Open and attach one focused PR, then stop; do not merge, deploy or start other backlog work.
+
+## 2026-11-15 — Account/date ownership of Monefy and bank history
+
+Read `CLAUDE.md`, `AGENTS.md`, and both complete handoff logs in order, including every backend-request section. GitHub confirms **#34 merged** as **`b89c945622df5f143f7edacb83fe2bd80522c1c4`**, also the fetched main used for `codex/account-history-policy`. #31/#34's CSV fixes and #28/#30's backend/mobile link completion are inherited and not repeated. Only `backend/` and this appended log change. No shared/mobile, Claude-log, connector, root/workflow, dependency/lockfile, provider-switch or credential implementation changes.
+
+### Behavior, defaults and safe transitions
+
+- Migration **0010** adds `history_policy`, `history_bank_reviews`, and ephemeral `history_write_guard`. It does not rewrite financial history. Version 0 means no policy has been activated: GET returns `{ defaultCutoff: null, accounts: [] }`, preserving existing deployments' ingestion behavior. A deliberate save requires a real default cutoff; there is no automatic activation and no unrestricted/disable exception after activation.
+- The default applies immediately to existing **connected checking, savings, credit-card, loan and mortgage accounts**, and to future accounts discovered in those kinds. No per-account entry means inherit the latest default with **no replacement months**. An explicit `default` entry inherits subsequent default-date changes but retains its explicit months; `custom` retains its own cutoff and months; `monefy_only` accepts Monefy on every date and admits no bank transactions. Full policy replacement removes omitted overrides, returning those accounts to default inheritance. Every save is reviewed again and increments the version, even if the normalized configuration is unchanged.
+- Cutoff is the **first bank-owned day**. Before it, Monefy owns history except explicitly selected whole calendar months. Months are inclusive from first through last day, including leap days, and must finish strictly before cutoff; the cutoff's own month cannot be selected. Every scattered Monefy entry in a selected month is excluded too. No month is inferred from missing rows, and no date or amount is synthesized.
+- Cash, unconnected accounts and investment/other kinds remain independent regardless of another account's rule. Their Monefy rows are not excluded. Holdings, activities and lots remain outside bank transaction date filtering. Current provider balances/snapshots are saved independently, including when transactions are excluded or their guarded batch must retry. A transaction save/review does not calculate or change a balance.
+- Monefy uses existing explicit `accountMappings` (exact source label → existing account ID), or an explicit single-account `accountId`. It **never auto-attaches to a connected/provider-identified account by matching a label/mask**, at preview or commit. Unconnected file-account reuse retains existing behavior. Without a mapping it can still create an independent history account. This is not cross-provider account merging.
+- Activation/change refuses if saved Monefy falls in a proposed bank period, saved bank transactions fall in a proposed Monefy period, unresolved existing boundary pairs remain, or bank reviews are pending. The preview identifies transactions/imports. Nothing is deleted, excluded from reports, or rewritten. For an import conflict, deliberately undo the identified import through the existing UI, save the reviewed policy, then preview the **unchanged original** again under it; undo removes that import's entire contribution, so review its other accounts too. For bank-history conflicts, select compatible periods; this PR supplies no bank-history deletion/migration operation. Old ambiguous overlaps without recorded review decisions are refused. Explicit keep decisions made by these new import/bank flows are retained as reviewed pairs.
+- Every import and every bank transaction data batch checks policy version **inside its atomic D1 batch**, including version 0, so an in-flight old writer cannot bypass first activation. Active-policy writes also compare a database snapshot of account identity, transaction review fields and bank-review state inside that batch. Policy/review saves use the same guard. Concurrent data changes cause a retryable conflict, not a partial save. A balance-only refresh does not invalidate a policy preview. These conservative guards can invalidate a review after an unrelated history change; clients must reload rather than silently substitute a token.
+- Bank ingestion is centralized in `applySyncResult`, covering initial, manual, force, Repair, scheduled cron, continuation and replay. Filtering precedes transaction planning and also protects excluded existing rows from provider removals/pending expiry. A provider correction moving a saved row into an excluded date leaves the existing saved version intact and reports an excluded incoming row. Source selection does not authorize retroactive deletion. Connections with governed accounts disable amount-based claiming of unlinked imports/manual rows and heuristic pending matching; provider-ID matching remains.
+- Boundary candidates have the same account, currency and signed amount within **three calendar days**; names are not proof. Import-side candidates retain explicit keep/skip review. Bank-side new rows/corrections wait in a persisted queue containing their unchanged normalized provider financial fields and identities; corrections retain their previous saved version. Saving the queue and advancing the provider cursor is atomic, so review does not depend on fetching that row again. Queue writes share the existing 1,200-row continuation budget. Identical purchase IDs remain separate, while repeat responses do not create extra queue items. A removed or now-excluded provider proposal becomes obsolete; changed proposals require new review. Skipping a correction keeps the old saved transaction. Keeping never merges with Monefy or copies its metadata.
+
+### API contract for Claude
+
+All routes require the existing `Authorization: Bearer <APP_API_TOKEN>`. Errors are exactly `{ error: string, message: string }`. Common: **401 `unauthorized`**, **503 `not_configured`**, **500 `internal`**. JSON writes also return **400 `bad_request`** for malformed/missing JSON and **400 `invalid_body`** for invalid fields. New request objects reject unknown keys. Dates/months are calendar strings, amounts integer minor units, and tokens opaque 64-character lowercase hex. Reuse existing full shared `Transaction`, `ImportPreviewRow`, `ImportRecord`, `ImportCommitResult`, `ConnectionSyncReport` shapes; Claude should add only the fields/types below when building the screens after merge.
+
+```ts
+type HistoryPolicy = {
+  defaultCutoff: string | null; // null ONLY in version-0 reads; preview/save require a date
+  accounts: Array<
+    | { accountId: string; mode: 'default'; replacementMonths: string[] }
+    | { accountId: string; mode: 'custom'; cutoff: string; replacementMonths: string[] }
+    | { accountId: string; mode: 'monefy_only' }
+  >;
+};
+type SourcePeriod = {
+  source: 'monefy' | 'bank' | 'independent';
+  from: string | null;
+  to: string | null; // inclusive; null is unbounded
+};
+type AccountHistory = {
+  accountId: string;
+  effective: null | {
+    cutoff: string | null;
+    replacementMonths: string[];
+    origin: 'default' | 'custom' | 'monefy_only';
+  };
+  periods: SourcePeriod[];
+  coverage: { status: 'unknown' | 'unavailable'; complete: false; message: string };
+};
+type HistoryRead = { version: number; policy: HistoryPolicy; accounts: AccountHistory[] };
+type PolicyPreview = {
+  expectedVersion: number;
+  policy: HistoryPolicy;
+  previewToken: string;
+  allowed: boolean;
+  conflicts: Array<{
+    accountId: string;
+    transactionId: string;
+    importId: string | null;
+    reason: 'monefy_in_bank_period' | 'bank_in_monefy_period';
+  }>;
+  boundaryCandidates: Array<{ bankTransactionId: string; monefyTransactionIds: string[] }>;
+  pendingBankReviews: number;
+  accounts: AccountHistory[];
+  warnings: string[];
+};
+type BankHistoryReview = {
+  id: string;
+  status: 'pending' | 'kept' | 'skipped' | 'obsolete';
+  transaction: Transaction; // proposed bank row, not necessarily saved
+  existingTransaction: Transaction | null; // previous saved row for a correction
+  candidates: Transaction[]; // live Monefy candidates at this read
+  eligible: boolean; // current policy/account identity permits keep
+  previewToken: string;
+};
+```
+
+Policy limits: at most 200 account configurations and 240 explicit months per configured account. Duplicate accounts/months, unknown IDs, unconnected/unsupported accounts, invalid dates, cutoff-month/overlapping months, and null default on preview/save return 400 `invalid_body`. Account entries and month lists are returned sorted. With no explicit entry, newly discovered eligible accounts inherit the current default immediately; no mobile acknowledgement is needed before that configured default applies. Coverage is `unavailable` for no connection or disconnected/repair-needed connections, otherwise `unknown`; **neither status ever certifies completeness**, including after successful sync.
+
+| Method and exact route                     | Exact request                                                              | Success                                                                                                                                       |
+| ------------------------------------------ | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/history-policy`                   | No body                                                                    | **200 `HistoryRead`**                                                                                                                         |
+| `POST /v1/history-policy/preview`          | `{ policy: HistoryPolicy }`                                                | **200 `PolicyPreview`**, even when `allowed:false`; no writes or provider calls                                                               |
+| `PUT /v1/history-policy`                   | `{ policy: HistoryPolicy, expectedVersion: number, previewToken: string }` | **200 `HistoryRead & { replayed: boolean }`**                                                                                                 |
+| `GET /v1/history-policy/bank-reviews`      | No body                                                                    | **200 `{ reviews: BankHistoryReview[] }`**, pending only, ID order                                                                            |
+| `GET /v1/history-policy/bank-reviews/:id`  | No body                                                                    | **200 `{ review: BankHistoryReview }`**, includes resolved/obsolete records; **404 `not_found`** if absent                                    |
+| `POST /v1/history-policy/bank-reviews/:id` | `{ previewToken: string, decision: 'keep' \| 'skip' }`                     | **200 `{ id: string, decision: 'keep' \| 'skip', transactionId: string \| null, replayed: boolean }`**; transactionId for keep, null for skip |
+
+Policy PUT additional errors: **409 `history_transition_conflict`** when current history refuses the change (read preview for IDs/actions), **409 `history_policy_changed`** for a stale version/token or a write race. Retain the original normalized request/token after a lost response: if it is still the immediately saved revision, the same PUT returns `replayed:true` without changing history/version. If another revision superseded it, reload and deliberately review again. Never automatically refresh a token and resubmit old choices.
+
+Bank-review POST additional errors: **404 `not_found`**; **409 `history_policy_changed`** for changed candidates/history/policy or a write race; **409 `history_review_resolved`** for a resolved/obsolete record or conflicting repeat; **409 `history_review_changed`** when a correction's saved transaction changed since the proposal (sync again to refresh the proposal; old history stays); **409 `history_transaction_excluded`** if keep is no longer permitted. Exact same token+decision replays a resolved outcome with `replayed:true` without another transaction write. After an uncertain answer, GET this ID and/or retry the exact original request. After a newer provider proposal, review its new token; never reuse an old decision. A skip applies to that exact provider financial signature; changed provider content is reconsidered. A previously kept row later removed is not recreated by replaying its old decision. There is no merge or undo-review route. Keeping a correction applies only its proposed changed fields and preserves user notes/categories; a stale saved baseline refuses.
+
+All policy preview/save and bank-review reads/writes can return **409 `history_review_too_large`** when the serialized review state exceeds **1,000,000 UTF-8 bytes**. This foundation compares state in SQL without triggers; it refuses before returning/binding an oversized D1 value. The snapshot is database-wide, and active-policy import/sync transaction writes use it too: at this limit those writes stop safely (sync reports error), while current sync balance reads still save. A bounded revision/index implementation is required for larger datasets; do not promise arbitrary multi-year capacity or production CPU/quota safety from these tests. The state includes transaction identity/review fields and saved bank proposals, not uploaded file bytes. No pagination/retention/deletion work is introduced here.
+
+#### Existing import routes: additive fields and source filtering
+
+**POST `/v1/imports`**, multipart: the exact request fields and existing error/status contract in #31/#34 above are retained (`file`, `format`, `accountId`, `mapping`, `skipRows`, `preferDayFirst`, `fromDate`, `toDate`, `accountMappings`, `currency`, `commit`). `format:'csv'` still detects Monefy. **201 `{ preview: ImportPreview, result: ImportCommitResult | null }`**; Monefy's preview now includes:
+
+```ts
+historyPolicy?: {
+  version: number;
+  excludedCount: number;
+  excludedRows: Array<ImportPreviewRow & {
+    exclusionReason: 'bank_cutoff' | 'replacement_month';
+  }>;
+  excludedTotals: Array<{
+    accountId: string; currency: string; count: number;
+    inflow: number; outflow: number; // positive totals in original minor units
+  }>;
+  accounts: Array<{ accountId: string; periods: SourcePeriod[] }>;
+};
+reviewedBoundaryPairs?: Array<{
+  monefyTransactionId: string; bankTransactionIds: string[];
+}>; // committed explicit keep decisions; not a writable request field
+```
+
+`preview.rows`/`counts` contain only rows admitted by source policy after any explicit file date bounds. `historyPolicy.excludedRows` preserves the other parsed rows with original identities/amounts and reasons. `dateRange.excluded` continues to count only rows outside explicit `fromDate`/`toDate`; it does not include policy exclusions. `errors` remains parser errors, separate from both exclusions. Existing currency mismatch and unsupported transfer/mixed-currency errors remain enforced **before** policy filtering. The unchanged original upload remains in R2. Preview creation still has no retry key and stores another original/record on each request.
+
+**POST `/v1/imports/:id/commit`** keeps `{ skipLines?: number[], keepLines?: number[], createAccounts?: boolean }` and **200** `{ importId, added, matched, skipped, accountsCreated, transactionIds, linked, suggested, warnings }`, plus optional **`policyExcluded: number`** for Monefy. `skipped` includes policy exclusions, deliberately skipped readable rows and acknowledged parse errors, each once; explicit date-range exclusions remain outside that count. An all-policy-excluded file may commit with added 0 and its explicit exclusion count, but only after all parser errors are acknowledged. Keep cannot override ownership. A changed policy requires a fresh preview of the original: **409 `history_policy_changed`**. A changed set of duplicate IDs on a kept line requires new review: **409 `import_preview_changed`**. Inside-batch history races also return `history_policy_changed`. All prior parse/date/currency/account/duplicate/atomic-plan/lease errors remain. An oversized state adds `history_review_too_large`.
+
+**GET `/v1/imports/:id`** remains **200 `ImportRecord & { preview: ImportPreview | null }`**, including the persisted additions; 404 if absent. After an uncertain commit, read it first: committed means saved, repeat commit remains 409, and saving retains the five-minute recovery lease. A refusal leaves the preview retryable; stale policy/data requires a fresh preview. **DELETE `/v1/imports/:id/transactions`** retains its no-body **200 `{ removed: number }`**, prior conflicts/404, and repeat-undo 0. Undo does not remove the original or change policy; reimport is reevaluated under current policy. It can invalidate bank-review candidates, so reload their tokens after undo. Generic CSV/OFX/QIF/PDF remain their existing independent statement imports, not reclassified as Monefy or bank-provider ingestion.
+
+#### Existing sync route and scheduled behavior
+
+**POST `/v1/connections/:id/sync`**, no body, optional `?force=true`, retains **200** `{ connectionId, connectorId, outcome, more, status, error, summary, skippedBecause? }` and existing authentication/missing-ID/config errors. `outcome` remains `ok | error | needs_repair | skipped`; summary remains null when unsuccessful. When present, its exact fields are `accountsCreated`, `inserted`, `updated`, `removed`, `linked`, `suggested`, `holdings`, `activities`, `warnings`, `remaining`, `more`, plus:
+
+```ts
+historyPolicy: {
+  version: number;
+  excluded: number;
+  pendingReview: number;
+  skippedByReview: number;
+  coverage: 'unknown';
+}
+```
+
+`excluded` counts rows rejected from this provider response, not deleted rows. `pendingReview` counts persisted pending proposals for the returned accounts after this batch; `skippedByReview` counts matching explicitly skipped proposals in this plan. `remaining`/`more` also cover proposals not yet persisted within the write budget. `more:false` means no remaining writes for this response, **not** no reviews or complete provider history. Surface pending reviews even on an otherwise healthy connection. A policy/history race appears as `outcome:'error'` with its safe message; the old cursor remains and the existing retry scheduler retries. Balances may already be current. No new cron, endpoint, provider call, credential behavior or forced-sync bypass is added.
+
+### Screens, rollout order and remaining limits
+
+1. Apply migration 0010 before this Worker, through the existing reviewed release process. **No production migration/deployment was performed here.** Do not roll back to an older Worker while policies are active: old writers do not understand these guards. A rollback needs a stopped/drained-writer operation and reviewed data plan.
+2. Claude builds a history-source settings/review screen: default cutoff, account default/custom/Monefy-only controls, explicit multi-select replacement months, inclusive per-account source timeline, unknown/unavailable coverage, conflicts/import links and a deliberate save using the exact preview token/version. Clearly say “the entire selected account/month replaces Monefy, including scattered entries.” No empty-month inference or automatic default based on the last export row.
+3. Prefer configuring the default **before first bank sync**, so newly discovered accounts inherit it. Then connect the bank, map each Monefy source label explicitly to its bank ID, and upload the complete original. If the bank was already connected/synced, the transition preview may refuse conflicting existing bank history; use compatible periods rather than silently removing it. No cross-provider attachment by name is supplied.
+4. Claude updates Monefy review/results to show policy-excluded rows/counts/totals separately from parse errors, file-date exclusions and manual unticks. Keep error acknowledgement and duplicate review. A policy conflict requires a fresh preview; never silently recycle stale keep decisions. Preserve the saved-with-warning and interrupted-save flows.
+5. Add a bank-review inbox reachable from sync results and history settings, showing the proposal, previous saved version for corrections, and every Monefy candidate. Offer **Keep both** or **Skip this bank proposal**, explain that skipping a correction preserves the old bank row, and refresh after each decision because tokens can change. Handle obsolete proposals and exact retry/readback as above. Keeping a held row does not run ATM/transfer post-processing synchronously; subsequent existing maintenance/matcher flows can examine it.
+6. This is source ownership and review, **not a provider backfill service**: selecting months does not widen connector request windows, rewind opaque provider cursors, or establish history completeness. Existing connector limitations may make an approved month unavailable, especially if selected after an incremental cursor already passed it. No oldest-returned/stored date is treated as coverage proof. A separately verified provider backfill/coverage implementation is needed to guarantee retrieval of such older months. Current balance freshness is independent of this limitation.
+7. Duplicate review is deliberately narrow: exact signed amount/currency/account within three days, with no fuzzy merchant matching or metadata merging. Different amounts, longer posting delays and provider identity changes can evade it. Date windows never guarantee zero duplicates. Monefy transfers, mixed-currency accounts and unverified localized transfer semantics remain explicit unsupported/error cases; no semantics were invented. Original identity and occurrence multiplicity stay intact.
+8. The private production backup/restoration drill and physical Android validation remain prerequisites for a real-data trial. Recovery tests here use invented local data only; no live provider or Plaid calls, private data, flag/secret changes, production operation, migration or deployment occurred. Investment-holdings fixes and unrelated backlog remain outside this PR.
+
+### Validation
+
+New invented-data suites cover calendar boundaries/leap years, per-account overrides and untouched cash/manual/investment history, partial-month replacement, full original retention, repeated purchases/imports/syncs, parse-error acknowledgement, stale previews/tokens, concurrent policy saves and both orders of import/sync races, safe activation/refusal/undo/reimport, boundary keep/skip/corrections/obsolete proposals/retry/continuation, balances, and initial/manual/forced/repair/scheduled/cron/continuation/replay entry paths. Query-meter assertions keep the mocked sync entry invocations below 50 D1 statements. The recovery fixture now round-trips **52 tables** and four originals, including a saved policy and pending bank review, then resolves the review only on the restored disposable target and verifies the source stays pending. Existing #31 preamble and #34 date-format tests are unchanged.
+
+The first repository check reached the tests but overlapped the final retry-contract refinement; its earlier assertion expected a second skip to conflict and failed once exact replay was implemented. That assertion now checks successful idempotent replay. A recovery-fixture date initially triggered the FX runner's correctly earlier-history backfill; the new history fixture now stays inside the pre-existing FX window. An unused import and an initial GET-with-body test-harness mistake were corrected. Final full-check results follow before pushing.
+
+**Final validation: `npm run check` passed — 1,697 tests** (shared 147, connectors 346, Worker 417, deployment/runtime/recovery 46, mobile 741), plus typecheck, lint and formatting. All 42 new history regressions and the expanded local restoration drill pass. Node **24.22.1**, npm **11.9.0**; process-local heap, offline Expo and temporary Wrangler/config directories only. The final fetch still has main at `b89c945`. The gate ran on the final implementation; only this validation note and an API-table Markdown escape correction followed, with formatting and `git diff --check` verified afterward. Prior log bytes remain unchanged. Open and attach one coherent backend PR, then stop; no merge, deployment or production migration.

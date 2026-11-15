@@ -27,6 +27,9 @@ export const testEnv = workerEnv as unknown as Env & {
 export const db = testEnv.DB;
 
 const TABLES = [
+  'history_policy',
+  'history_bank_reviews',
+  'history_write_guard',
   'link_write_guard',
   'manual_balance_overrides',
   'deleted_manual_accounts',
