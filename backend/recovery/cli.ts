@@ -250,6 +250,9 @@ export async function restoreLocal(bundle: string, manifestSha256: string, outpu
       }
     }
     for (const sql of image.indexes) await DB.prepare(sql).run();
+    // Install verified migration-owned triggers only AFTER restoring all rows,
+    // preserving the saved revision and avoiding side effects during restoration.
+    for (const sql of image.triggers) await DB.prepare(sql).run();
     for (const [i, f] of manifest.files.entries()) {
       const bytes = await boundedRead(join(bundle, objectName(i)), MAX_FILE_BYTES);
       if (sha256(bytes) !== f.sha256) throw new RecoveryError('Object changed during restoration.');
@@ -265,7 +268,8 @@ export async function restoreLocal(bundle: string, manifestSha256: string, outpu
     const restored = inspectDatabase(dump[0]!.join('\n'));
     if (
       canonical(tableInventory(restored)) !== canonical(manifest.tables) ||
-      canonical(restored.indexes) !== canonical(image.indexes)
+      canonical(restored.indexes) !== canonical(image.indexes) ||
+      canonical(restored.triggers) !== canonical(image.triggers)
     )
       throw new RecoveryError('Restored database differs from the backup.');
     for (const f of manifest.files) {
