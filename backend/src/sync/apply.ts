@@ -34,6 +34,7 @@ import {
   taxLotsTable,
   transactionsTable,
 } from '../db/tables';
+import { conflict } from '../util/errors';
 import { bankOwns, effectivePolicy } from '../history/model';
 import { historyGuards, historySnapshot, readPolicy, writeHistory } from '../history/store';
 import { bankReviewsTable } from '../history/reviews';
@@ -173,7 +174,22 @@ export async function applySyncResult(
   await runSpecs(db, accountSpecs);
   const historyState = await readPolicy(db);
   const historyStateAtRead = historyState.version > 0 ? await historySnapshot(db) : undefined;
-  const effectiveAccounts = [...allAccounts, ...accountPlan.inserts];
+  // Re-read identity AFTER the revision: account planning/balance writes preceded
+  // this fence. Otherwise a concurrent account-kind/connection edit could be
+  // hidden by capturing its new revision while still filtering with old accounts.
+  const effectiveAccounts = await selectAll(db, accountsTable);
+  if (
+    [...accountPlan.accountIds].some(
+      ([externalId, id]) =>
+        !effectiveAccounts.some(
+          (a) => a.id === id && a.externalId === externalId && a.connectionId === connection.id,
+        ),
+    )
+  )
+    throw conflict(
+      'Account identity changed during sync. Retry with current accounts.',
+      'history_policy_changed',
+    );
   const controlled = new Set(
     effectiveAccounts.filter((a) => effectivePolicy(historyState.policy, a)).map((a) => a.id),
   );

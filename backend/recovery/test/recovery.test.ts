@@ -24,7 +24,7 @@ import {
   queueBankReview,
   resolveBankReview,
 } from '../../src/history/reviews';
-import { readPolicy } from '../../src/history/store';
+import { historySnapshot, readPolicy } from '../../src/history/store';
 import { splitTransaction } from '../../src/services/splits';
 import { linkManually } from '../../src/services/links';
 import { previewImport, commitImport, undoImport, discardImport } from '../../src/imports/service';
@@ -355,12 +355,12 @@ describe('private D1 and original-file recovery', () => {
       '--manifest-sha256',
       digest,
     ]);
-    expect(JSON.parse(stdout)).toEqual({ tables: 52, files: 4 });
+    expect(JSON.parse(stdout)).toEqual({ tables: 53, files: 4 });
   });
   it('restores all records, balances, notes, categories, splits, transfers and originals to new local D1/R2', async () => {
     const restored = join(root, 'restored');
     const result = await restoreLocal(bundle, digest, restored);
-    expect(result).toEqual({ tables: 52, files: 4 });
+    expect(result).toEqual({ tables: 53, files: 4 });
     const target = await getPlatformProxy<Env>({
       configPath: join(restored, 'wrangler.json'),
       remoteBindings: false,
@@ -407,7 +407,12 @@ describe('private D1 and original-file recovery', () => {
         expect(copy!.customMetadata ?? {}).toEqual(original!.customMetadata ?? {});
       }
       expect((await readPolicy(target.env.DB)).version).toBe(1);
+      const revision = await historySnapshot(env.DB);
+      expect(await historySnapshot(target.env.DB)).toBe(revision);
       const pendingReview = (await bankReviewList(target.env.DB)).reviews[0]!;
+      expect(pendingReview.previewToken).toBe(
+        (await bankReviewList(env.DB)).reviews[0]!.previewToken,
+      );
       expect(pendingReview.candidates.map((t) => t.id)).toEqual(['invented-monefy']);
       await resolveBankReview(
         target.env.DB,
@@ -415,6 +420,16 @@ describe('private D1 and original-file recovery', () => {
         { previewToken: pendingReview.previewToken, decision: 'keep' },
         '2026-11-12T12:03:00.000Z',
       );
+      expect(await historySnapshot(target.env.DB)).not.toBe(revision);
+      expect(await historySnapshot(env.DB)).toBe(revision);
+      expect(
+        await resolveBankReview(
+          target.env.DB,
+          pendingReview.id,
+          { previewToken: pendingReview.previewToken, decision: 'keep' },
+          now,
+        ),
+      ).toMatchObject({ replayed: true });
       expect((await bankReviewList(target.env.DB)).reviews).toEqual([]);
       expect((await bankReviewList(env.DB)).reviews).toHaveLength(1);
       const restoredEnv = { ...target.env, CREDENTIALS_SECRET: env.CREDENTIALS_SECRET };
@@ -585,11 +600,41 @@ describe('private D1 and original-file recovery', () => {
       inspectDatabase("ATTACH DATABASE '/tmp/forbidden-recovery.db' AS other;"),
     ).toThrow();
     expect(() =>
-      inspectDatabase(sql + "\nUPDATE transactions SET account_id = 'missing';"),
+      inspectDatabase(
+        sql.replace(
+          'CREATE TRIGGER',
+          "UPDATE transactions SET account_id = 'missing';\nCREATE TRIGGER",
+        ),
+      ),
     ).toThrow(/relationship/);
-    expect(() => inspectDatabase(sql + "\nUPDATE imports SET status = 'committing';")).toThrow(
-      /committing/,
-    );
+    expect(() =>
+      inspectDatabase(
+        sql.replace('CREATE TRIGGER', "UPDATE imports SET status = 'committing';\nCREATE TRIGGER"),
+      ),
+    ).toThrow(/committing/);
+  });
+
+  it('requires exact migration triggers and never executes exported trigger bodies', () => {
+    const image = inspectDatabase(sql);
+    expect(image.triggers).toHaveLength(15);
+    const trigger = image.triggers[0]!;
+    expect(() => inspectDatabase(sql + '\nDELETE FROM history_revision;')).toThrow(/revision/);
+    expect(() =>
+      inspectDatabase(sql + "\nUPDATE history_revision SET revision = 'z' || substr(revision, 2);"),
+    ).toThrow(/revision/);
+    expect(() => inspectDatabase(sql.replace(trigger, ''))).toThrow(/triggers/);
+    expect(() =>
+      inspectDatabase(sql.replace(trigger, trigger.replace('randomblob(32)', 'randomblob(16)'))),
+    ).toThrow(/triggers/);
+    expect(() =>
+      inspectDatabase(
+        sql +
+          '\nCREATE TRIGGER untrusted AFTER INSERT ON accounts BEGIN DELETE FROM transactions; END;',
+      ),
+    ).toThrow();
+    expect(() =>
+      inspectDatabase(sql + "\nUPDATE transactions SET name = 'Never execute';"),
+    ).toThrow();
   });
 
   it('binds the exact inventory and file relationships to the trusted manifest digest', async () => {

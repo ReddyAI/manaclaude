@@ -1039,11 +1039,14 @@ export async function undoImport(db: D1Database, importId: Id): Promise<number> 
       )
       .bind(importId, importId),
     db.prepare('DELETE FROM transactions WHERE import_id = ?').bind(importId),
+    // D1 meta.changes includes trigger writes. SQLite changes() counts only the
+    // immediately preceding DELETE, within this same atomic batch.
+    db.prepare('SELECT changes() AS removed'),
     db
       .prepare("UPDATE imports SET status = 'undone', updated_at = ? WHERE id = ?")
       .bind(now, importId),
   ]);
-  return res[2]?.meta.changes ?? 0;
+  return (res[3]?.results[0] as { removed: number }).removed;
 }
 
 export type { ParsedImportRow };

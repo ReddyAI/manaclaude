@@ -50,7 +50,7 @@ async function activate(
           .bind(status, link.outTransactionId, link.inTransactionId, now, link.id),
         db
           .prepare(
-            'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL',
+            'UPDATE transactions SET transfer_link_id = ?, updated_at = ? WHERE id IN (?, ?) AND transfer_link_id IS NULL RETURNING id',
           )
           .bind(link.id, now, link.outTransactionId, link.inTransactionId),
         db
@@ -66,7 +66,7 @@ async function activate(
           ),
       ],
     );
-    if ((res[2]?.meta.changes ?? 0) !== 2) {
+    if ((res[2]?.results.length ?? 0) !== 2) {
       throw conflict('One side of this transfer is already linked to something else.');
     }
   } catch (e) {

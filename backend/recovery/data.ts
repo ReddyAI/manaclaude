@@ -36,6 +36,7 @@ export interface FileReference {
 export interface DatabaseImage {
   tables: RecoveryTable[];
   indexes: string[];
+  triggers: string[];
   files: FileReference[];
 }
 
@@ -61,16 +62,30 @@ function rows(db: DatabaseSync, sql: string): Row[] {
 export function inspectDatabase(sql: string): DatabaseImage {
   if (Buffer.byteLength(sql) > MAX_SQL_BYTES) throw new RecoveryError('SQL export exceeds 64 MiB.');
   const db = new DatabaseSync(':memory:');
+  const expected = new DatabaseSync(':memory:');
   try {
+    const migrations = new URL('../migrations/', import.meta.url);
+    for (const name of readdirSync(migrations)
+      .filter((n) => n.endsWith('.sql'))
+      .sort())
+      expected.exec(readFileSync(new URL(name, migrations), 'utf8'));
+    const trustedTriggers = rows(
+      expected,
+      "SELECT name, sql FROM sqlite_schema WHERE type = 'trigger' ORDER BY name",
+    );
     if (typeof db.setAuthorizer !== 'function')
       throw new RecoveryError('Recovery requires Node 24.10 or newer.');
-    db.setAuthorizer((action, arg1) => {
+    db.setAuthorizer((action, arg1, _arg2, _database, source) => {
+      // Definitions may be parsed, but exported SQL may NEVER execute a trigger.
+      // After loading, require the complete exact definitions from local migrations.
       if (
+        source !== null ||
+        (action === constants.SQLITE_CREATE_TRIGGER &&
+          !trustedTriggers.some((t) => t.name === arg1)) ||
         [
           constants.SQLITE_ATTACH,
           constants.SQLITE_DETACH,
           constants.SQLITE_CREATE_VTABLE,
-          constants.SQLITE_CREATE_TRIGGER,
           constants.SQLITE_CREATE_VIEW,
         ].includes(action) ||
         (action === constants.SQLITE_PRAGMA &&
@@ -105,29 +120,29 @@ export function inspectDatabase(sql: string): DatabaseImage {
       });
     // A partial --table/--no-schema export is not a recovery backup. Compare all
     // application table columns with the checked-out migrations, including empty tables.
-    const expected = new DatabaseSync(':memory:');
-    try {
-      const migrations = new URL('../migrations/', import.meta.url);
-      for (const name of readdirSync(migrations)
-        .filter((n) => n.endsWith('.sql'))
-        .sort())
-        expected.exec(readFileSync(new URL(name, migrations), 'utf8'));
-      const names = rows(expected, "SELECT name FROM sqlite_schema WHERE type = 'table'");
-      if (tables.some((t) => t.name !== 'd1_migrations' && !names.some((n) => n.name === t.name)))
-        throw new RecoveryError(
-          'Unsupported database schema; use the matching recovery code revision.',
-        );
-      for (const { name } of names) {
-        const actual = tables.find((t) => t.name === name);
-        const columns = rows(expected, `PRAGMA table_info(${quote(String(name))})`).map((c) =>
-          String(c.name),
-        );
-        if (!actual || canonical(columns) !== canonical(actual.columns))
-          throw new RecoveryError('Incomplete or incompatible D1 export.');
-      }
-    } finally {
-      expected.close();
+    const names = rows(expected, "SELECT name FROM sqlite_schema WHERE type = 'table'");
+    if (tables.some((t) => t.name !== 'd1_migrations' && !names.some((n) => n.name === t.name)))
+      throw new RecoveryError(
+        'Unsupported database schema; use the matching recovery code revision.',
+      );
+    for (const { name } of names) {
+      const actual = tables.find((t) => t.name === name);
+      const columns = rows(expected, `PRAGMA table_info(${quote(String(name))})`).map((c) =>
+        String(c.name),
+      );
+      if (!actual || canonical(columns) !== canonical(actual.columns))
+        throw new RecoveryError('Incomplete or incompatible D1 export.');
     }
+    const triggers = schema
+      .filter((s) => s.type === 'trigger')
+      .map((s) => ({ name: s.name, sql: s.sql }));
+    if (canonical(triggers) !== canonical(trustedTriggers))
+      throw new RecoveryError('Incomplete or incompatible recovery triggers.');
+    const revision = db
+      .prepare('SELECT revision FROM history_revision WHERE id = 1')
+      .get()?.revision;
+    if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision))
+      throw new RecoveryError('Missing or invalid history concurrency revision.');
     // Most model relationships predate foreign keys in this schema.
     for (const [table, column, target] of [
       ['transactions', 'account_id', 'accounts'],
@@ -185,9 +200,11 @@ export function inspectDatabase(sql: string): DatabaseImage {
     return {
       tables,
       indexes: schema.filter((s) => s.type === 'index' && s.sql).map((s) => String(s.sql)),
+      triggers: triggers.map((s) => String(s.sql)),
       files,
     };
   } finally {
+    expected.close();
     db.close();
   }
 }
