@@ -9,6 +9,7 @@ import {
 } from '@manaclaude/shared';
 import { selectAll } from '../db/table';
 import { transactionsTable } from '../db/tables';
+import type { ImportHistoryReview } from '../history/imports';
 import { badRequest } from '../util/errors';
 
 export interface DuplicateCandidate {
@@ -18,6 +19,8 @@ export interface DuplicateCandidate {
 
 /** Additive backend contract; mobile/shared adoption belongs to the next UI task. */
 export interface SafeImportPreview extends ImportPreview {
+  historyPolicy?: ImportHistoryReview;
+  reviewedBoundaryPairs?: { monefyTransactionId: string; bankTransactionIds: string[] }[];
   sourceFormat?: 'monefy';
   duplicateCandidates?: DuplicateCandidate[];
   dateRange?: { from: LocalDate | null; to: LocalDate | null; excluded: number };

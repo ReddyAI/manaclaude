@@ -34,6 +34,10 @@ import {
   taxLotsTable,
   transactionsTable,
 } from '../db/tables';
+import { bankOwns, effectivePolicy } from '../history/model';
+import { historyGuards, historySnapshot, readPolicy, writeHistory } from '../history/store';
+import { bankReviewsTable } from '../history/reviews';
+import { filterBankResult, reviewBankPlan } from '../history/sync';
 import { newId, nowIso } from '../util/ids';
 import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
@@ -41,6 +45,13 @@ import { clearRetrySpec, retryStatement } from './retries';
 
 export interface SyncSummary {
   accountsCreated: number;
+  historyPolicy: {
+    version: number;
+    excluded: number;
+    pendingReview: number;
+    skippedByReview: number;
+    coverage: 'unknown';
+  };
   inserted: number;
   updated: number;
   removed: number;
@@ -157,6 +168,21 @@ export async function applySyncResult(
     ...bulkInsertSpecs(balanceSnapshotsTable, accountPlan.balanceSnapshots, 'upsert'),
   ];
 
+  // Current balances are an independent observation, even when transaction writes
+  // are excluded or a concurrent policy/review change makes the data batch retry.
+  await runSpecs(db, accountSpecs);
+  const historyState = await readPolicy(db);
+  const historyStateAtRead = historyState.version > 0 ? await historySnapshot(db) : undefined;
+  const effectiveAccounts = [...allAccounts, ...accountPlan.inserts];
+  const controlled = new Set(
+    effectiveAccounts.filter((a) => effectivePolicy(historyState.policy, a)).map((a) => a.id),
+  );
+  const filtered = filterBankResult(
+    historyState.policy,
+    effectiveAccounts,
+    accountPlan.accountIds,
+    result,
+  );
   const existing =
     syncedAccountIds.length === 0
       ? []
@@ -166,14 +192,47 @@ export async function applySyncResult(
           `account_id IN (${placeholders(syncedAccountIds.length)})`,
           syncedAccountIds,
         );
-  const txnPlan = planTransactionSync({
+  let txnPlan = planTransactionSync({
     connectionId: connection.id,
     accounts: accountPlan.accountIds,
-    existing,
-    result,
+    existing: existing.filter((t) => {
+      const account = effectiveAccounts.find((a) => a.id === t.accountId)!;
+      return (
+        bankOwns(historyState.policy, account, t.date) !== false &&
+        !filtered.rejected.has(`${t.accountId}:${t.externalId}`)
+      );
+    }),
+    result: filtered.result,
+    options: controlled.size ? { claimUnlinked: false, heuristicPendingMatch: false } : undefined,
     now,
     newId: idFactory,
   });
+  const reviews =
+    historyState.version > 0
+      ? await selectAll(db, bankReviewsTable, 'account_id IN (SELECT value FROM json_each(?))', [
+          JSON.stringify(syncedAccountIds),
+        ])
+      : [];
+  const reviewPlan = await reviewBankPlan(
+    historyState.policy,
+    effectiveAccounts,
+    txnPlan,
+    existing,
+    reviews,
+    result.removedTransactionExternalIds,
+    filtered.rejected,
+    now,
+  );
+  txnPlan = reviewPlan.plan;
+  if (filtered.excluded)
+    warnings.push(
+      `${filtered.excluded} bank transactions excluded by source periods. Balances remain current; history coverage is unknown.`,
+    );
+  if (reviewPlan.queued.length)
+    warnings.push(
+      `${reviewPlan.queued.length} bank transactions await purchase/posting-date duplicate review. Read /v1/history-policy/bank-reviews; they have not been saved as transactions.`,
+    );
+  const [historyGuard, historyRelease] = historyGuards(historyState.version, historyStateAtRead);
   const [categories, rules] =
     txnPlan.inserts.length > 0
       ? await Promise.all([
@@ -236,7 +295,7 @@ export async function applySyncResult(
   const deleteIds = removals.map((r) => r.id).filter((id) => !keepIds.includes(id));
   const removedIds = removals.map((r) => r.id);
 
-  const build = (txnCount: number, actCount: number) => {
+  const build = (txnCount: number, actCount: number, reviewCount: number) => {
     const inserts = allInserts.slice(0, txnCount);
     const activityInserts = allActivityInserts.slice(0, actCount);
     const txnSpecs: StatementSpec[] = [
@@ -293,27 +352,49 @@ export async function applySyncResult(
           ),
         ]
       : [];
-    return { inserts, activityInserts, specs: [...txnSpecs, ...invSpecs] };
+    return {
+      inserts,
+      activityInserts,
+      specs: [
+        ...txnSpecs,
+        ...invSpecs,
+        ...bulkInsertSpecs(
+          bankReviewsTable,
+          [...reviewPlan.queued.slice(0, reviewCount), ...reviewPlan.obsolete],
+          'upsert',
+        ),
+      ],
+    };
   };
 
-  let txnCount = Math.min(allInserts.length, maxRows);
-  let actCount = Math.min(allActivityInserts.length, Math.max(0, maxRows - txnCount));
-  let plan = build(txnCount, actCount);
+  let reviewCount = Math.min(reviewPlan.queued.length, maxRows);
+  let txnCount = Math.min(allInserts.length, Math.max(0, maxRows - reviewCount));
+  let actCount = Math.min(allActivityInserts.length, Math.max(0, maxRows - txnCount - reviewCount));
+  let plan = build(txnCount, actCount, reviewCount);
   if (opts.budget) {
     // Account writes, the connection row, and (on the last part) the after-sync steps must fit too.
     const fits = () => {
-      const last = txnCount === allInserts.length && actCount === allActivityInserts.length;
+      const last =
+        txnCount === allInserts.length &&
+        actCount === allActivityInserts.length &&
+        reviewCount === reviewPlan.queued.length;
       // The connection update and retry reset are both part of the successful data batch.
-      const need = accountSpecs.length + plan.specs.length + 2 + (last ? AFTER_SYNC_RESERVE : 0);
+      const need = plan.specs.length + 4 + (last ? AFTER_SYNC_RESERVE : 0);
       return opts.budget!.allows(need);
     };
-    while (!fits() && txnCount + actCount > 0) {
+    while (!fits() && txnCount + actCount + reviewCount > 0) {
       if (actCount > 0) actCount = Math.floor(actCount / 2);
-      else txnCount = Math.floor(txnCount / 2);
-      plan = build(txnCount, actCount);
+      else if (txnCount > 0) txnCount = Math.floor(txnCount / 2);
+      else reviewCount = Math.floor(reviewCount / 2);
+      plan = build(txnCount, actCount, reviewCount);
     }
   }
-  const remaining = allInserts.length - txnCount + (allActivityInserts.length - actCount);
+  const remaining =
+    allInserts.length -
+    txnCount +
+    (allActivityInserts.length - actCount) +
+    reviewPlan.queued.length -
+    reviewCount;
   const more = remaining > 0;
 
   // -- write: accounts, then the data and the connection row ---------------------------
@@ -341,8 +422,18 @@ export async function applySyncResult(
           },
     },
   ]);
-  await runSpecs(db, accountSpecs);
-  await runSpecs(db, [...plan.specs, ...connectionSpec, clearRetrySpec(connection.id)]);
+  const specs = [
+    historyGuard,
+    ...plan.specs,
+    ...connectionSpec,
+    clearRetrySpec(connection.id),
+    historyRelease,
+  ];
+  if (opts.budget && !opts.budget.allows(specs.length))
+    throw new Error(
+      'History review/data batch exceeds this sync budget. Retry with a smaller provider window.',
+    );
+  await writeHistory(db, specs);
 
   // -- after the last part is saved -----------------------------------------------------
   let linked = 0;
@@ -355,6 +446,18 @@ export async function applySyncResult(
   }
   return {
     accountsCreated: accountPlan.inserts.length,
+    historyPolicy: {
+      version: historyState.version,
+      excluded: filtered.excluded,
+      pendingReview:
+        reviews.filter((r) => r.status === 'pending').length +
+        reviewPlan.queued
+          .slice(0, reviewCount)
+          .filter((q) => !reviews.some((r) => r.id === q.id && r.status === 'pending')).length -
+        reviewPlan.obsolete.length,
+      skippedByReview: reviewPlan.skipped,
+      coverage: 'unknown',
+    },
     inserted: plan.inserts.length,
     updated: txnPlan.updates.length,
     removed: removals.length,

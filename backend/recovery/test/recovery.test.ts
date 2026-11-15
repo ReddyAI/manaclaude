@@ -16,7 +16,15 @@ import { ensureDefaultCategories } from '../../src/services/seed';
 import { updateSettings } from '../../src/services/settings';
 import { makeTransaction } from '../../src/services/transactions';
 import { insertStatement } from '../../src/db/table';
-import { transactionsTable } from '../../src/db/tables';
+import { accountsTable, transactionsTable } from '../../src/db/tables';
+import { previewHistoryPolicy, saveHistoryPolicy } from '../../src/history/service';
+import {
+  bankReviewsTable,
+  bankReviewList,
+  queueBankReview,
+  resolveBankReview,
+} from '../../src/history/reviews';
+import { readPolicy } from '../../src/history/store';
 import { splitTransaction } from '../../src/services/splits';
 import { linkManually } from '../../src/services/links';
 import { previewImport, commitImport, undoImport, discardImport } from '../../src/imports/service';
@@ -252,6 +260,53 @@ beforeAll(async () => {
     currency: 'INR',
     date: '2026-11-01',
   });
+  const historyAccount = {
+    ...known.account,
+    id: 'invented-history-account',
+    connectionId: 'invented-connection',
+    externalId: 'invented-bank-account',
+  };
+  await insertStatement(env.DB, accountsTable, historyAccount).run();
+  const historyPolicy = { defaultCutoff: '2026-11-02', accounts: [] };
+  const historyPreview = await previewHistoryPolicy(env.DB, historyPolicy);
+  await saveHistoryPolicy(
+    env.DB,
+    { policy: historyPolicy, expectedVersion: 0, previewToken: historyPreview.previewToken },
+    now,
+  );
+  const monefy = makeTransaction(
+    {
+      id: 'invented-monefy',
+      accountId: historyAccount.id,
+      date: '2026-11-01',
+      amount: -500,
+      currency: 'INR',
+      source: 'import',
+      externalId: 'monefy:invented',
+      rawName: 'Invented purchase',
+    },
+    now,
+  );
+  await insertStatement(env.DB, transactionsTable, monefy).run();
+  const bankProposal = makeTransaction(
+    {
+      id: 'invented-bank-proposal',
+      accountId: historyAccount.id,
+      connectionId: historyAccount.connectionId,
+      date: '2026-11-02',
+      amount: -500,
+      currency: 'INR',
+      source: 'connector',
+      externalId: 'invented-posting',
+      rawName: 'Invented purchase',
+    },
+    now,
+  );
+  await insertStatement(
+    env.DB,
+    bankReviewsTable,
+    await queueBankReview(bankProposal, [monefy], now),
+  ).run();
   const dump = await env.DB.prepare('PRAGMA miniflare_d1_export(?,?,?);')
     .bind(false, false)
     .raw<string[]>();
@@ -300,12 +355,12 @@ describe('private D1 and original-file recovery', () => {
       '--manifest-sha256',
       digest,
     ]);
-    expect(JSON.parse(stdout)).toEqual({ tables: 49, files: 4 });
+    expect(JSON.parse(stdout)).toEqual({ tables: 52, files: 4 });
   });
   it('restores all records, balances, notes, categories, splits, transfers and originals to new local D1/R2', async () => {
     const restored = join(root, 'restored');
     const result = await restoreLocal(bundle, digest, restored);
-    expect(result).toEqual({ tables: 49, files: 4 });
+    expect(result).toEqual({ tables: 52, files: 4 });
     const target = await getPlatformProxy<Env>({
       configPath: join(restored, 'wrangler.json'),
       remoteBindings: false,
@@ -351,6 +406,17 @@ describe('private D1 and original-file recovery', () => {
         expect(copy!.httpMetadata).toEqual(original!.httpMetadata);
         expect(copy!.customMetadata ?? {}).toEqual(original!.customMetadata ?? {});
       }
+      expect((await readPolicy(target.env.DB)).version).toBe(1);
+      const pendingReview = (await bankReviewList(target.env.DB)).reviews[0]!;
+      expect(pendingReview.candidates.map((t) => t.id)).toEqual(['invented-monefy']);
+      await resolveBankReview(
+        target.env.DB,
+        pendingReview.id,
+        { previewToken: pendingReview.previewToken, decision: 'keep' },
+        '2026-11-12T12:03:00.000Z',
+      );
+      expect((await bankReviewList(target.env.DB)).reviews).toEqual([]);
+      expect((await bankReviewList(env.DB)).reviews).toHaveLength(1);
       const restoredEnv = { ...target.env, CREDENTIALS_SECRET: env.CREDENTIALS_SECRET };
       const linkClock = () => new Date('2026-11-12T12:03:00.000Z');
       const linkContext = {

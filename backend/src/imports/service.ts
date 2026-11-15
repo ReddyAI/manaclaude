@@ -27,7 +27,7 @@ import {
 } from '@manaclaude/shared';
 import type { Env } from '../env';
 import { getAi, type AiDeps } from '../ai/provider';
-import { bulkInsertSpecs, runSpecs, type StatementSpec } from '../db/bulk';
+import { bulkInsertSpecs, type StatementSpec } from '../db/bulk';
 import { selectAll } from '../db/table';
 import {
   accountsTable,
@@ -43,6 +43,8 @@ import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
 import { getSettings } from '../services/settings';
 import { makeTransaction } from '../services/transactions';
+import { filterMonefyRows } from '../history/imports';
+import { historyGuards, historySnapshot, readPolicy, writeHistory } from '../history/store';
 import { categoryMatcher, monefyCategories } from './categories';
 import { extractStatement } from './pdf';
 import { isMonefyCsv, parseMonefyCsv } from './monefy';
@@ -413,7 +415,13 @@ export async function previewImport(
     const mappedId = input.accountMappings?.[name];
     const mapped = mappedId ? accounts.find((a) => a.id === mappedId) : undefined;
     if (mappedId && !mapped) throw badRequest('An account mapping points to a missing account.');
-    const found = chosen ?? mapped ?? matchAccount(accounts, { name, mask: info?.mask });
+    const found =
+      chosen ??
+      mapped ??
+      matchAccount(monefy ? accounts.filter((a) => !a.connectionId && !a.externalId) : accounts, {
+        name,
+        mask: info?.mask,
+      });
     accountFor.set(name, found);
     if (!found && info && !toCreate.includes(info)) toCreate.push(info);
     return found;
@@ -427,7 +435,7 @@ export async function previewImport(
   );
   const categoryFor = categoryMatcher(await selectAll(db, categoriesTable));
 
-  const rows: ImportPreviewRow[] = parsed.rows.map((r, i) => {
+  let rows: ImportPreviewRow[] = parsed.rows.map((r, i) => {
     const account = rowAccounts[i] ?? null;
     const fingerprint = account && !r.externalId ? importFingerprint(account.id, r, occ[i]!) : null;
     const base: ImportPreviewRow = {
@@ -448,6 +456,8 @@ export async function previewImport(
     requireCurrency(base, account);
     return base;
   });
+  const history = monefy ? filterMonefyRows(rows, accounts, await readPolicy(db)) : null;
+  if (history) rows = history.rows;
   const existing = await existingForRows(db, rows);
   for (const row of rows) {
     const match = existing.find((t) => sameImportIdentity(row, t));
@@ -463,6 +473,7 @@ export async function previewImport(
     requiresDateConfirmation:
       monefy && parsed.dateFormatAmbiguous && input.preferDayFirst === undefined,
     duplicateCandidates: candidates,
+    ...(history ? { historyPolicy: history.review } : {}),
     dateRange: {
       from: input.fromDate ?? null,
       to: input.toDate ?? null,
@@ -479,6 +490,11 @@ export async function previewImport(
     errors: parsed.errors,
     warnings: [
       ...parsed.warnings,
+      ...(history?.review.excludedCount
+        ? [
+            'Source policy excludes rows separately from parse errors. A replacement month excludes every Monefy row for that account/month, including scattered entries. Bank coverage remains unknown.',
+          ]
+        : []),
       ...(candidates.length
         ? [
             'Possible duplicates need review before saving. Similar amounts and dates do not prove that transactions are the same.',
@@ -543,6 +559,7 @@ export interface CommitOptions {
 
 export interface ImportSaveResult extends ImportCommitResult {
   warnings: string[];
+  policyExcluded?: number;
 }
 
 function newAccount(info: ParsedAccount, fallbackCurrency: string, now: string): Account {
@@ -617,6 +634,16 @@ async function commitLocked(
   now: string,
 ): Promise<ImportSaveResult> {
   const db = env.DB;
+  const historyState = await readPolicy(db);
+  const historySnapshotAtStart = historyState.version > 0 ? await historySnapshot(db) : undefined;
+  if (
+    preview.sourceFormat === 'monefy' &&
+    (preview.historyPolicy?.version ?? 0) !== historyState.version
+  )
+    throw conflict(
+      'The source policy changed. Preview the original file again before saving.',
+      'history_policy_changed',
+    );
   const skip = new Set(options.skipLines ?? []);
   const keep = new Set(options.keepLines ?? []);
   if ([...skip].some((line) => keep.has(line)))
@@ -630,7 +657,7 @@ async function commitLocked(
       'Some rows could not be read. Correct the file or explicitly skip those lines before saving.',
       'import_parse_errors',
     );
-  if (preview.rows.length === 0)
+  if (preview.rows.length === 0 && !preview.historyPolicy?.excludedCount)
     throw badRequest('No transactions are available in the selected import period.');
 
   const [tags, existingAccounts, categories] = await Promise.all([
@@ -646,7 +673,12 @@ async function commitLocked(
     for (const info of preview.accountsToCreate) {
       if (!preview.rows.some((r) => r.accountName === info.name && !skip.has(r.line))) continue;
       // Another preview may have created the same account since this one was shown.
-      const current = matchAccount(existingAccounts, info);
+      const current = matchAccount(
+        preview.sourceFormat === 'monefy'
+          ? existingAccounts.filter((a) => !a.connectionId && !a.externalId)
+          : existingAccounts,
+        info,
+      );
       const acc = current ?? newAccount(info, 'USD', now);
       if (!current) {
         const identity = JSON.stringify([
@@ -690,6 +722,14 @@ async function commitLocked(
       );
     requireCurrency(row, account);
   }
+  if (
+    preview.sourceFormat === 'monefy' &&
+    filterMonefyRows(preview.rows, [...accounts.values()], historyState).review.excludedCount
+  )
+    throw conflict(
+      'Account source periods changed. Preview the original again.',
+      'history_policy_changed',
+    );
   const existing = await existingForRows(db, preview.rows);
   for (const row of preview.rows) {
     if (skip.has(row.line)) continue;
@@ -702,6 +742,19 @@ async function commitLocked(
     }
   }
   const candidates = duplicateCandidates(preview.rows, existing, accounts);
+  for (const candidate of candidates) {
+    if (!keep.has(candidate.line) || skip.has(candidate.line)) continue;
+    const reviewed = preview.duplicateCandidates?.find((c) => c.line === candidate.line);
+    if (
+      !reviewed ||
+      JSON.stringify([...reviewed.transactionIds].sort()) !==
+        JSON.stringify([...candidate.transactionIds].sort())
+    )
+      throw conflict(
+        'Duplicate candidates changed. Preview and review the file again.',
+        'import_preview_changed',
+      );
+  }
   const unresolved = candidates.filter(
     (candidate) => !skip.has(candidate.line) && !keep.has(candidate.line),
   );
@@ -719,8 +772,11 @@ async function commitLocked(
   // Rules run in memory before the rows are written (one query for the rules, none per row).
   const rules = await selectAll(db, rulesTable, 'enabled = 1');
   const parents: Transaction[] = [];
+  if (preview.sourceFormat === 'monefy') preview.reviewedBoundaryPairs = [];
   const childrenOf = new Map<Id, Transaction[]>();
-  let skipped = preview.errors.filter((error) => skip.has(error.line)).length;
+  let skipped =
+    preview.errors.filter((error) => skip.has(error.line)).length +
+    (preview.historyPolicy?.excludedCount ?? 0);
   for (const row of preview.rows) {
     if (skip.has(row.line)) {
       skipped += 1;
@@ -744,6 +800,19 @@ async function commitLocked(
       childrenOf.set(txn.id, built.children);
     } else if (rules.length > 0 && preview.sourceFormat !== 'monefy') {
       txn = applyRules(txn, rules).transaction;
+    }
+    if (preview.sourceFormat === 'monefy' && keep.has(row.line)) {
+      const bankIds =
+        candidates
+          .find((c) => c.line === row.line)
+          ?.transactionIds.filter((id) =>
+            existing.some((t) => t.id === id && t.source === 'connector'),
+          ) ?? [];
+      if (bankIds.length)
+        preview.reviewedBoundaryPairs!.push({
+          monefyTransactionId: txn.id,
+          bankTransactionIds: bankIds,
+        });
     }
     parents.push(txn);
   }
@@ -772,7 +841,12 @@ async function commitLocked(
       externalId: r.externalId,
       fingerprint: r.fingerprint,
     }));
+  const [historyGuard, historyRelease] = historyGuards(
+    historyState.version,
+    historySnapshotAtStart,
+  );
   const specs: StatementSpec[] = [
+    historyGuard,
     {
       // Fail the whole batch if a concurrent save/sync invalidated our review,
       // or another invocation reclaimed the lease. status is NOT NULL.
@@ -837,12 +911,12 @@ async function commitLocked(
   }
   // Leave room for reads and post-processing on Workers Free. Do not split the
   // transaction into independently committed batches to fit an oversized file.
-  if (specs.length > 20)
+  if (specs.length + 1 > 20)
     throw badRequest(
       'This import is too large to save safely in one request. Choose a shorter date period.',
     );
   try {
-    await runSpecs(db, specs);
+    await writeHistory(db, [...specs, historyRelease]);
   } catch (error) {
     if (
       error instanceof Error &&
@@ -886,6 +960,7 @@ async function commitLocked(
   }
   return {
     importId,
+    ...(preview.historyPolicy ? { policyExcluded: preview.historyPolicy.excludedCount } : {}),
     added,
     matched,
     skipped,
