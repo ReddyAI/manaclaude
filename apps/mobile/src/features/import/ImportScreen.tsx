@@ -99,7 +99,7 @@ export function ImportScreen() {
             ) : (
               <>
                 <Text variant="body" tone="muted" testID="import-result">
-                  {`${result.added} added, ${result.matched} already there, ${result.skipped} left out.${result.linked ? ` ${result.linked} linked as transfers.` : ''}`}
+                  {`${result.added} added, ${result.matched} already there, ${result.skipped} left out${result.policyExcluded ? ` (${result.policyExcluded} of them by History sources)` : ''}.${result.linked ? ` ${result.linked} linked as transfers.` : ''}`}
                 </Text>
                 {(result.warnings ?? []).map((w) => (
                   <Banner key={w} tone="pending" icon="triangle-alert">

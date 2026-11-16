@@ -659,6 +659,93 @@ describe('saves that do not go to plan', () => {
     expect(await AsyncStorage.getItem('billionaire.pendingImport')).toBeNull();
   });
 
+  it('reads the file again when History sources changed, and drops earlier keep answers', async () => {
+    const stored = getFinance().transactions.find((t) => t.accountId === 'acc_checking')!;
+    const rows = [
+      row(2, {
+        accountId: 'acc_checking',
+        currency: 'USD',
+        amount: stored.amount,
+        date: stored.date,
+      }),
+      row(3, { accountId: 'acc_checking', currency: 'USD' }),
+    ];
+    const pair = { line: 2, transactionIds: [stored.id] };
+    preview.mockResolvedValue(makePreview({ rows, duplicateCandidates: [pair] }));
+    commit.mockRejectedValueOnce(
+      new BackendError(409, 'history_policy_changed', 'The history policy changed. Preview again.'),
+    );
+    await openWithPreview();
+    await press('import-keep-2');
+    // The same pair comes back: the answer given under the old settings is not reused.
+    preview.mockResolvedValue(
+      makePreview({ importId: 'imp_2', rows, duplicateCandidates: [pair] }),
+    );
+    await press('import-confirm');
+    await waitFor(() =>
+      expect(screen.getByTestId('import-notice').props.children).toMatch(
+        /History sources or your saved history changed/,
+      ),
+    );
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('1 possible duplicate needs a choice: keep or skip.')).toBeTruthy();
+    expect(disabled('import-confirm')).toBe(true);
+    expect(await AsyncStorage.getItem('billionaire.pendingImport')).toBeNull();
+  });
+
+  it('shows the rows History sources leaves out, apart from errors and dates', async () => {
+    const usd = { accountId: 'acc_checking', currency: 'USD' };
+    preview.mockResolvedValue(
+      makePreview({
+        sourceFormat: 'monefy',
+        rows: [row(2, usd)],
+        historyPolicy: {
+          version: 3,
+          excludedCount: 2,
+          excludedRows: [
+            {
+              ...row(3, { ...usd, amount: -3_000, rawName: 'Monefy June' }),
+              exclusionReason: 'replacement_month',
+            },
+            {
+              ...row(4, { ...usd, amount: -4_000, rawName: 'Monefy August' }),
+              exclusionReason: 'bank_cutoff',
+            },
+          ],
+          excludedTotals: [
+            { accountId: 'acc_checking', currency: 'USD', count: 2, inflow: 0, outflow: 7_000 },
+          ],
+          accounts: [],
+        },
+      }),
+    );
+    commit.mockResolvedValue(saved({ added: 1, skipped: 2, policyExcluded: 2 }));
+    await openWithPreview();
+    expect(screen.getByTestId('import-policy-excluded').props.children).toMatch(
+      /^2 rows are left out by History sources: the bank owns those dates/,
+    );
+    expect(screen.getByTestId('import-policy-total-acc_checking-USD').props.children).toBe(
+      '"Everyday Checking": 2 rows, $70.00 out, $0.00 in',
+    );
+    expect(screen.queryByTestId('import-policy-row-3')).toBeNull();
+    await press('import-policy-toggle');
+    expect(screen.getByTestId('import-policy-row-3')).toHaveTextContent(
+      /a month the bank replaces/,
+    );
+    expect(screen.getByTestId('import-policy-row-4')).toHaveTextContent(
+      /on or after the bank cutoff/,
+    );
+    // Left-out rows are not part of what is saved.
+    expect(screen.queryByTestId('import-row-3')).toBeNull();
+    await press('import-confirm');
+    await waitFor(() => expect(screen.getByTestId('import-result')).toBeTruthy());
+    expect(commit).toHaveBeenCalledWith('imp_1', { skipLines: [], keepLines: [] });
+    expect(screen.getByTestId('import-result').props.children).toMatch(
+      /2 left out \(2 of them by History sources\)\./,
+    );
+  });
+
   it('asks the Worker what happened when the answer to a save is lost, and never saves twice', async () => {
     preview.mockResolvedValue(makePreview());
     commit.mockRejectedValue(new BackendError(0, 'offline', "The backend can't be reached."));

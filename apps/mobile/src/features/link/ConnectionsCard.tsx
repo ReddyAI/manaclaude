@@ -15,7 +15,8 @@ import { isBackendReady, useBackendConfig } from '../../data/backend/config';
 import { refreshDataset } from '../../data/backend/sync';
 import { useFinance } from '../../data/store';
 import { connectionHealth, lastSyncText } from '../accounts/health';
-import { syncUntilDone } from './linkApi';
+import { bankReviewsStore } from '../history/historyApi';
+import { syncHistoryText, syncUntilDone } from './linkApi';
 import { startRepair } from './repair';
 
 /** Your logins, each with Sync now (and Repair when it needs one). Shown on the Connectors tab. */
@@ -38,9 +39,11 @@ export function ConnectionsCard() {
         })),
       );
       await refreshDataset();
+      void bankReviewsStore.load();
+      const history = syncHistoryText(report);
       const text =
         report.outcome === 'ok'
-          ? `Synced. ${report.summary?.inserted ?? 0} new.`
+          ? `Synced. ${report.summary?.inserted ?? 0} new.${history ? ` ${history}` : ''}`
           : report.outcome === 'skipped'
             ? (report.error ?? 'Skipped: repair the login first.')
             : (report.error ?? 'The sync failed.');

@@ -9,6 +9,7 @@ import type {
   SophtronInstitutionsResponse,
   SophtronLinkStatus,
   SophtronStartRequest,
+  SyncHistoryPolicySummary,
 } from '@manaclaude/shared';
 import { api } from '../../data/backend/client';
 
@@ -56,20 +57,69 @@ export async function syncUntilDone(
   connectionId: string,
   onProgress: (p: SyncProgress) => void = () => {},
   opts: { force?: boolean; maxCalls?: number } = {},
-): Promise<ConnectionSyncResponse> {
+): Promise<SyncReport> {
   let inserted = 0;
-  let last: ConnectionSyncResponse | null = null;
+  let excluded = 0;
+  let pendingReview: number | null = null;
+  let last: SyncAnswer | null = null;
   const max = opts.maxCalls ?? 25;
+  const report = (): SyncReport => ({
+    ...last!,
+    history:
+      pendingReview === null && excluded === 0
+        ? null
+        : { excluded, pendingReview: pendingReview ?? 0 },
+  });
   for (let calls = 1; calls <= max; calls += 1) {
-    last = await api<ConnectionSyncResponse>(
+    last = await api<SyncAnswer>(
       'POST',
       `/v1/connections/${connectionId}/sync${opts.force ? '?force=true' : ''}`,
       undefined,
       { timeoutMs: 120_000, acceptStatus: [502] },
     );
     inserted += last.summary?.inserted ?? 0;
+    const history = last.summary?.historyPolicy;
+    if (history) {
+      excluded += history.excluded;
+      pendingReview = history.pendingReview;
+    }
     onProgress({ inserted, remaining: last.summary?.remaining ?? 0, calls });
-    if (!last.more) return last;
+    if (!last.more) return report();
   }
-  return last!;
+  return report();
+}
+
+/** The sync answer with the history-source counts a Worker with Codex's #35 adds. */
+type SyncAnswer = ConnectionSyncResponse & {
+  summary:
+    | (NonNullable<ConnectionSyncResponse['summary']> & {
+        historyPolicy?: SyncHistoryPolicySummary;
+      })
+    | null;
+};
+
+/** The last answer, plus the history-source counts over every part of the sync. */
+export type SyncReport = ConnectionSyncResponse & {
+  history: null | {
+    /** Bank rows left out because Monefy owns their dates, over all parts. */
+    excluded: number;
+    /** Bank rows waiting for review after the last part. */
+    pendingReview: number;
+  };
+};
+
+/** One line about what History sources did in a sync, or null when nothing. */
+export function syncHistoryText(report: SyncReport): string | null {
+  const h = report.history;
+  if (!h) return null;
+  const parts: string[] = [];
+  if (h.excluded > 0)
+    parts.push(
+      `${h.excluded} bank ${h.excluded === 1 ? 'transaction was' : 'transactions were'} left out because Monefy owns ${h.excluded === 1 ? 'its date' : 'those dates'} (History sources).`,
+    );
+  if (h.pendingReview > 0)
+    parts.push(
+      `${h.pendingReview} bank ${h.pendingReview === 1 ? 'transaction looks' : 'transactions look'} like a Monefy entry you have and ${h.pendingReview === 1 ? 'waits' : 'wait'} for your review; ${h.pendingReview === 1 ? 'it is' : 'they are'} not saved until you decide.`,
+    );
+  return parts.length ? parts.join(' ') : null;
 }

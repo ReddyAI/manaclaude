@@ -1122,3 +1122,85 @@ Range of outcomes:
 3. Leave and open Planning again: the same numbers.
 
 No Android device or emulator was used for any of this.
+
+## 2026-11-16: History sources in the app (Monefy before a cutoff, the bank after)
+
+Started from `main` at `130c38e` (Codex's PRs #35 and #36 merged; #33 and #34 merged before them). Branch `ccr-bc496323-la73pg`, restarted from main (a fast-forward of the merged branch). This builds the screens Codex's entry "Account/date ownership of Monefy and bank history" asks for (its "Screens, rollout order and remaining limits", items 2, 4 and 5), and Sankar's request: one cutoff, Monefy's history before it, the bank's after it, and whole months before it where the bank fills a gap. Every screen uses only routes merged in #35 and #36 plus earlier ones: `GET/POST/PUT /v1/history-policy[/preview]`, `GET/POST /v1/history-policy/bank-reviews[/:id]`, `POST /v1/imports` and `/commit`, `POST /v1/connections/:id/sync`, `GET /v1/imports`, `GET /v1/dataset`. Changed: `apps/mobile/`, `packages/shared/src/api/index.ts` (additive types) and this log. No backend, connector, workflow, root-config, dependency or lockfile changes.
+
+### Shared types added (`packages/shared/src/api/index.ts`)
+
+Exactly as Codex's contract and `backend/src/history/` send them: `HistoryAccountConfig`, `HistoryPolicy`, `SourcePeriod`, `AccountHistory`, `HistoryRead`, `HistoryPolicyPreviewRequest`, `PolicyPreview`, `HistoryPolicySaveRequest`, `HistoryPolicySaveResponse`, `BankHistoryReview`, `BankHistoryReviewsResponse`, `BankHistoryReviewResponse`, `BankHistoryDecisionRequest`, `BankHistoryDecisionResponse`, `ImportHistoryPolicyInfo`, `SyncHistoryPolicySummary`, `HistoryErrorCode`; and three optional fields on existing types: `ImportPreview.historyPolicy`, `ImportPreview.reviewedBoundaryPairs`, `ImportCommitResult.policyExcluded`. Nothing renamed, removed or reshaped. The sync summary's new `historyPolicy` field is joined on in the app (`features/link/linkApi.ts`) rather than edited into `api/link.ts`, which this session was not cleared to change.
+
+### What changed
+
+History sources (Settings, History; route `/history`; `features/history/`):
+
+- One cutoff, "the first day the bank owns". Before it, Monefy is the history of connected checking, savings, card, loan and mortgage accounts (the Worker's rule, `isGoverned`); from it on, only the bank's rows are saved for them. Cash, investment and unconnected accounts keep every source. Before any save it says no cutoff is saved and that setting one before the first bank sync is best.
+- Each governed account: "Cutoff above", "Own cutoff" or "Monefy only", and the whole months before its cutoff that the bank replaces. Each month chip shows that account's Monefy and bank counts ("May 2026 · 12 Monefy · 0 bank"), newest first, back to its oldest entry and at least two years, at most 240 months. Under it, the periods the Worker reports ("Monefy until Jun 30, 2026", "Bank, all of May 2026", "Bank from Jul 1, 2026"), and a note when the account's connection is disconnected or needs repair. It says, in Codex's words made plain, that a chosen month replaces all of that account's Monefy entries in that month, even scattered ones, that months are never picked for you, and that the app cannot tell whether a month came through complete (older months: import the bank's statement file).
+- "Every account, by month": Monefy, bank and other counts for each month from the newest to the oldest, with empty months shown as gaps, so the thin months are easy to find.
+- "Check these settings" asks the Worker (`POST /v1/history-policy/preview`; nothing is written). The answer shows "Ready to save" with Save, or "These settings cannot be saved yet" with what blocks it: Monefy entries on bank dates, grouped by import with the file's name and the steps (undo it, save, import the same file again; undo removes everything that import added), bank rows on Monefy dates by account (nothing is deleted; choose compatible periods), unreviewed boundary pairs, and pending bank reviews with a link to them.
+- Save sends exactly the preview's `policy`, `expectedVersion` and `previewToken`. Any edit throws the check away. `history_transition_conflict` reads the preview again and shows the list. `history_policy_changed` says something changed and asks for a new check; the old token is never refreshed and sent again. A lost answer (no answer, timeout, 5xx) keeps the request: "Try again" sends it unchanged, and `replayed: true` is shown as "already saved by your first try".
+
+Bank reviews (route `/history/reviews`):
+
+- Each held bank row with the Monefy entries it looks like, and for a correction the saved version it would change. "Keep both" (off when `eligible` is false) or "Skip the bank one" / "Skip this change", sent with that review's own token. The list and the policy are read again after each decision, and the data reloads. It says plainly that nothing is merged, that skipping a correction keeps the saved bank row, and that there is no undo.
+- `history_review_resolved` reads the review back and shows what was decided. `history_policy_changed`, `history_review_changed` and `history_transaction_excluded` say why nothing was saved and read the list again. A lost answer reads the review back: if it is still pending, "Try again" sends the identical request; if it was decided, the outcome shows.
+- Reachable from Settings (a row with the count), from a banner on Accounts (also for reviews left by the Worker's scheduled syncs), from the History sources screen and its check, and from a sync's result.
+
+Imports and syncs:
+
+- Monefy preview: a line for rows History sources leaves out, separate from unreadable lines, rows outside the chosen dates and rows left out by hand, with totals per account and currency, and the rows themselves on request with their reason ("a month the bank replaces", "on or after the bank cutoff"). The saved result says how many of the left-out rows were the policy's. A commit answered `history_policy_changed` reads the same file again under the current settings and clears every earlier "keep both" answer.
+- Sync (first link, repair, Sync now): the counts over every part of a long sync, "N bank transactions were left out because Monefy owns those dates" and "N ... wait for your review; they are not saved until you decide", with a Review button after linking. A Worker without #35 adds nothing, and the app says nothing.
+
+### Defaults chosen
+
+- One cutoff for every governed account, with per-account exceptions, as Codex's contract allows. An account on the default with no months is not sent as an entry (it inherits, as the Worker does).
+- Months offered: back to the account's oldest entry, at least two years, at most 240 (the Worker's limit), 12 shown at a time.
+- Bank rows before the cutoff are not saved: that is the Worker's behaviour in #35 (Sankar's other option, keeping them out of totals, would need a backend change).
+- The policy check is a button, not automatic, so the Worker is not asked on every keystroke.
+
+### Validation
+
+- `npm run check` passed: typecheck, lint, format and **1,746 tests** (shared 147, connectors 346, backend 428, deployment, runtime and recovery 47, mobile 778, up from 741). ESLint needed `NODE_OPTIONS=--max-old-space-size=8192`; no config change.
+- New mobile tests, all invented data: `features/history/__tests__/historyModel.test.ts` (18), `features/history/__tests__/historyScreens.test.tsx` (17), and 2 in `features/import/__tests__/import.test.tsx`.
+- Each of 41 new guards was removed once by a script that ran the tests and put it back. At first 34 made a test fail, 4 did not match the formatted code and 3 survived; the 3 tests were made stronger (the Worker's normalized policy differs from the draft, two Monefy imports in one account, an import with nothing left out) and the 4 were rerun with the right text. One of those mutations (resending from inside the "changed" branch) could never send, because of the one-request-at-a-time guard, and was replaced by the real risk (the old check staying saveable), which a test catches. In the end every guard makes a test fail.
+- Browser suite on the exported web build against local Workers (fresh database per width, migrations 0001 to 0011, `POST /v1/dev/seed`): **58 of 58 passed** (29 at 412 px, 29 at 1280 px), 12 audit tests skipped as designed. New `e2e/history.spec.ts` (3 per width), read back from the Worker each time: two planted bank reviews kept and skipped (`kept`, `skipped`, the kept row saved as a bank transaction, the skipped one not); a cutoff 45 days late refused with "on dates Monefy would own" and version still 0; the fitting cutoff with one month for Everyday Checking saved as version 1 with exactly `{ defaultCutoff, accounts: [{ acc_checking, default, [month] }] }`; a three-row Monefy file sent to Everyday Checking through the app leaving out the replaced month and the after-cutoff row (commit `added: 1, policyExcluded: 2`, one Monefy row saved with the right date and amount). `layout.spec.ts` now also checks History sources and Bank reviews in all three looks, light and dark, at both widths: no contrast, cut-off, overlap or unnamed-control findings.
+- The pending bank reviews in the browser tests are written into the local database by the setup, with the Worker's own signature formula, because no provider can be called locally. Everything else is the real Worker. No provider was called.
+- No `backend/.dev.vars` was written; `backend/.wrangler/tmp` and the web exports were deleted. None is committed.
+- **No Android device or emulator was used.**
+
+### For Codex (found while building; none of it blocks this PR)
+
+- **Statement files in replacement months:** a generic CSV, OFX, QIF or PDF imported into a governed account is "independent" and not checked against the policy, so a statement imported for a month the bank already owns (or for a Monefy month) is saved next to whatever is there. For months a connection cannot reach, Sankar's plan is to import the bank's statement for that month; a check that it falls in a bank-owned month would make that safe.
+- **No coverage or backfill:** as your entry says, choosing a month does not fetch it. The screen says so; a provider backfill for chosen months would make the gaps fillable without statement files.
+- **Seeding for tests:** the browser suite writes a pending bank review straight into `history_bank_reviews` (no provider can be called locally). A dev-only route that queues one from a given transaction, behind `ALLOW_SAMPLE_SEED`, would make that less tied to the table's columns and the signature formula.
+- Unchanged from earlier entries: goals, bills by hand, tags, category merging, export and backup, and the rest of that list; and the production backup, which is still a prerequisite for the real migration.
+
+### Remaining app work
+
+- The block U items left in the previous entry.
+- The import flow's empty-body check of `POST /v1/accounts/manual`.
+
+### How to test on the phone
+
+Before the first bank sync (best):
+
+1. Settings, History, History sources. Type the first day the bank should own, for example 2025-06-01. Check these settings, then Save.
+2. Connect the bank. When the first sync finishes, it says how many bank transactions were left out because Monefy owns their dates.
+
+Gap months:
+
+1. History sources, "Every account, by month": find months with few or no Monefy entries.
+2. In your bank account's card, tick those months. Check, then Save. The account's lines then say "Bank, all of <month>".
+3. If the bank connection doesn't reach that far back, import the bank's statement file for that month (Accounts, Import a statement).
+
+Monefy file:
+
+1. Import a statement, pick the Monefy export, and send each Monefy account that is really a bank account to that bank account.
+2. The preview says how many rows History sources leaves out, with totals; "Show these rows" lists them. Import.
+
+Reviews:
+
+1. If Accounts shows "N bank transactions wait for your review", open it. For each one, Keep both or Skip.
+
+No Android device or emulator was used.

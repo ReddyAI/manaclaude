@@ -8,7 +8,8 @@ import { Text } from '../../design/components/Text';
 import { haptic } from '../../design/haptics';
 import { errorText } from '../../data/backend/client';
 import { refreshDataset } from '../../data/backend/sync';
-import { syncUntilDone } from './linkApi';
+import { bankReviewsStore } from '../history/historyApi';
+import { syncHistoryText, syncUntilDone } from './linkApi';
 import { sentence } from './types';
 
 /**
@@ -30,18 +31,24 @@ export function SyncStep({
   const [inserted, setInserted] = useState(0);
   const [state, setState] = useState<'running' | 'done' | 'problem'>('running');
   const [message, setMessage] = useState<string | null>(null);
+  const [history, setHistory] = useState<{ text: string; review: boolean } | null>(null);
 
   useEffect(() => {
     let live = true;
     (async () => {
       let total = 0;
       const problems: string[] = [];
+      const notes: string[] = [];
+      let review = false;
       for (const id of connectionIds) {
         try {
           const report = await syncUntilDone(id, (p) => live && setInserted(total + p.inserted), {
             force: repaired,
           });
           total += report.summary?.inserted ?? 0;
+          const note = syncHistoryText(report);
+          if (note) notes.push(note);
+          if ((report.history?.pendingReview ?? 0) > 0) review = true;
           // A skipped sync proves nothing about a repaired login.
           const worked = report.outcome === 'ok' || (!repaired && report.outcome === 'skipped');
           if (!worked)
@@ -54,7 +61,9 @@ export function SyncStep({
         }
       }
       await refreshDataset();
+      void bankReviewsStore.load();
       if (!live) return;
+      setHistory(notes.length ? { text: notes.join(' '), review } : null);
       setState(problems.length ? 'problem' : 'done');
       setMessage(problems[0] ?? null);
       haptic(problems.length ? 'reject' : 'confirm');
@@ -90,6 +99,19 @@ export function SyncStep({
               ? `${sentence(message ?? 'The sync did not finish.')} The sync after the repair did not work, so the connection keeps its error. Try Repair again from Accounts.`
               : (message ?? `${inserted.toLocaleString()} transactions added.`)}
         </Text>
+        {state !== 'running' && history ? (
+          <Text variant="body" testID="sync-history">
+            {history.text}
+          </Text>
+        ) : null}
+        {state !== 'running' && history?.review ? (
+          <Button
+            label="Review them"
+            variant="secondary"
+            onPress={() => router.push('/history/reviews')}
+            testID="sync-review"
+          />
+        ) : null}
         {state !== 'running' ? (
           <Button
             label="Back to accounts"

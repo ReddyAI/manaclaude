@@ -21,6 +21,7 @@ import { isBalanceUnknown } from '../../data/manualBalance';
 import { groupNoRateText } from '../networth/leftOut';
 import { useFinance } from '../../data/store';
 import { useRefreshControl } from '../../data/backend/useRefreshControl';
+import { ReviewsBanner } from '../history/ReviewsBanner';
 import { ConnectionsCard } from '../link/ConnectionsCard';
 import { startRepair } from '../link/repair';
 import { Amount } from '../currency/Amount';
@@ -142,6 +143,7 @@ export function AccountsScreen() {
       />
       {tab === 'accounts' ? (
         <>
+          <ReviewsBanner />
           {data.connections
             .filter((c) => c.status === 'needs_repair' || c.status === 'error')
             .map((c) => (

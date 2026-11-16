@@ -18,6 +18,7 @@ import {
   type TotalLine,
 } from './importFlow';
 
+import { PolicyExcludedSection } from './PolicyExcludedSection';
 /** Rows listed at first, and how many each "show more" adds. A long file is not drawn all at once. */
 const SHOWN_ROWS = 60;
 const MORE_ROWS = 100;
@@ -124,6 +125,7 @@ export function PreviewCard({
             {`Only ${preview.dateRange.from ?? 'the start'} to ${preview.dateRange.to ?? 'the end'}, both days included. ${excluded} ${excluded === 1 ? 'row is' : 'rows are'} outside these dates and will not be imported.`}
           </Text>
         ) : null}
+        <PolicyExcludedSection preview={preview} accounts={accounts} />
         {preview.periodStart && preview.periodEnd ? (
           <Text variant="caption" tone="muted">
             {`Statement period ${preview.periodStart} to ${preview.periodEnd}`}
