@@ -2,6 +2,7 @@ import { createWorker } from './worker';
 import type { Env } from './env';
 
 export type { Env } from './env';
+export { MaintenanceCoordinator } from './maintenance';
 
 // Only Worker handlers belong in this module. Test helpers and constants live in worker.ts.
 const worker = createWorker();

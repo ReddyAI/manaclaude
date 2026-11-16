@@ -1,0 +1,52 @@
+name: Back up production (encrypted)
+on:
+  workflow_dispatch:
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: read
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Close writer admission before installing tools
+        run: node backend/recovery/control.mjs pause
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install tools privately
+        run: npm ci >"$RUNNER_TEMP/recovery-install.private" 2>&1
+      - name: Pause, drain, capture, verify, drill, encrypt and check rollout
+        id: capture
+        run: node backend/recovery/operations.ts backup
+      - name: Keep only the encrypted backup for seven days
+        if: always() && steps.capture.outputs.encrypted == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: billionaire-backup-encrypted
+          path: ${{ steps.capture.outputs.encrypted_file }}
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+      - name: Delete runner plaintext and disposable state
+        if: always() && steps.capture.outputs.private_root != ''
+        env:
+          RECOVERY_PRIVATE_ROOT: ${{ steps.capture.outputs.private_root }}
+        run: node backend/recovery/operations.ts cleanup
+      - name: Resume only after all checks and encrypted upload succeed
+        if: success()
+        run: node backend/recovery/operations.ts off
+      - name: Explain the failure hold
+        if: failure() || cancelled()
+        run: node backend/recovery/control.mjs pause

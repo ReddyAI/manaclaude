@@ -51,6 +51,7 @@ export async function runNightlyStep(
   env: Env,
   scheduled: Date,
   deps: AiDeps & { now?: () => Date } = {},
+  ctx?: Pick<ExecutionContext, 'waitUntil'>,
 ) {
   const meter = meterDb(env.DB);
   env = { ...env, DB: meter.db };
@@ -91,7 +92,7 @@ export async function runNightlyStep(
       state.phase === 'categorize' ||
       state.recap?.phase === 'finish'
     ) {
-      deps = { ...deps, ...(await scheduledAi(env, deps)) };
+      deps = { ...deps, ...(await scheduledAi(env, deps, ctx)) };
     }
     switch (state.phase) {
       case 'merchant_names': {

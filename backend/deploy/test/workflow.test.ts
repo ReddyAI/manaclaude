@@ -17,8 +17,11 @@ function step(yaml: string, name: string): string {
 }
 
 describe('deploy workflow', () => {
-  it('runs on every push to main and by hand', () => {
-    expect(deploy).toMatch(/on:\n {2}push:\n {4}branches: \[main\]\n {2}workflow_dispatch:/);
+  it('requires a manual main release and protected approval instead of automatic migrations', () => {
+    expect(deploy).toMatch(/on:\n {2}workflow_dispatch:/);
+    expect(deploy).not.toMatch(/^ {2}push:/m);
+    expect(deploy).toContain('environment: production-migrations');
+    expect(deploy).toContain("if: github.ref == 'refs/heads/main'");
   });
 
   it('needs only the two Cloudflare secrets and skips cleanly without the token', () => {
@@ -45,7 +48,10 @@ describe('deploy workflow', () => {
 
   it('prepares resources before migrating, migrates before deploying, copies secrets after deploying', () => {
     const order = [
-      'Create or reuse Cloudflare resources',
+      'Resolve existing resources and install maintenance on first release',
+      'Pause, drain and make a verified encrypted backup',
+      'Keep the encrypted pre-migration backup for seven days',
+      "Require this hold's verified backup immediately before migration",
       'Apply D1 migrations',
       'Deploy the Worker',
       'Copy secrets into the Worker',
@@ -55,8 +61,11 @@ describe('deploy workflow', () => {
   });
 
   it('prepares resources without any Teller certificate (Teller shut down its API in July 2026)', () => {
-    const prep = step(deploy, 'Create or reuse Cloudflare resources');
-    expect(prep).toContain('node backend/deploy/prepare.ts');
+    const prep = step(
+      deploy,
+      'Resolve existing resources and install maintenance on first release',
+    );
+    expect(prep).toContain('node backend/recovery/operations.ts prepare-release');
     expect(deploy).not.toContain('TELLER_');
   });
 
@@ -82,6 +91,46 @@ describe('deploy workflow', () => {
   it('leaves the web build workflow building the artifact', () => {
     expect(web).toContain('npx expo export --platform web');
     expect(web).toContain('upload-artifact');
+  });
+});
+
+describe('backup and local restore workflows', () => {
+  const backup = readFileSync(new URL('.github/workflows/backup-production.yml', root), 'utf8');
+  const maintenance = readFileSync(new URL('.github/workflows/maintenance.yml', root), 'utf8');
+  const restore = readFileSync(new URL('.github/workflows/restore-drill.yml', root), 'utf8');
+  it('serializes production operations and resumes only after capture and encrypted upload succeed', () => {
+    for (const workflow of [deploy, backup, maintenance])
+      expect(workflow).toContain('group: deploy-cloudflare');
+    expect(backup).toContain('if: success()');
+    expect(backup.indexOf('actions/upload-artifact@v4')).toBeLessThan(
+      backup.indexOf('operations.ts off'),
+    );
+    expect(backup.indexOf('Delete runner plaintext')).toBeLessThan(
+      backup.indexOf('operations.ts off'),
+    );
+    expect(backup).toContain('run: node backend/recovery/control.mjs pause');
+    expect(backup).toContain("if: always() && steps.capture.outputs.encrypted == 'true'");
+    for (const workflow of [deploy, backup]) {
+      expect(workflow).toContain('retention-days: 7');
+      expect(workflow).toContain(
+        'path: ${{ steps.' +
+          (workflow === deploy ? 'backup' : 'capture') +
+          '.outputs.encrypted_file }}',
+      );
+      expect(workflow).not.toMatch(/path:.*(?:bundle|source\.sql|\.private)/);
+    }
+  });
+  it('gives the restore runner no production credentials or remote restore command', () => {
+    expect(restore).not.toContain('CLOUDFLARE_');
+    expect(restore).not.toContain('APP_API_TOKEN');
+    expect(restore).toContain('operations.ts restore');
+    expect(restore).toContain('uploaded_release_tag');
+    expect(restore).toContain('contents: read');
+    expect(restore).not.toContain('--remote');
+  });
+  it('offers button-only maintenance with explicit on/off/status choices', () => {
+    expect(maintenance).toContain("options: [status, 'on', 'off']");
+    expect(maintenance).toContain('control.mjs "$MAINTENANCE_MODE"');
   });
 });
 

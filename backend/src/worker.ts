@@ -9,6 +9,7 @@ import { handleAuthorize } from './mcp/authorize';
 import { handleMcp } from './mcp/handler';
 import type { McpAuthProps } from './mcp/tools';
 import { syncDueConnections } from './sync/run';
+import { operator, readRequest, tracked, maintenanceResponse } from './maintenance';
 
 /**
  * Connector syncs run on their own cron, a few connections per invocation, so
@@ -69,8 +70,59 @@ export function createWorker(deps: AppDeps = {}) {
   };
 
   return {
-    fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-      return getProvider(env).fetch(request as never, env, ctx) as Promise<Response>;
+    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+      const decorate = (response: Response) => {
+        if (response.status === 503 && new URL(request.url).pathname.startsWith('/v1/')) {
+          const origins = (env.APP_ORIGIN ?? '*').split(',').map((o) => o.trim());
+          const origin = request.headers.get('origin');
+          if (origins.includes('*')) response.headers.set('access-control-allow-origin', '*');
+          else if (origin && origins.includes(origin))
+            response.headers.set('access-control-allow-origin', origin);
+        }
+        return response;
+      };
+      try {
+        if (new URL(request.url).pathname.startsWith('/__recovery/'))
+          return await operator(request, env);
+        const path = new URL(request.url).pathname;
+        if (
+          (request.method === 'GET' || request.method === 'HEAD') &&
+          ['/v1/dataset', '/v1/categories'].includes(path)
+        ) {
+          try {
+            const response = await tracked(
+              env,
+              ctx,
+              (trackedCtx) =>
+                getProvider(env).fetch(request as never, env, trackedCtx) as Promise<Response>,
+            );
+            if (response.status !== 503) return response;
+          } catch {
+            /* A read remains safe even if the admission service is unavailable. */
+          }
+          return (await getProvider(env).fetch(
+            request as never,
+            { ...env, MAINTENANCE_READ: true },
+            ctx,
+          )) as Response;
+        }
+        if (await readRequest(request))
+          return (await getProvider(env).fetch(
+            request as never,
+            { ...env, MAINTENANCE_READ: true },
+            ctx,
+          )) as Response;
+        return decorate(
+          await tracked(
+            env,
+            ctx,
+            (trackedCtx) =>
+              getProvider(env).fetch(request as never, env, trackedCtx) as Promise<Response>,
+          ),
+        );
+      } catch {
+        return decorate(maintenanceResponse());
+      }
     },
 
     async scheduled(
@@ -78,37 +130,43 @@ export function createWorker(deps: AppDeps = {}) {
       env: Env,
       _ctx: ExecutionContext,
     ): Promise<void> {
-      const f = deps.fetch ?? fetch;
-      if (controller.cron === NIGHTLY_CRON) {
-        await runNightlyStep(env, new Date(controller.scheduledTime), deps).catch((e) =>
-          console.error('Nightly step failed', String(e)),
-        );
-        return;
+      try {
+        await tracked(env, _ctx, async (trackedCtx) => {
+          const f = deps.fetch ?? fetch;
+          if (controller.cron === NIGHTLY_CRON) {
+            await runNightlyStep(env, new Date(controller.scheduledTime), deps, trackedCtx).catch(
+              (e) => console.error('Nightly step failed', String(e)),
+            );
+            return;
+          }
+          if (controller.cron === SYNC_CRON) {
+            await syncDueConnections(env, {
+              fetch: deps.fetch,
+              now: () => new Date(controller.scheduledTime),
+            }).catch((e) => console.error('Connector syncs failed', String(e)));
+            return;
+          }
+          const today = new Date(controller.scheduledTime).toISOString().slice(0, 10);
+          const backfill = () =>
+            backfillMissingHistory(env, f, {
+              now: deps.now,
+              through: addDays(today, -1),
+            }).catch((e) => console.error('FX backfill failed', String(e)));
+          if (controller.cron === '0 * * * *') {
+            await fetchScheduledLatest(env, 'openexchangerates', f).catch((e) =>
+              console.error('OXR fetch failed', String(e)),
+            );
+            await backfill();
+            return;
+          }
+          await fetchScheduledLatest(env, 'frankfurter_ecb', f).catch((e) =>
+            console.error('Frankfurter fetch failed', String(e)),
+          );
+          await backfill();
+        });
+      } catch {
+        console.error('Scheduled admission unavailable; no new work admitted.');
       }
-      if (controller.cron === SYNC_CRON) {
-        await syncDueConnections(env, {
-          fetch: deps.fetch,
-          now: () => new Date(controller.scheduledTime),
-        }).catch((e) => console.error('Connector syncs failed', String(e)));
-        return;
-      }
-      const today = new Date(controller.scheduledTime).toISOString().slice(0, 10);
-      const backfill = () =>
-        backfillMissingHistory(env, f, {
-          now: deps.now,
-          through: addDays(today, -1),
-        }).catch((e) => console.error('FX backfill failed', String(e)));
-      if (controller.cron === '0 * * * *') {
-        await fetchScheduledLatest(env, 'openexchangerates', f).catch((e) =>
-          console.error('OXR fetch failed', String(e)),
-        );
-        await backfill();
-        return;
-      }
-      await fetchScheduledLatest(env, 'frankfurter_ecb', f).catch((e) =>
-        console.error('Frankfurter fetch failed', String(e)),
-      );
-      await backfill();
     },
   };
 }

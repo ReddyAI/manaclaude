@@ -1,15 +1,18 @@
-# Deploys everything to Cloudflare from the two secrets CLOUDFLARE_API_TOKEN and
-# CLOUDFLARE_ACCOUNT_ID: the Worker (with its D1 database, R2 bucket, OAuth KV
-# namespace) and the web app (Cloudflare Pages).
+# Manual releases use existing CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID and
+# BACKUP_PASSPHRASE. The closed bootstrap is separate from normal release runs.
+# Normal runs prepare a verified encrypted backup before protected migration approval.
 # Every other GitHub secret listed under "Copy secrets" is optional and is copied
 # into a Worker secret of the same name when it exists.
 # It does nothing until CLOUDFLARE_API_TOKEN exists. Steps: docs/setup.md.
 name: Deploy to Cloudflare
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      install_maintenance:
+        description: First release only — install the missing maintenance gate with no pending D1 migrations
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-cloudflare
@@ -17,17 +20,51 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  worker:
+  bootstrap:
+    if: github.ref == 'refs/heads/main' && inputs.install_maintenance
+    environment: production-migrations
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      INSTALL_MAINTENANCE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci >"$RUNNER_TEMP/recovery-install.private" 2>&1
+      - name: Install the missing closed gate without applying D1 migrations
+        id: install
+        run: node backend/recovery/operations.ts bootstrap
+      - name: Delete preparation state
+        if: always() && steps.install.outputs.private_root != ''
+        env:
+          RECOVERY_PRIVATE_ROOT: ${{ steps.install.outputs.private_root }}
+        run: node backend/recovery/operations.ts cleanup
+
+  prepare:
+    needs: bootstrap
+    if: always() && github.ref == 'refs/heads/main' && !inputs.install_maintenance && needs.bootstrap.result == 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     outputs:
       ready: ${{ steps.gate.outputs.ready }}
       worker_url: ${{ steps.prepare.outputs.worker_url }}
       mcp_url: ${{ steps.prepare.outputs.mcp_url }}
       web_url: ${{ steps.prepare.outputs.web_url }}
+      proof: ${{ steps.backup.outputs.proof }}
     env:
+      GITHUB_TOKEN: ${{ github.token }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      INSTALL_MAINTENANCE: ${{ inputs.install_maintenance }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
@@ -57,28 +94,83 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         run: npm test -w @manaclaude/backend
 
-      # Creates or reuses, by name: D1 "manaclaude", R2 "manaclaude-files", the
-      # OAuth KV namespace, the workers.dev address and the Pages project. Writes
-      # backend/wrangler.deploy.toml with the real ids and the Worker's URL.
-      - name: Create or reuse Cloudflare resources
+      # Resolves existing D1, OAuth KV and public addresses without creating them.
+      # Writes backend/wrangler.deploy.toml with the existing ids and Worker URL.
+      - name: Resolve existing resources and install maintenance on first release
         id: prepare
         if: steps.gate.outputs.ready == 'true'
-        run: node backend/deploy/prepare.ts
+        run: node backend/recovery/operations.ts prepare-release
+
+      - name: Pause, drain and make a verified encrypted backup
+        id: backup
+        if: steps.gate.outputs.ready == 'true'
+        run: node backend/recovery/operations.ts release-backup
+
+      - name: Keep the encrypted pre-migration backup for seven days
+        if: always() && steps.backup.outputs.encrypted == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: billionaire-backup-encrypted
+          path: ${{ steps.backup.outputs.encrypted_file }}
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Retain the failure hold
+        if: failure() || cancelled()
+        run: echo 'Release preparation failed. Maintenance is not automatically resumed. Use Maintenance status.'
+      - name: Delete private runner backup and drill state
+        if: always() && steps.backup.outputs.private_root != ''
+        env:
+          RECOVERY_PRIVATE_ROOT: ${{ steps.backup.outputs.private_root }}
+        run: node backend/recovery/operations.ts cleanup
+      - name: Delete preparation state
+        if: always() && steps.prepare.outputs.private_root != ''
+        env:
+          RECOVERY_PRIVATE_ROOT: ${{ steps.prepare.outputs.private_root }}
+        run: node backend/recovery/operations.ts cleanup
+
+  worker:
+    needs: prepare
+    if: always() && needs.prepare.result == 'success' && needs.prepare.outputs.ready == 'true'
+    environment: production-migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      ready: ${{ needs.prepare.outputs.ready }}
+      worker_url: ${{ needs.prepare.outputs.worker_url }}
+      mcp_url: ${{ needs.prepare.outputs.mcp_url }}
+      web_url: ${{ needs.prepare.outputs.web_url }}
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci >"$RUNNER_TEMP/recovery-install.private" 2>&1
+      - name: Resolve deployment config after protected approval
+        id: configure
+        run: node backend/recovery/operations.ts configure-release
+      - name: Require this hold's verified backup immediately before migration
+        env:
+          RECOVERY_PROOF: ${{ needs.prepare.outputs.proof }}
+        run: node backend/recovery/operations.ts pre-migration
 
       - name: Apply D1 migrations
-        if: steps.gate.outputs.ready == 'true'
         working-directory: backend
         run: npx wrangler d1 migrations apply manaclaude --remote --config wrangler.deploy.toml
 
       - name: Deploy the Worker
-        if: steps.gate.outputs.ready == 'true'
         working-directory: backend
-        run: npx wrangler deploy --config wrangler.deploy.toml
+        run: npx wrangler deploy --config wrangler.deploy.toml --tag "$GITHUB_SHA"
 
       # Same name on both sides. A GitHub secret that is not set is skipped, and
       # a Worker secret that already exists is left as it is.
       - name: Copy secrets into the Worker
-        if: steps.gate.outputs.ready == 'true'
         working-directory: backend
         env:
           APP_API_TOKEN: ${{ secrets.APP_API_TOKEN }}
@@ -98,20 +190,32 @@ jobs:
         run: node deploy/secrets.ts
 
       - name: Check that the Worker answers
-        if: steps.gate.outputs.ready == 'true'
         env:
-          WORKER_URL: ${{ steps.prepare.outputs.worker_url }}
+          WORKER_URL: ${{ needs.prepare.outputs.worker_url }}
         run: |
           for attempt in 1 2 3 4 5 6; do
-            if curl -fsS "$WORKER_URL/health"; then echo; exit 0; fi
+            if curl -fsS "$WORKER_URL/health" >/dev/null; then echo 'Worker health passed'; exit 0; fi
             echo "Not answering yet (attempt $attempt); waiting."
             sleep 10
           done
-          echo "::warning::$WORKER_URL/health did not answer. A brand-new workers.dev address can take a minute; re-run the workflow if it stays down."
+          echo "::error::Worker verification failed; maintenance remains on."
+          exit 1
+
+      - name: Delete preparation state
+        if: always() && steps.configure.outputs.private_root != ''
+        env:
+          RECOVERY_PRIVATE_ROOT: ${{ steps.configure.outputs.private_root }}
+        run: node backend/recovery/operations.ts cleanup
+
+      - name: Confirm deployed main provenance and resume
+        run: node backend/recovery/operations.ts release-resume
+      - name: Retain the failure hold
+        if: failure() || cancelled()
+        run: node backend/recovery/control.mjs pause
 
   web:
     needs: worker
-    if: needs.worker.outputs.ready == 'true'
+    if: always() && needs.worker.result == 'success' && needs.worker.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
