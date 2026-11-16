@@ -51,6 +51,8 @@ const SCREENS: [name: string, route: (ids: Ids) => string, testId: string][] = [
   ['link', () => '/link', 'screen-link'],
   ['rules', () => '/rules', 'screen-rules'],
   ['vault', () => '/vault', 'screen-vault'],
+  ['history', () => '/history', 'screen-history'],
+  ['bank-reviews', () => '/history/reviews', 'screen-bank-reviews'],
 ];
 
 interface Sheet {

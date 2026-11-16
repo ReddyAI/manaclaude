@@ -18,6 +18,8 @@ const SCREENS: [route: string, testId: string][] = [
   ['/budgets', 'screen-budgets'],
   ['/networth/investments', 'screen-investments'],
   ['/settings', 'screen-settings'],
+  ['/history', 'screen-history'],
+  ['/history/reviews', 'screen-bank-reviews'],
 ];
 
 test.describe.configure({ mode: 'serial' });
@@ -42,6 +44,7 @@ for (const look of LOOKS) {
         expect(findings, `${route} in ${look} ${scheme}`).toEqual([]);
       }
       // The look cards show their whole description (they were cut to two lines).
+      await open(page, '/settings', 'screen-settings');
       for (const card of LOOKS) {
         const clamp = await page
           .getByTestId(`look-${card}-description`)

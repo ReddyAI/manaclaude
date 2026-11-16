@@ -37,13 +37,15 @@ The local Worker's sample rates cover USD, INR and EUR only, so CHF has no rate:
 - a CHF cash wallet "Zurich wallet" with a CHF expense "Migros" today, and a CHF budget on "Fees" this month;
 - VTI held, bought and priced in CHF, and the "Xfinity internet" bill in CHF;
 - two unlinked halves of a transfer between Everyday Checking and High-Yield Savings;
-- an INR cash expense "E2E old chai stall" from 220 days ago, older than the oldest sample INR rate (150 days).
+- an INR cash expense "E2E old chai stall" from 220 days ago, older than the oldest sample INR rate (150 days);
+- for History sources: a Monefy entry in Everyday Checking the day before the cutoff the history spec uses, and two bank transactions held for review one and two days after it (no provider can be called, so they are written as a sync under a policy would leave them, with the Worker's own signature).
 
 ## Files
 
 - `screens.spec.ts`: every main screen loads.
 - `missing-rates.spec.ts`: the lines from blocks L, M, O and R that name what a total leaves out.
 - `actions.spec.ts`: adding an account by hand, Look for transfers now, Run AI jobs now, the File layouts tab.
+- `history.spec.ts`: History sources and bank reviews on the real Worker: keep both and skip, a cutoff that would split saved history refused and a fitting one saved with a month for the bank, then a Monefy file read under it, with the rows the bank owns left out. Everything read back from the Worker.
 - `rates.spec.ts`: Settings, Exchange rates gives each currency's range of day rates, says when the oldest INR transaction is older than the oldest INR rate, and names CHF as having no rate (block V).
 - `planning.spec.ts`: Planning's range of outcomes gives the same answer after a reload, says it is an estimate, and updates within 2 seconds with Chromium's CPU slowed four times (block W).
 - `layout.spec.ts`: in all three looks, light and dark, five screens have no text below WCAG AA contrast, nothing cut off or overlapping, no sideways scrolling and no control without a name (block U).
