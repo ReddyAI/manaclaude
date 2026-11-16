@@ -10,6 +10,7 @@ import { BackendSection } from './sections/BackendSection';
 import { BudgetsSection } from './sections/BudgetsSection';
 import { DisplaySection } from './sections/DisplaySection';
 import { ExchangeRatesSection } from './sections/ExchangeRatesSection';
+import { HistorySection } from './sections/HistorySection';
 import { MoneyPoliciesSection } from './sections/MoneyPoliciesSection';
 import { OrganizeSection } from './sections/OrganizeSection';
 
@@ -27,6 +28,7 @@ export function SettingsScreen() {
       <MoneyPoliciesSection />
       <BudgetsSection />
       <OrganizeSection />
+      <HistorySection />
       <AiSection />
       <AssistantsSection />
       <BackendSection />

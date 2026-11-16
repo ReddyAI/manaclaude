@@ -277,6 +277,10 @@ export interface ImportPreview {
   dateRange?: ImportDateRange;
   /** The date order must be confirmed with a new preview (preferDayFirst) before saving. */
   requiresDateConfirmation?: boolean;
+  /** Monefy only, once a history policy is active: rows the source policy leaves out. */
+  historyPolicy?: ImportHistoryPolicyInfo;
+  /** Committed explicit keep decisions on boundary pairs; not a writable request field. */
+  reviewedBoundaryPairs?: { monefyTransactionId: Id; bankTransactionIds: Id[] }[];
 }
 
 /** POST /v1/imports/:id/commit */
@@ -299,6 +303,8 @@ export interface ImportCommitResult {
   suggested: number;
   /** The rows were saved, but something after the save needs attention (for example transfer matching). */
   warnings?: string[];
+  /** Monefy: rows the history policy left out (also counted in `skipped`). */
+  policyExcluded?: number;
 }
 
 /**
@@ -735,5 +741,153 @@ export interface McpClientResponse {
   clientId: string;
   clientSecret: string | null;
 }
+
+// ---- History sources: which of Monefy or the bank owns each account and date ----
+// GET/POST/PUT /v1/history-policy and /v1/history-policy/bank-reviews (Codex, PRs #35 and #36).
+
+/** One account's configuration. No entry means it inherits the default with no months. */
+export type HistoryAccountConfig =
+  | { accountId: Id; mode: 'default'; replacementMonths: string[] }
+  | { accountId: Id; mode: 'custom'; cutoff: LocalDate; replacementMonths: string[] }
+  | { accountId: Id; mode: 'monefy_only' };
+
+export interface HistoryPolicy {
+  /** First bank-owned day. Null only when no policy was ever saved (version 0). */
+  defaultCutoff: LocalDate | null;
+  accounts: HistoryAccountConfig[];
+}
+
+export interface SourcePeriod {
+  source: 'monefy' | 'bank' | 'independent';
+  /** Inclusive; null is unbounded. */
+  from: LocalDate | null;
+  to: LocalDate | null;
+}
+
+export interface AccountHistory {
+  accountId: Id;
+  effective: null | {
+    cutoff: LocalDate | null;
+    /** "YYYY-MM" months before the cutoff that the bank owns. */
+    replacementMonths: string[];
+    origin: 'default' | 'custom' | 'monefy_only';
+  };
+  periods: SourcePeriod[];
+  /** Never certifies completeness. */
+  coverage: { status: 'unknown' | 'unavailable'; complete: false; message: string };
+}
+
+/** GET /v1/history-policy */
+export interface HistoryRead {
+  version: number;
+  policy: HistoryPolicy;
+  accounts: AccountHistory[];
+}
+
+/** POST /v1/history-policy/preview: `{ policy }` */
+export interface HistoryPolicyPreviewRequest {
+  policy: HistoryPolicy;
+}
+
+/** 200 of POST /v1/history-policy/preview, also when `allowed` is false. */
+export interface PolicyPreview {
+  expectedVersion: number;
+  policy: HistoryPolicy;
+  previewToken: string;
+  allowed: boolean;
+  conflicts: {
+    accountId: Id;
+    transactionId: Id;
+    importId: Id | null;
+    reason: 'monefy_in_bank_period' | 'bank_in_monefy_period';
+  }[];
+  boundaryCandidates: { bankTransactionId: Id; monefyTransactionIds: Id[] }[];
+  pendingBankReviews: number;
+  accounts: AccountHistory[];
+  warnings: string[];
+}
+
+/** PUT /v1/history-policy */
+export interface HistoryPolicySaveRequest {
+  policy: HistoryPolicy;
+  expectedVersion: number;
+  previewToken: string;
+}
+
+/** 200 of PUT /v1/history-policy */
+export type HistoryPolicySaveResponse = HistoryRead & { replayed: boolean };
+
+export interface BankHistoryReview {
+  id: Id;
+  status: 'pending' | 'kept' | 'skipped' | 'obsolete';
+  /** The proposed bank row, not necessarily saved. */
+  transaction: Transaction;
+  /** The saved row a correction would change. */
+  existingTransaction: Transaction | null;
+  /** Monefy rows that may be the same purchase, at this read. */
+  candidates: Transaction[];
+  /** The current policy and account still allow keeping it. */
+  eligible: boolean;
+  previewToken: string;
+}
+
+/** GET /v1/history-policy/bank-reviews (pending only) */
+export interface BankHistoryReviewsResponse {
+  reviews: BankHistoryReview[];
+}
+
+/** GET /v1/history-policy/bank-reviews/:id */
+export interface BankHistoryReviewResponse {
+  review: BankHistoryReview;
+}
+
+/** POST /v1/history-policy/bank-reviews/:id */
+export interface BankHistoryDecisionRequest {
+  previewToken: string;
+  decision: 'keep' | 'skip';
+}
+
+export interface BankHistoryDecisionResponse {
+  id: Id;
+  decision: 'keep' | 'skip';
+  /** The saved transaction for keep; null for skip. */
+  transactionId: Id | null;
+  replayed: boolean;
+}
+
+/** `preview.historyPolicy` of a Monefy import under an active policy. */
+export interface ImportHistoryPolicyInfo {
+  version: number;
+  excludedCount: number;
+  excludedRows: (ImportPreviewRow & { exclusionReason: 'bank_cutoff' | 'replacement_month' })[];
+  /** Positive totals in original minor units. */
+  excludedTotals: {
+    accountId: Id;
+    currency: CurrencyCode;
+    count: number;
+    inflow: MinorUnits;
+    outflow: MinorUnits;
+  }[];
+  accounts: { accountId: Id; periods: SourcePeriod[] }[];
+}
+
+/** `summary.historyPolicy` of POST /v1/connections/:id/sync. */
+export interface SyncHistoryPolicySummary {
+  version: number;
+  /** Rows of this provider response left out by the policy (not deleted rows). */
+  excluded: number;
+  /** Bank rows waiting for review after this batch. */
+  pendingReview: number;
+  skippedByReview: number;
+  coverage: 'unknown';
+}
+
+/** Error codes of the history-policy routes and the import commit under a policy. */
+export type HistoryErrorCode =
+  | 'history_transition_conflict'
+  | 'history_policy_changed'
+  | 'history_review_resolved'
+  | 'history_review_changed'
+  | 'history_transaction_excluded';
 
 export * from './link';

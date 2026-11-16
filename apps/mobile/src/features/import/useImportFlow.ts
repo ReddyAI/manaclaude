@@ -121,6 +121,9 @@ const keep = (s: FlowState) => ({
 const CHANGED_NOTICE =
   'Your transactions changed while you were reviewing, so the preview was made again. Check it, then import.';
 
+const HISTORY_NOTICE =
+  'History sources or your saved history changed while you were reviewing, so the file was read again under the current settings. Any "keep both" answers were cleared; check the rows again, then import.';
+
 /**
  * The import screen's state and what can be done with it: pick a file, make
  * a preview from the choices, answer the review questions, save, find out
@@ -189,7 +192,7 @@ export function useImportFlow() {
   }, [set]);
 
   const loadPreview = useCallback(
-    async (notice: string | null = null) => {
+    async (notice: string | null = null, dropDecisions = false) => {
       const { file, options, preview: old, review } = ref.current;
       if (!file) return;
       const problem = dateProblem(options);
@@ -264,7 +267,8 @@ export function useImportFlow() {
               : ref.current.fileSpan,
           notice,
           review: {
-            decisions: carryDecisions(old, next, review.decisions),
+            // After a history-settings change no earlier answer is carried over.
+            decisions: dropDecisions ? {} : carryDecisions(old, next, review.decisions),
             skipErrors: review.skipErrors && sameErrors,
             leftOut: carried.leftOut,
           },
@@ -351,6 +355,12 @@ export function useImportFlow() {
       const status = errorStatus(e);
       if (isSuperseded(e)) {
         set({ error: errorText(e) });
+      } else if (code === 'history_policy_changed') {
+        // The settings or saved history moved under this preview: read the same file again.
+        void clearPendingImport(preview.importId);
+        set({ busy: null });
+        await refreshDataset();
+        await loadPreview(HISTORY_NOTICE, true);
       } else if (code === 'import_preview_changed' || code === 'import_duplicates_require_review') {
         // Something was added to the account since the preview: look again, never save blind.
         void clearPendingImport(preview.importId);
