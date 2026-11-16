@@ -16,6 +16,7 @@ import { encodeCursor, parseCursor } from '../../util/cursor';
 import { todayUtc, toLocalDate, windowStart } from '../../util/dates';
 import { absDecimal, negate, toDecimalString, toMinor, toMinorOrNull } from '../../util/decimal';
 import {
+  holdingsSnapshot,
   appSecret,
   connectionSecret,
   defineAdapter,
@@ -483,6 +484,22 @@ export async function syncPlaid(
         holdingsResp.securities ?? [],
         fallbackCurrency,
       );
+
+      // Only accounts explicitly covered by holdings/get can be authoritative.
+      // Missing securities/unmapped rows make the affected account partial.
+      for (const a of holdingsResp.accounts ?? []) {
+        if (a.type !== 'investment') continue;
+        holdingsSnapshot(
+          result,
+          a.account_id,
+          Array.isArray(holdingsResp.holdings) &&
+            Array.isArray(holdingsResp.securities) &&
+            holdingsResp.holdings.filter((h) => h.account_id === a.account_id).length ===
+              result.holdings.filter((h) => h.accountExternalId === a.account_id).length
+            ? 'complete'
+            : 'partial',
+        );
+      }
 
       const start = windowStart(today, invSince ?? null, {
         backfillDays: BACKFILL_DAYS,

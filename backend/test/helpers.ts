@@ -27,6 +27,8 @@ export const testEnv = workerEnv as unknown as Env & {
 export const db = testEnv.DB;
 
 const TABLES = [
+  'investment_archive',
+  'investment_write_guard',
   'history_policy',
   'history_bank_reviews',
   'history_write_guard',

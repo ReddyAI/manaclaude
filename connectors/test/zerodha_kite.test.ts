@@ -116,3 +116,21 @@ describe('zerodha kite adapter', () => {
     expect(form.get('request_token')).toBe('req123');
   });
 });
+
+it('explicit full empty holdings are independent of nonempty activities', async () => {
+  const result = await zerodhaKiteAdapter.sync(
+    ctxFor(
+      routes({
+        [`GET ${H}/portfolio/holdings`]: { json: { status: 'success', data: [] } },
+      }),
+    ),
+    makeConnection('zerodha_kite'),
+  );
+  expect(result.holdingsSnapshots?.[0]?.status).toBe('complete');
+  expect(result.activities.length).toBeGreaterThan(0);
+  expect(
+    result.holdings.filter(
+      (h) => h.accountExternalId === result.holdingsSnapshots![0]!.accountExternalId,
+    ),
+  ).toEqual([]);
+});

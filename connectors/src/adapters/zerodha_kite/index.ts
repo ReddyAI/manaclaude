@@ -10,6 +10,7 @@ import { sinceCursor } from '../../util/cursor';
 import { todayUtc, toLocalDate } from '../../util/dates';
 import { toDecimalString, toMinor, negate } from '../../util/decimal';
 import {
+  holdingsSnapshot,
   appSecret,
   connectionSecret,
   defineAdapter,
@@ -137,11 +138,17 @@ export async function syncKite(
   );
   const accountId = `kite_${profile.user_id}`;
 
+  // Full delivery-holdings endpoint, independent of the day's trade feed.
+  let complete = Array.isArray(holdings);
   let positionsValue = 0;
-  for (const h of holdings) {
+  for (const h of Array.isArray(holdings) ? holdings : []) {
     const quantity = toDecimalString((h.quantity ?? 0) + (h.t1_quantity ?? 0));
     const price = toDecimalString(h.last_price);
-    if (!quantity || quantity === '0' || !price) continue;
+    if (h.quantity == null || !quantity || !price || !h.tradingsymbol) {
+      complete = false;
+      continue;
+    }
+    if (quantity === '0') continue;
     result.holdings.push({
       accountExternalId: accountId,
       symbol: h.tradingsymbol,
@@ -156,6 +163,7 @@ export async function syncKite(
     });
     positionsValue += toMinor(Number(quantity) * h.last_price, 'INR');
   }
+  holdingsSnapshot(result, accountId, complete ? 'complete' : 'partial');
   const cash = toMinor(margins.equity?.available?.cash ?? 0, 'INR');
   result.accounts.push(
     providerAccount({

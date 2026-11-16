@@ -263,3 +263,32 @@ describe('plaid adapter', () => {
     expect(mapPlaidAccountType('other', null).type).toBe('other_asset');
   });
 });
+
+it('uses only holdings/get covered accounts, including empty, with a mocked transport', async () => {
+  const result = await plaidAdapter.sync(
+    ctxFor(
+      routes('first', {
+        [`POST ${H}/investments/holdings/get`]: {
+          json: {
+            holdings: [],
+            securities: [],
+            accounts: [{ account_id: 'pl_acc_inv', type: 'investment' }],
+          },
+        },
+      }),
+    ),
+    makeConnection('plaid'),
+  );
+  expect(result.holdingsSnapshots).toEqual([
+    { accountExternalId: 'pl_acc_inv', status: 'complete' },
+  ]);
+  const unknown = await plaidAdapter.sync(
+    ctxFor(
+      routes('first', {
+        [`POST ${H}/investments/holdings/get`]: { json: { holdings: [], securities: [] } },
+      }),
+    ),
+    makeConnection('plaid'),
+  );
+  expect(unknown.holdingsSnapshots).toBeUndefined();
+});

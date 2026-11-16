@@ -167,12 +167,22 @@ export interface ProviderActivity {
   splitRatio: DecimalString | null;
 }
 
+/** Evidence about the CURRENT holdings inventory of one provider account, not activity/history coverage.
+ * Complete includes a genuinely empty inventory. Only an endpoint's explicit full-snapshot
+ * semantics and exhausted pagination may establish it. Omitted metadata means unknown.
+ */
+export interface HoldingsSnapshot {
+  accountExternalId: string;
+  status: 'complete' | 'partial' | 'unavailable' | 'failed' | 'unsupported' | 'unknown';
+}
+
 export interface SyncResult {
   accounts: ProviderAccount[];
   transactions: ProviderTransaction[];
   /** Provider ids of transactions the provider removed (for example a pending charge that dropped). */
   removedTransactionExternalIds: string[];
   holdings: ProviderHolding[];
+  holdingsSnapshots?: HoldingsSnapshot[];
   activities: ProviderActivity[];
   /** Store and pass back on the next sync. */
   nextCursor: string | null;

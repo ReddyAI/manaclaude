@@ -185,3 +185,45 @@ describe('snaptrade adapter', () => {
     );
   });
 });
+
+it('explicit full empty holdings are independent of nonempty activities', async () => {
+  const result = await snaptradeAdapter.sync(
+    ctxFor(
+      routes({
+        [`GET ${H}/accounts/st-acc-1/positions`]: { json: [] },
+      }),
+    ),
+    makeConnection('snaptrade'),
+  );
+  expect(result.holdingsSnapshots?.[0]?.status).toBe('complete');
+  expect(result.activities.length).toBeGreaterThan(0);
+  expect(
+    result.holdings.filter(
+      (h) => h.accountExternalId === result.holdingsSnapshots![0]!.accountExternalId,
+    ),
+  ).toEqual([]);
+});
+
+it('a missing positions envelope is not an empty snapshot', async () => {
+  const result = await snaptradeAdapter.sync(
+    ctxFor(
+      routes({
+        [`GET ${H}/accounts/st-acc-1/positions`]: { json: {} },
+      }),
+    ),
+    makeConnection('snaptrade'),
+  );
+  expect(result.holdingsSnapshots?.[0]?.status).not.toBe('complete');
+});
+
+it('an unmappable position prevents removal of other positions in that account', async () => {
+  const result = await snaptradeAdapter.sync(
+    ctxFor(
+      routes({
+        [`GET ${H}/accounts/st-acc-1/positions`]: { json: [{ units: 3, price: 5, symbol: {} }] },
+      }),
+    ),
+    makeConnection('snaptrade'),
+  );
+  expect(result.holdingsSnapshots?.[0]?.status).toBe('partial');
+});

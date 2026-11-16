@@ -12,6 +12,7 @@ import { todayUtc, toLocalDate, windowStart } from '../../util/dates';
 import { toDecimalString, toMinor, toMinorOrNull } from '../../util/decimal';
 import { inferAccountType, normalizeLiabilityBalance } from '../../util/accountTypes';
 import {
+  holdingsSnapshot,
   basicAuth,
   connectionSecret,
   defineAdapter,
@@ -228,6 +229,8 @@ export async function syncSimplefin(
     const mapped = mapSimplefinAccount(a, cardSign);
     result.accounts.push(mapped);
     result.holdings.push(...mapSimplefinHoldings(a));
+    // Optional aggregator holdings carry no per-account completeness signal.
+    holdingsSnapshot(result, a.id, a.holdings === undefined ? 'unavailable' : 'unknown');
     const currency = mapped.currency;
     const isLiability =
       mapped.type === 'credit_card' || mapped.type === 'loan' || mapped.type === 'mortgage';

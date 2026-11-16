@@ -11,7 +11,13 @@ import { randomHex, signJwt } from '../../util/crypto';
 import { absDecimal, negate, toDecimalString, toMinor } from '../../util/decimal';
 import { sinceCursor } from '../../util/cursor';
 import { todayUtc, toLocalDate } from '../../util/dates';
-import { connectionSecret, defineAdapter, emptyResult, providerAccount } from '../../kit';
+import {
+  holdingsSnapshot,
+  connectionSecret,
+  defineAdapter,
+  emptyResult,
+  providerAccount,
+} from '../../kit';
 import { ProviderDataError, ProviderHttpError } from '../../errors';
 
 /**
@@ -117,15 +123,33 @@ function client(ctx: ConnectorContext): HttpClient {
   });
 }
 
-async function listAll<T>(http: HttpClient, path: string): Promise<T[]> {
+async function listAll<T>(
+  http: HttpClient,
+  path: string,
+  inventory?: { complete: boolean },
+): Promise<T[]> {
   const out: T[] = [];
+  const visited = new Set<string>();
   let next: string | null = `${path}${path.includes('?') ? '&' : '?'}limit=100`;
   for (let i = 0; i < 200 && next; i++) {
+    if (inventory && visited.has(next)) {
+      inventory.complete = false;
+      break;
+    }
+    visited.add(next);
     const page: CbPage<T> = await http.get<CbPage<T>>(next);
     if (!Array.isArray(page?.data)) throw new ProviderDataError('Coinbase', 'list');
     out.push(...page.data);
+    if (
+      inventory &&
+      (page.pagination?.next_uri === undefined ||
+        page.pagination.next_uri === '' ||
+        (page.pagination.next_uri !== null && typeof page.pagination.next_uri !== 'string'))
+    )
+      inventory.complete = false;
     next = page.pagination?.next_uri ?? null;
   }
+  if (inventory && next) inventory.complete = false;
   return out;
 }
 
@@ -234,13 +258,20 @@ export async function syncCoinbase(
   const user = await http.get<{ data: { id: string; native_currency?: string } }>('/v2/user');
   const native = (user?.data?.native_currency ?? 'USD').toUpperCase();
   const accountId = `coinbase_${user?.data?.id ?? 'main'}`;
-  const wallets = await listAll<CbWallet>(http, '/v2/accounts');
+  const inventory = { complete: true };
+  const wallets = await listAll<CbWallet>(http, '/v2/accounts', inventory);
 
+  if (new Set(wallets.map((w) => w.id)).size !== wallets.length || wallets.some((w) => !w.id))
+    inventory.complete = false;
   let cash = 0;
   const holdings: ProviderHolding[] = [];
   for (const w of wallets) {
-    const qty = toDecimalString(w.balance.amount);
-    if (!qty || qty === '0') continue;
+    const qty = toDecimalString(w.balance?.amount);
+    if (!qty || !w.currency || !codeOf(w)) {
+      inventory.complete = false;
+      continue;
+    }
+    if (qty === '0') continue;
     if (isFiat(w)) {
       if (codeOf(w) === native) cash += toMinor(qty, native);
       continue;
@@ -278,6 +309,7 @@ export async function syncCoinbase(
     }),
   );
   result.holdings = holdings;
+  holdingsSnapshot(result, accountId, inventory.complete ? 'complete' : 'partial');
 
   // History for lots: buys and sells with their fees, plus rewards and transfers from the ledger.
   for (const w of wallets.filter((x) => !isFiat(x))) {
