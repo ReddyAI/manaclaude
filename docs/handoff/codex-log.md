@@ -1183,3 +1183,142 @@ Node **24.22.1**, npm **11.9.0**. Checks use process-local heap/offline Expo and
 Pre-push base refresh: `main` advanced to **e7b22dd** (PR #37, Claude's history screens) during validation. Fast-forwarded this still-uncommitted branch from 130c38e to e7b22dd and restored the scoped changes without conflicts. Read the entire new Claude-log entry, including its backend requests (statement policy checks, backfill, test seeding and existing backlog); those remain outside this task. No Claude files were edited. The in-progress old-base gate was stopped during lint and the full gate restarted on the updated base with an 8 GiB process-local heap, as PR #37's validation required.
 
 Final local gate on e7b22dd plus this change: **`npm run check` passed**, exit 0, on Node 24.22.1/npm 11.9.0: typecheck, zero-warning lint, formatting, and **1,790 tests** (shared 147, connectors 370, Worker 448, deployment/runtime/recovery 47, mobile 778). The 20 new Worker regressions include both final lost-response and superseded-basis cases. The first complete attempt exposed duplicate helper imports in eight adapters; consolidated them and reran the entire gate successfully. `git diff --check` and the byte-for-byte append-only handoff check also passed. GitHub CI and Browser tests must be observed on the pushed PR head before stopping; no merge or rollout is authorized.
+
+## 2026-11-16 — Production backup and rollout verification: access blocked
+
+Scope is **only** the production backup/drill and verification of the already
+completed Billionaire Worker rollouts. Read `CLAUDE.md`, `AGENTS.md`, `docs/setup.md`,
+`.github/workflows/deploy-worker.yml`, all recovery source/tests and the #18, #35,
+#36 and #38 entries above. Read Claude's backend-request sections for context only;
+Sankar's instruction explicitly excludes their backlog. Fetched `origin/main` and
+started the single documentation branch `codex/production-backup-rollout-runbook`
+at **fdf8ad88a3be5390402a1e4b8457fb9c359955d7** (#38). No workflow or application code
+is changed.
+
+### Actual results and evidence
+
+- **Production backup taken: NO.** Location, bytes, counts and checksums: **none**.
+  Environment status reports zero configured secrets/runtime variables/identities;
+  its enforced network allowlist excludes Cloudflare and R2. Presence-only checks
+  found no Cloudflare/Worker/S3 credential environment variables, no Wrangler OAuth
+  config, and no generated production deployment config. The ignored development
+  `.dev.vars` was not opened or treated as production access. No data was exported,
+  downloaded, staged in the cloud workspace, or sent to chat/GitHub.
+- **Restore drill: NOT RUN / failed to establish completion**, because there is
+  no production backup. No invented recovery run is represented as this drill.
+- **3a — FAILED TO VERIFY (blocked):** no live migration journal or active Worker
+  version could be read. The user supplied verified GitHub evidence that migration
+  and Worker steps succeeded for #35 (Nov 15 11:26 UTC), #36 (Nov 15 12:10 UTC),
+  and #38 (Nov 16 17:42 UTC). These are already-deployed rollouts; the historical
+  entries saying no deployment occurred describe those coding sessions only.
+  Local main is fdf8ad8; neither it nor Actions success proves current production
+  schema or code identity. No migrations/deployments were retried.
+- **3b — FAILED TO VERIFY (blocked):** exact live 15 history + nine investment
+  triggers and both revision singletons were not inspected. Local recovery code
+  verifies migration definitions and preserves saved singleton values; this is
+  tooling behavior, not evidence about production.
+- **3c — FAILED TO VERIFY (blocked):** historical Worker logs/tail archives are
+  unavailable here. **Affected writes cannot be ruled out; affected row IDs are
+  unknown.** Static inspection of pre-#36 `links.ts` and `undoImport` confirms the
+  trigger-inclusive `meta.changes` risks in the 0011/old-Worker window: false
+  transfer conflict after commit and inflated undo counts. 0010 introduces no
+  triggers; the pre-#38 Worker already has the count fixes, while its investment
+  reconciliation lacks the new archive/fence. No claim that every write was
+  affected, or that all three windows have the same risk, is supported. Fresh tail
+  sessions and current row timestamps cannot reconstruct deleted/overwritten rows.
+- **3d — FAILED TO VERIFY (blocked):** no live policy/review/archive query was run.
+  `readPolicy` returns version 0 when `history_policy` has **no row**. Do not insert
+  a version-0 row as a repair. Nonzero archives need provenance review, not deletion.
+
+Follow the [exact operator runbook](production-backup-rollout.md) on Sankar's own
+computer: encrypted owner-controlled storage outside Git; prove writers stopped
+and drained; full native D1 export; existing `cli.ts backup`; complete R2 inventory
+comparison; `verify`; `restore-local`; count/hash/trigger/singleton comparison;
+delete the disposable copy; then read-only rollout queries/version/log review.
+It specifies commands, expected outputs, paths, failure stops and counts/checksums
+to return. It contains **no captured production inventory or credentials**. No
+tokens/keys are requested in chat. Stop and wait for Sankar's results.
+
+### Exact procedure for the next migration; proposed change awaiting yes
+
+The current workflow triggers on **every push to main** and on manual dispatch.
+It serializes deploy runs, but executes `Apply D1 migrations` before `Deploy the
+Worker`, with no writer drain or approval gate. Merging a migration PR therefore
+starts this unsafe interval automatically; serializing workflow jobs does not
+serialize Worker invocations. Do not merge another migration under this procedure
+until the specific controls below are approved and available.
+
+1. Prepare and review matching schema/Worker/recovery changes on a branch, complete
+   checks, document rollback and require a successful private backup/drill. Freeze
+   other production releases. Do not merge a migration while automatic migration
+   deployment can start without the following gate.
+2. Establish an enforced maintenance window blocking **every** app/MCP mutation,
+   callback and scheduled writer while preserving backup GETs. Pause all four cron
+   schedules, verify propagation, and drain all old invocations and `waitUntil`
+   work. Current code has no general maintenance gate; inability to prove this is
+   a stop, not permission to assert `--writers-stopped`.
+3. Capture and verify full D1 plus every R2 original into owner-controlled encrypted
+   storage; restore to a new inert local target, compare counts/checksums/exact
+   triggers/both singleton rows and delete that target. Keep the trusted manifest
+   digest separately. No automatic provider calls or scheduler on the restored DB.
+4. With writers still blocked, approve the pinned production release. Apply the
+   reviewed migration **once**, deploy the matching Worker, and keep scheduled
+   writers disabled through deployment (Wrangler must not restore the committed
+   crons early). Verify the migration journal, exact triggers/singletons, deployed
+   version/provenance and read-only authenticated health. Do not use the current
+   workflow's warning-only `/health` outcome as sufficient proof.
+5. On any failure, retain the maintenance state, describe a matching code/schema/
+   data repair or restoration plan, and wait for Sankar's explicit yes. Do not
+   automatically roll back just the Worker, drop triggers or reset revisions.
+6. After successful checks and the operator's release decision, resume the reviewed
+   schedules and mutation traffic, observe resumed jobs, retain encrypted backup
+   evidence and record only counts/checksums publicly.
+
+**Specific proposal, not implemented:** replace automatic migration execution with
+a **manual, pinned release job protected by a GitHub `production-migrations`
+environment requiring Sankar's approval immediately before `Apply D1 migrations`**.
+Automatic pushes must stop before migrations **and the matching Worker deploy**
+when a migration is pending; they must not deploy code requiring unapplied schema.
+The approved job must require a verified backup digest and enforced writer-drain
+evidence, keep the maintenance/cron hold through deployment/verification, and fail
+closed on a missing hold or failed verification. Approval alone or pausing only
+cron is insufficient. The maintenance guard is a separately specified backend
+control needed if existing operator controls cannot enforce the window. **No
+workflow file, environment protection, schedule, secret or production setting was
+changed. Waiting for Sankar's yes to this specific change.**
+
+### Noticed, not done
+
+- #18 explicitly excludes orphan R2 objects; `backup` enumerates D1 references,
+  not the bucket. The runbook requires full key/size equality with a paginated R2
+  inventory before calling the capture complete. An orphan needs an approved
+  all-object capture/restore extension, not deletion or a false completeness claim.
+- The existing warning-only deployment health check and missing maintenance gate
+  are documented constraints only. No workflow fix or refactor was made.
+- All requests/backlog in Claude's log, including statement-policy checks, Monefy
+  transfers, investment work and development test seeding, remain untouched.
+
+### Commands and validation
+
+Ran read-only local file/history/config-presence inspections, environment status,
+`git fetch origin main`, branch creation and Wrangler command **help only** (no
+remote client invocation). The help commands exposed an unwritable default Wrangler
+log path; documentation/check tooling uses a writable temporary log/config path.
+No production backup, drill, query, tail, Plaid/provider call, mutation, repair,
+migration or deployment ran. Only this append-only log and the operator runbook
+change. Repository validation before the branch push is recorded below.
+
+**Repository validation passed:** `npm run check`, exit 0, Node **24.22.1**/npm
+**11.9.0**: typecheck, zero-warning lint, formatting and **1,790 tests** (shared
+147, connectors 370, Worker 448, deployment/runtime/recovery 47, mobile 778).
+Used process-local `NODE_OPTIONS=--max-old-space-size=8192`, `EXPO_OFFLINE=1`,
+`XDG_CONFIG_HOME=/tmp/manaclaude-backup-check-config`,
+`WRANGLER_LOG_PATH=/tmp/manaclaude-backup-check-logs/`, and
+`WRANGLER_SEND_METRICS=false`; no environment settings were republished. These are
+existing invented-data tests, **not the requested production restore drill**.
+The final runbook's five Bash blocks and four Node snippets pass syntax-only
+checks; none of their operator commands was executed. Scoped Prettier,
+`git diff --check`, two-file scope and byte-for-byte preservation of the historical
+Codex log also passed. No new tests or tooling changes were needed. Open one
+documentation PR, then stop and wait for Sankar's private operator run and
+counts/checksums; no workflow change is authorized by this PR.
