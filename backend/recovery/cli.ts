@@ -5,6 +5,14 @@ import { parseArgs } from 'node:util';
 import { getPlatformProxy } from 'wrangler';
 import { z } from 'zod';
 import {
+  bucketSchema,
+  bucketName,
+  captureBucket,
+  verifyBucket,
+  metadata,
+  type BucketSource,
+} from './bucket.ts';
+import {
   canonical,
   inspectDatabase,
   MAX_FILE_BYTES,
@@ -18,25 +26,32 @@ import {
 } from './data.ts';
 
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
-const manifestSchema = z.object({
-  format: z.literal('manaclaude-recovery-v1'),
-  createdAt: z.iso.datetime(),
-  database: z.object({ bytes: z.number().int().min(1).max(MAX_SQL_BYTES), sha256: hashSchema }),
-  tables: z.array(
-    z.object({ name: z.string(), rows: z.number().int().min(0), sha256: hashSchema }),
-  ),
-  files: z.array(
-    z.object({
-      kind: z.enum(['statement', 'receipt']),
-      id: z.string(),
-      key: z.string(),
-      contentType: z.string(),
-      bytes: z.number().int().min(1).max(MAX_FILE_BYTES),
-      sha256: hashSchema,
-      customMetadata: z.record(z.string(), z.string()),
-    }),
-  ),
-});
+const manifestSchema = z
+  .object({
+    format: z.enum(['manaclaude-recovery-v1', 'manaclaude-recovery-v2']),
+    createdAt: z.iso.datetime(),
+    database: z.object({ bytes: z.number().int().min(1).max(MAX_SQL_BYTES), sha256: hashSchema }),
+    tables: z.array(
+      z.object({ name: z.string(), rows: z.number().int().min(0), sha256: hashSchema }),
+    ),
+    files: z.array(
+      z.object({
+        kind: z.enum(['statement', 'receipt']),
+        id: z.string(),
+        key: z.string(),
+        contentType: z.string(),
+        bytes: z.number().int().min(1).max(MAX_FILE_BYTES),
+        sha256: hashSchema,
+        customMetadata: z.record(z.string(), z.string()),
+      }),
+    ),
+    bucket: bucketSchema.optional(),
+    schemaMigrations: z.array(z.string()).optional(),
+  })
+  .refine(
+    (m) => (m.format === 'manaclaude-recovery-v2') === (m.bucket !== undefined),
+    'Whole-bucket manifests require recovery format v2.',
+  );
 export type RecoveryManifest = z.infer<typeof manifestSchema>;
 const repo = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const objectName = (i: number) => `object-${i.toString().padStart(6, '0')}`;
@@ -129,20 +144,23 @@ export async function backup(options: {
   output: string;
   writersStopped: boolean;
   readFile: ReturnType<typeof httpFileReader>;
+  bucket?: BucketSource;
+  schemaMigrations?: string[];
 }) {
   if (!options.writersStopped)
     throw new RecoveryError('Stop all writers before D1 export and file capture.');
   const sql = await boundedRead(options.sqlPath, MAX_SQL_BYTES);
-  const image = inspectDatabase(sql.toString('utf8'));
+  const image = inspectDatabase(sql.toString('utf8'), options.schemaMigrations);
   const dest = await privateDirectory(options.output);
   try {
     await privateWrite(join(dest, 'database.sql'), sql);
     const manifest: RecoveryManifest = {
-      format: 'manaclaude-recovery-v1',
+      format: options.bucket ? 'manaclaude-recovery-v2' : 'manaclaude-recovery-v1',
       createdAt: new Date().toISOString(),
       database: { bytes: sql.length, sha256: sha256(sql) },
       tables: tableInventory(image),
       files: [],
+      ...(options.schemaMigrations ? { schemaMigrations: options.schemaMigrations } : {}),
     };
     for (const [i, ref] of image.files.entries()) {
       const { bytes, contentType } = await options.readFile(ref);
@@ -157,6 +175,14 @@ export async function backup(options: {
         bytes: bytes.length,
         sha256: sha256(bytes),
       });
+    }
+    if (options.bucket) {
+      manifest.bucket = await captureBucket(options.bucket, dest);
+      for (const file of manifest.files) {
+        const object = manifest.bucket.find((o) => o.key === file.key);
+        if (!object || object.bytes !== file.bytes || object.sha256 !== file.sha256)
+          throw new RecoveryError('Referenced original differs from whole-bucket capture.');
+      }
     }
     // Written last: failed captures never leave a complete-looking manifest.
     const manifestBytes = JSON.stringify(manifest, null, 2) + '\n';
@@ -180,7 +206,7 @@ export async function verify(bundle: string, expectedManifestSha256: string) {
   const sql = await boundedRead(join(bundle, 'database.sql'), MAX_SQL_BYTES);
   if (sql.length !== manifest.database.bytes || sha256(sql) !== manifest.database.sha256)
     throw new RecoveryError('Database size or SHA-256 mismatch.');
-  const image = inspectDatabase(sql.toString('utf8'));
+  const image = inspectDatabase(sql.toString('utf8'), manifest.schemaMigrations);
   if (canonical(tableInventory(image)) !== canonical(manifest.tables))
     throw new RecoveryError('Database table inventory mismatch.');
   if (image.files.length !== manifest.files.length)
@@ -198,6 +224,16 @@ export async function verify(bundle: string, expectedManifestSha256: string) {
     if (bytes.length !== f.bytes || sha256(bytes) !== f.sha256)
       throw new RecoveryError(`Object ${i} size or SHA-256 mismatch.`);
     validateFile(ref, bytes, f.contentType);
+  }
+  if (manifest.bucket) {
+    await verifyBucket(bundle, manifest.bucket);
+    for (const file of manifest.files) {
+      const object = manifest.bucket.find((o) => o.key === file.key);
+      if (!object || object.bytes !== file.bytes || object.sha256 !== file.sha256)
+        throw new RecoveryError(
+          'Whole-bucket capture omits or differs from a referenced original.',
+        );
+    }
   }
   return { image, manifest };
 }
@@ -261,11 +297,17 @@ export async function restoreLocal(bundle: string, manifestSha256: string, outpu
         customMetadata: f.customMetadata,
       });
     }
+    for (const [i, object] of (manifest.bucket ?? []).entries()) {
+      await FILES.put(object.key, await boundedRead(join(bundle, bucketName(i)), MAX_FILE_BYTES), {
+        httpMetadata: metadata(object),
+        customMetadata: object.customMetadata,
+      });
+    }
     // Reuse the same native SQL exporter that Wrangler uses for local D1.
     const dump = await DB.prepare('PRAGMA miniflare_d1_export(?,?,?);')
       .bind(false, false)
       .raw<string[]>();
-    const restored = inspectDatabase(dump[0]!.join('\n'));
+    const restored = inspectDatabase(dump[0]!.join('\n'), manifest.schemaMigrations);
     if (
       canonical(tableInventory(restored)) !== canonical(manifest.tables) ||
       canonical(restored.indexes) !== canonical(image.indexes) ||
@@ -279,9 +321,36 @@ export async function restoreLocal(bundle: string, manifestSha256: string, outpu
         sha256(new Uint8Array(await obj.arrayBuffer())) !== f.sha256 ||
         obj.size !== f.bytes ||
         obj.httpMetadata?.contentType !== f.contentType ||
-        canonical(obj.customMetadata) !== canonical(f.customMetadata)
+        (!manifest.bucket && canonical(obj.customMetadata) !== canonical(f.customMetadata))
       )
         throw new RecoveryError('Restored object or metadata differs from the backup.');
+    }
+    for (const object of manifest.bucket ?? []) {
+      const restored = await FILES.get(object.key);
+      if (
+        !restored ||
+        restored.size !== object.bytes ||
+        sha256(new Uint8Array(await restored.arrayBuffer())) !== object.sha256 ||
+        canonical(restored.httpMetadata ?? {}) !== canonical(metadata(object)) ||
+        canonical(restored.customMetadata ?? {}) !== canonical(object.customMetadata)
+      )
+        throw new RecoveryError('Restored whole-bucket object or metadata differs.');
+    }
+    if (manifest.bucket) {
+      const objects: { key: string; bytes: number }[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await FILES.list({ cursor, limit: 100 });
+        objects.push(...page.objects.map((o) => ({ key: o.key, bytes: o.size })));
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+      const sort = (a: { key: string }, b: { key: string }) =>
+        a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+      if (
+        canonical(objects.sort(sort)) !==
+        canonical(manifest.bucket.map((o) => ({ key: o.key, bytes: o.bytes })).sort(sort))
+      )
+        throw new RecoveryError('Restored R2 inventory differs from the captured set.');
     }
     const report = {
       scope: 'local-restoration-only',

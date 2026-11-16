@@ -1,0 +1,50 @@
+name: Restore encrypted backup locally
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: Backup workflow run number from its URL (within seven days); leave blank for an uploaded file
+        type: string
+      uploaded_release_tag:
+        description: For an uploaded backup.enc file, the tag of its unpublished draft release
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  drill:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+      UPLOADED_RELEASE_TAG: ${{ inputs.uploaded_release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci >"$RUNNER_TEMP/recovery-install.private" 2>&1
+      - name: Validate the selected encrypted backup source
+        run: node backend/recovery/download.ts validate
+      - name: Download encrypted artifact
+        if: inputs.backup_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: billionaire-backup-encrypted
+          run-id: ${{ inputs.backup_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/recovery-input
+      - name: Download encrypted file from an unpublished draft
+        if: inputs.uploaded_release_tag != ''
+        run: node backend/recovery/download.ts uploaded
+      - name: Decrypt, verify and restore only to disposable local storage
+        env:
+          RECOVERY_INPUT: ${{ runner.temp }}/recovery-input/backup.enc
+        run: node backend/recovery/operations.ts restore
+      - name: Delete downloaded encrypted input
+        if: always()
+        run: node backend/recovery/download.ts cleanup

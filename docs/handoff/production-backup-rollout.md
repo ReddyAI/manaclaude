@@ -1,4 +1,149 @@
-# Production backup and rollout verification
+# Production backup: GitHub buttons only
+
+These workflows are prepared and tested locally. Codex has **not** run them against
+production. After this PR is reviewed and merged, use the steps below. No terminal,
+local CLI tools, API keys on your computer, or encrypted disk setup is needed.
+
+## One-time setup in the GitHub website
+
+1. Open **ReddyAI/manaclaude → Settings → Secrets and variables → Actions → New
+   repository secret**. Name it **BACKUP_PASSPHRASE**. Paste a strong password from
+   your password manager (at least 20 characters; a long generated password is
+   best). Save the same password in your password manager. Losing it makes the
+   backup unreadable. Do not send it in chat. The two existing Cloudflare Actions
+   secrets are reused; no R2 S3 keys or local app token are needed.
+2. Open **Settings → Environments → New environment** and name it
+   **production-migrations**. Under deployment protection rules enable **Required
+   reviewers**, add **ReddyAI (Sankar)**, and save. Allow Sankar to review a run he
+   started (leave “Prevent self-review” unchecked). The release checks both the
+   protection rule and the recorded approval; an automatically created, unprotected
+   environment cannot release anything.
+3. Open **Actions → Deploy to Cloudflare → Run workflow**, select **main**, tick
+   **install_maintenance**, and press the green button. Open the run, choose
+   **Review deployments**, approve **production-migrations**, and press **Approve
+   and deploy**. This one-time run installs only the missing maintenance gate,
+   closed to writes, and finishes with maintenance on. It refuses pending D1
+   migrations and does not apply any. Leave this first-install checkbox off for
+   all future releases. Continue with **Take a backup** below; that next run waits
+   for the initial quarantine, makes the backup and resumes writes on success.
+
+The first release adds the switch that older Workers did not have. Its initial
+quarantine covers Cloudflare's documented 20-minute runtime-update retirement grace
+and 15-minute cron limit; it does not retroactively instrument old invocations or
+prove the earlier #35/#36/#38 windows were harmless. All later instrumented writers
+are tracked durably and **never expire out of the drain count**. A stuck writer
+blocks the operation and needs investigation; there is no force-drain button.
+
+## Take a backup
+
+1. Open **Actions → Back up production (encrypted) → Run workflow**. Keep **main**
+   selected and press the green button. Do not deploy another release or edit the
+   production database/bucket in Cloudflare while it runs.
+2. Wait for success. The run closes writer admission before installing tools,
+   waits for in-flight work, exports all D1, captures **every R2 object** including
+   objects without a database row, verifies the capture, restores it into a
+   disposable local database/bucket, compares data and metadata, deletes the
+   disposable copy, and encrypts the complete backup. It checks the R2 inventory
+   before/after, exact migration triggers, both revision singletons and deployed
+   main provenance. The operator output includes counts, byte sizes, SHA-256
+   checksums, and:
+   - `Backup verified; restore drill passed; whole R2 inventory matched.`
+   - `3a passed`, `3b passed`, `3d passed`.
+   - One explanation that retained logs can identify historical write impact only
+     if their version/write/row-ID coverage is complete. A new tail or absent,
+     sampled or expired logs cannot rule out affected rows. This does not block a
+     backup or claim that historical check 3c passed.
+   - `Maintenance off`, after the encrypted upload and all checks succeed.
+3. On the run's **Summary**, find **Artifacts → billionaire-backup-encrypted** and
+   download it **within seven days**. GitHub gives you a ZIP: open it and keep the
+   single **backup.enc** file on storage you control. Keep its password in your
+   password manager. The runner prints `encryptedBytes` and `encryptedSha256` for
+   that file. Only ciphertext is uploaded; SQL, manifests, originals, original
+   filenames, keys and diagnostic logs stay private on the temporary runner and
+   are deleted. GitHub's normal artifact/download messages use only generic names.
+
+The baseline rollout check expects no saved history policy (effective version 0),
+no bank reviews and no investment archive rows. A nonzero count fails for provenance
+review; it does not prove corruption and the workflow never deletes or repairs it.
+The already encrypted backup remains downloadable even if a later rollout check
+fails. Sizes beyond the supported 64 MiB SQL, 20 MiB per R2 object, or portable 2 GiB
+archive limit fail without silently omitting anything.
+
+## Run the independent restore drill
+
+For a recent backup, open its run and copy the number at the end of its URL
+(`/actions/runs/NUMBER`). Open **Actions → Restore encrypted backup locally → Run
+workflow**, select **main**, paste that number in **backup_run_id**, leave the
+upload field blank, and press the green button. It downloads only the encrypted
+artifact, decrypts it using BACKUP_PASSPHRASE, verifies it, restores all D1 and R2
+into disposable local storage, and deletes the copy. Success prints counts and
+checksums followed by **`Restore drill passed; disposable copy deleted.`** This
+workflow has no Cloudflare credentials and no production restore command.
+
+To test the **file you kept**, including after seven days:
+
+1. Open **Code → Releases → Draft a new release**. Choose a new tag such as
+   `private-backup-drill-2026-11-16` and attach **backup.enc** in the file upload
+   area. Choose **Save draft**, not Publish. Do not attach any plaintext file.
+2. Run **Restore encrypted backup locally** on **main**. Leave **backup_run_id**
+   blank and enter that draft's tag in **uploaded_release_tag**. Success is the
+   same restore message above. The workflow accepts only the fixed encrypted
+   filename from an unpublished draft in this repository, never an arbitrary URL.
+3. Delete the draft after the drill. Keep your own backup.enc and password. GitHub
+   Actions does not offer a direct file-upload field on its Run workflow form;
+   this draft attachment is the website-only upload path.
+
+Use recovery code with the matching known migration history. New whole-bucket
+bundles use recovery format v2, so older reference-only tooling rejects them rather
+than silently dropping extra objects. Pre-migration bundles record their applied
+migration prefix for later local verification with newer matching tooling.
+
+## If a run fails
+
+After pause has succeeded, any later failure/cancellation leaves maintenance on;
+there is no unconditional cleanup step that resumes writers. If the runner could
+not start or could not contact the switch, its state is **unconfirmed**, not off.
+The error names the failed phase without printing private exception contents.
+
+Open **Actions → Maintenance → Run workflow → mode: status**. A successful pause
+and drain prints **maintenance: 1, activeWriters: 0, drained: 1**. Reads and
+original-file downloads still work; writes return **503 maintenance**, and all four
+cron triggers exit without provider calls or jobs. **mode: on** pauses and waits
+for drain. **mode: off** resumes only when the coordinator confirms drain; never
+use it to bypass a failed migration or unexplained data check. On success it prints
+**maintenance: 0**. A stale ledger entry needs a separately reviewed investigation,
+not an automatic timeout/reset. No financial repair runs automatically.
+
+Only send counts and checksums back to Codex. Do not send backup contents, original
+names, object keys, logs, revision tokens, passwords or API tokens. Production
+restoration/cutover is outside this local drill.
+
+## Future migrations
+
+Merging main no longer starts the Worker migration/deploy workflow. A release is
+manual and pinned to main. Before asking for Sankar's protected migration approval,
+it must pause and confirm drain, capture/verify/restore a complete encrypted backup
+of the currently applied migration prefix, and upload it. The next job then waits
+for Sankar's approval and rechecks that backup proof in the same maintenance
+generation immediately before **Apply D1 migrations**. The hold
+survives Worker deployment; cron schedules may remain configured because their
+handlers refuse admission. The workflow verifies the newly deployed main version,
+migration journal, exact triggers and valid revisions before resuming. A failure
+retains the hold; no old-Worker-only rollback or schema repair is attempted.
+Before resume the coordinator activates the verified main release. Older
+instrumented Workers remain unable to write even if traffic propagation briefly
+sends them a request after the pause ends.
+
+## Appendix: manual CLI path
+
+The following is the earlier operator-only path for an owner who deliberately
+chooses local CLI tools and encrypted storage. It predates the button workflows.
+For **whole-bucket** coverage, use the new workflow; the old CLI path must stop if
+its reference-only inventory differs from the bucket. A real capture still needs
+a confirmed maintenance hold. No commands below have been run against production
+by Codex.
+
+### Original CLI instructions
 
 Prepared 2026-11-16 for Sankar's own computer. **These commands have not been run
 against production.** Stop on any failed command/check; do not repair, migrate,

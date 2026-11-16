@@ -59,15 +59,22 @@ function rows(db: DatabaseSync, sql: string): Row[] {
 }
 
 /** Decode a native D1 SQL export; never open/attach a filesystem database. */
-export function inspectDatabase(sql: string): DatabaseImage {
+export function inspectDatabase(sql: string, schemaMigrations?: string[]): DatabaseImage {
   if (Buffer.byteLength(sql) > MAX_SQL_BYTES) throw new RecoveryError('SQL export exceeds 64 MiB.');
   const db = new DatabaseSync(':memory:');
   const expected = new DatabaseSync(':memory:');
   try {
     const migrations = new URL('../migrations/', import.meta.url);
-    for (const name of readdirSync(migrations)
+    const available = readdirSync(migrations)
       .filter((n) => n.endsWith('.sql'))
-      .sort())
+      .sort();
+    if (
+      schemaMigrations &&
+      (schemaMigrations.length < 12 ||
+        canonical(schemaMigrations) !== canonical(available.slice(0, schemaMigrations.length)))
+    )
+      throw new RecoveryError('Unsupported applied migration prefix.');
+    for (const name of schemaMigrations ?? available)
       expected.exec(readFileSync(new URL(name, migrations), 'utf8'));
     const trustedTriggers = rows(
       expected,
@@ -148,6 +155,10 @@ export function inspectDatabase(sql: string): DatabaseImage {
       .get()?.revision;
     if (typeof investmentRevision !== 'string' || !/^[a-f0-9]{64}$/.test(investmentRevision))
       throw new RecoveryError('Missing or invalid investment concurrency revision.');
+    for (const table of ['history_revision', 'investment_revision']) {
+      if (db.prepare(`SELECT count(*) AS n FROM ${table}`).get()?.n !== 1)
+        throw new RecoveryError('Invalid revision singleton cardinality.');
+    }
     // Most model relationships predate foreign keys in this schema.
     for (const [table, column, target] of [
       ['transactions', 'account_id', 'accounts'],

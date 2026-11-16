@@ -14,6 +14,13 @@ export interface AiBinding {
  * are listed in .dev.vars.example. None of them are ever logged.
  */
 export interface Env {
+  MAINTENANCE?: DurableObjectNamespace;
+  RECOVERY_OPERATOR_TOKEN?: string;
+  RELEASE_COMMIT?: string;
+  /** Test harness only; omitted from all deployment configurations. */
+  MAINTENANCE_TEST_DEFAULT?: string;
+  /** Set internally for audited read requests, never a client-controlled header. */
+  MAINTENANCE_READ?: boolean;
   DB: D1Database;
   /** Receipt images and the statement vault. */
   FILES: R2Bucket;

@@ -1322,3 +1322,230 @@ checks; none of their operator commands was executed. Scoped Prettier,
 Codex log also passed. No new tests or tooling changes were needed. Open one
 documentation PR, then stop and wait for Sankar's private operator run and
 counts/checksums; no workflow change is authorized by this PR.
+
+## 2026-11-16 — GitHub-button maintenance, encrypted backup and local restore drill
+
+Follow-up to merged **PR #39**. Started the single branch
+`codex/github-backup-maintenance` from latest fetched main **3f0e162**. Read the
+rulebook, handoffs and #39 implementation. Sankar explicitly authorizes backend
+changes, new workflow files and the protected migration change in
+`deploy-worker.yml` for this task. No unrelated backlog was started. No production
+workflow, production query, deployment, migration, backup or restoration was run
+by Codex; production backup/drill status remains unestablished in this environment.
+
+### Implemented behavior
+
+- `backend/src/maintenance.ts` supplies a persistent Durable Object admission
+  coordinator. Closing admission and registering a writer serialize in durable
+  transactions; an admitted invocation remains registered through awaited work
+  and all `waitUntil` descendants. Ledger entries **never expire**. A crash or
+  failed release blocks drain and resume instead of declaring an unfinished writer
+  gone. Status reports maintenance, active count and drained state. There is no
+  public force-clear endpoint. Every mutation method, OAuth mutation, write MCP
+  tool, GET callback and Sophtron completion poll passes admission. All four cron
+  handlers exit without job/provider work while paused. Audited current parallel
+  work: `Promise.all` groups contain reads, not abandoned parallel writes.
+- Audited GET routes and MCP read tools remain readable. Normal dataset/category
+  GETs retain their category initialization; paused or coordinator-unavailable
+  reads skip that write. Authenticated original-file GET routes keep their existing
+  authentication and bytes. Maintenance refusals are **503** with
+  `{ error: 'maintenance', message: <clear explanation> }`, `Retry-After: 60`, no
+  cache, and the configured API CORS behavior. Missing coordination fails closed
+  for writers. No `PLAID_LINK_ENABLED` or credential encryption behavior changes.
+- Operational routes under `/__recovery/` use a **separate Worker secret** derived
+  with domain-separated HMAC-SHA256 from the existing Cloudflare API token and
+  account ID. The approved preparation job installs it automatically; Sankar does
+  not add S3 keys or put an app/provider token on his computer. Operator object
+  listing/downloading requires confirmed drain. No object key becomes a local
+  filename. The actor's maintenance/proof state is separate from financial D1/R2.
+- Recovery format **v2** adds a paginated **whole R2 bucket** inventory, including
+  unreferenced and empty objects, with every object's checksum, HTTP metadata and
+  custom metadata. Capture compares the entire inventory before/after, checks
+  referenced originals against D1, and binds all files to the trusted manifest
+  digest. Existing `backup`, `verify` and `restore-local` functions are reused.
+  Restore compares all table inventories/indexes/exact triggers, validates both
+  revision singleton cardinalities/values, restores every object and checks the
+  complete target inventory/metadata/bytes before deleting the disposable target.
+  V1 remains supported; older tooling rejects v2 instead of silently omitting
+  objects. Recorded applied migration prefixes let a pre-migration backup verify
+  against its current schema before a future release applies newer migrations.
+- The portable file is authenticated **AES-256-GCM**, with a random salt/nonce and
+  scrypt (`N=262144`, `r=8`, `p=1`) passphrase derivation. Authentication completes
+  before archive parsing. The bounded archive uses only fixed relative paths,
+  refuses duplicate/unsafe/symlink members and verifies member checksums; there
+  is no shell/tar extraction of uploaded filenames. Only `backup.enc` is uploaded,
+  with **seven-day retention**. Plaintext, originals, private manifests and logs
+  stay outside the checkout in ephemeral runner storage and are deleted. Library
+  output is captured privately; operator output is controlled statuses, counts,
+  sizes and SHA-256 values. Raw SQL/provider exceptions are never printed.
+- Supported limits remain explicit and fail closed: 64 MiB SQL, 20 MiB per object,
+  and a portable archive below GitHub's 2 GiB release-asset limit. Oversized or
+  corrupt data is not silently skipped. Passphrases need at least 20 bytes;
+  documentation recommends a long generated password kept in a password manager.
+
+### Workflows and exact release order
+
+1. **Maintenance** offers `status`, `on` and `off`. The dependency-free controller
+   uses existing Actions Cloudflare secrets. `on` waits for drain; `off` refuses a
+   live writer or incomplete initial quarantine.
+2. **Back up production (encrypted)** closes admission **before npm installation**,
+   waits for drain, exports full native D1, captures and verifies all R2, runs the
+   local drill, deletes it, encrypts the bundle and uploads only ciphertext. It
+   performs read-only 3a/3b/3d checks: applied migrations, active version/main
+   provenance and exact D1/R2 bindings, all migration triggers, both revisions and
+   untouched policy/review/archive counts. 3c prints one clear historical-log
+   coverage limitation, does not claim a pass and does not block on unavailable
+   logs. Failures after pause retain maintenance; a failure before confirming
+   pause explicitly reports an unconfirmed state. Only all successful checks and
+   encrypted artifact upload permit automatic resume. A useful encrypted backup
+   remains downloadable if a later rollout check fails.
+3. **Restore encrypted backup locally** takes either the official backup run ID
+   or an encrypted `backup.enc` uploaded to an unpublished draft release. GitHub
+   has no native file-upload field in workflow_dispatch, so that draft attachment
+   is the website-only uploaded-file path. Source selection is restricted to this
+   repository and known workflow/artifact names, not arbitrary URLs. This job has
+   no Cloudflare credentials, decrypts/verifies/restores locally, prints counts
+   and digests, and deletes the disposable plaintext. It never restores remotely.
+4. **Deploy to Cloudflare** is now manual only. A normal run first prepares and
+   uploads a real verified encrypted backup while holding drained maintenance.
+   **Then** its separate Worker job waits for `production-migrations` approval.
+   It checks the environment's required Sankar reviewer and the run's actual
+   approval record, confirms the encrypted artifact has not expired/disappeared,
+   and rechecks the manifest proof in the **same maintenance generation**
+   immediately before Apply D1 migrations. It deploys the pinned main Worker,
+   preserves the hold through code/secrets deployment, checks live main version,
+   migration journal, exact triggers and valid revisions, and only then resumes.
+   A failed run has no automatic old-Worker rollback or data/schema repair.
+
+**First installation is a distinct protected run**, using the explicit
+`install_maintenance` checkbox. It refuses any pending D1 migration, installs the
+closed gate only, and finishes with maintenance on; its normal preparation and
+migration jobs are skipped. The next **Back up production** run waits for the
+initial **21-minute quarantine** and zero instrumented writers before capturing.
+This initial hold covers the platform's documented 20-minute runtime-update
+retirement grace and 15-minute cron limit; it is not retroactive instrumentation
+or evidence for the old #35/#36/#38 windows. Subsequent holds use the durable
+writer ledger without expiring entries. Do not reselect first-install to bypass
+an unavailable existing gate; unknown state is a stop. No production installation
+or platform propagation/drain was exercised here.
+
+All production operations share the existing `deploy-cloudflare` concurrency
+group, without cancel-in-progress. Manual runs are restricted to main and reject
+main moving while a release is waiting. The web job's dependency condition is
+adjusted only to preserve its existing behavior after the new preparation/gate
+jobs; other workflow files and app code are unchanged. Existing Worker secret
+copy semantics, including `CREDENTIALS_SECRET`, remain unchanged.
+
+### API contract for Claude
+
+Existing successful finance routes, request/response models and original download
+authentication are unchanged. During maintenance, write requests (including the
+GET completion/callback routes listed above) can return **503 `maintenance`** and
+`Retry-After: 60`. Reads continue. Do not silently replay an uncertain earlier
+write; inspect its existing read/replay contract once maintenance ends. MCP read
+tools remain available, write tools are refused. No phone/shared-type changes are
+needed in this task. `/__recovery/status`, POST `/__recovery/maintenance` (`on:
+boolean`), POST `/__recovery/proof` and drained-only object reads are authenticated
+operator infrastructure, not a phone restore/export API. Object reads use
+authenticated POST bodies so private R2 keys and pagination cursors never appear
+in request URLs or URL logs.
+
+### Runbook and validation
+
+Replaced the primary [runbook](production-backup-rollout.md) with website steps:
+add `BACKUP_PASSPHRASE`; configure Sankar as required reviewer; run/approve the
+one-time closed installation; run the encrypted backup; download/unzip and keep
+one `backup.enc`; run the independent local drill by run ID or draft upload. The
+earlier CLI path is retained as an appendix. It specifies the successful status
+messages, counts/checksums, seven-day download deadline, failure hold and resume
+rules. Passwords and source data must never be sent to chat.
+
+Targeted local validation has passed the **60 Node deployment/runtime/recovery
+tests**, including a real **`wrangler dev --local`** process with invented D1/R2,
+manual account/file/receipt requests, an empty unreferenced object with metadata,
+all four paused cron paths, full capture/restore, encrypted portable reopening,
+wrong-password/tamper rejection, missing-object rejection, read-only rollout
+checks and dependency-free pause behavior. The six new workerd maintenance tests
+and six existing FX tests passed together. Full repository validation follows.
+Initial local failures were a wrong test working directory, the platform proxy's
+state directory needing the CLI's `v3` persistence layout, and a misplaced CORS
+helper scope; all were corrected and the local integration rerun successfully.
+An explicit Prettier invocation included TOML (unsupported parser); only supported
+changed files are formatted, with no root formatter/config change. Typecheck and
+scoped lint are run again before the full pre-push gate. These invented-data checks
+are **not** a production backup/drill or live Cloudflare certification.
+
+### Noticed, not done
+
+- Historical mixed-version write impact remains unknown; retained logs may be
+  absent, sampled or insufficient to identify deleted rows. No new tail or current
+  timestamp is presented as proof of historical absence.
+- Legitimate future policy/review/archive activity will fail the requested untouched
+  rollout baseline and retain the hold for review; the workflow never deletes it.
+- An orphan/empty object is now backed up rather than discarded. Large-object and
+  archive limits, and permanently blocked crash entries, require a separately
+  reviewed operation if encountered; no unsafe bypass/automatic repair was added.
+- Claude's statement checks, Monefy transfers, investment features, test seeding,
+  and every other backlog request remain untouched.
+
+Final rollout hardening: the coordinator also fences writer admission by the
+Worker's release SHA. After post-deploy checks, only the verified new main release
+is activated before resume; older instrumented Workers remain refused during
+propagation. Activation itself requires a drained hold, and an old version cannot
+turn that hold off. Two additional workerd regressions cover old-version refusal
+after resume and refusal to activate while a writer remains live. A backup also
+refuses a hold whose allowed release differs from the served Worker. The first
+whole-repository gate passed **1,809 tests** before this added fence; the final
+gate is rerun on the completed change, with results recorded below.
+
+Version-specific preview URLs are explicitly disabled in the backend Worker
+configuration and checked through the read-only Workers subdomain API before a
+backup can pass provenance. This closes a persistent route to pre-maintenance
+code; the production workers.dev address remains enabled. Configuration has a
+regression check. No Cloudflare setting was changed by Codex.
+
+The next full gate exposed a test-fixture mistake: the first version-fence case
+left its activated release in the shared test coordinator, so the second case
+never admitted the writer it intended to keep live. Added explicit fixture cleanup
+and an assertion that admission succeeded; this changes no production behavior.
+
+Preserved the existing browser harness using its already explicit sample-seed
+flag **only with a loopback PUBLIC_URL**; the local wrangler-dev integration uses
+that same mode. Production provenance also requires PUBLIC_URL to match the real
+origin, and production resume requires a valid release SHA. No mobile harness or
+other workflow was edited. Plaintext cleanup now precedes successful resume, and
+failure/cancellation handlers attempt to reassert the hold; an unreachable
+control plane is reported as unconfirmed. The independent drill prints its
+deletion success only after cleanup completes.
+
+The proof submission itself checks the captured generation and source release,
+preventing a late proof from attaching to a subsequently reopened maintenance
+window. A workerd regression covers that race. All object read keys/cursors travel
+in authenticated POST bodies, keeping them out of URL logs as well as job output.
+
+Resume and release activation are generation-checked too: delayed control requests
+from an earlier run cannot reopen or alter a newer hold. The production workflow
+captures the hold **before** D1 export and rejects a changed window before starting
+the bundle. Targeted validation passed **nine workerd maintenance/fence cases** and
+**62 Node cases**, including the real local Worker flow and the export-window race.
+The final frozen tree receives a fresh whole-repository gate before pushing.
+
+Operator contract detail: GET `/__recovery/status` returns protocol, on/active/
+drained, generation and served/allowed release metadata. POST maintenance accepts
+`{on:true}` or `{on:false,generation}`; POST proof accepts `{proof,generation}`;
+POST activate accepts `{release,generation}`. POST objects accepts a nullable cursor
+and returns a private page plus the next cursor; POST object accepts `{key}` and
+returns raw bytes. All require the derived operator bearer secret, separate from
+APP_API_TOKEN; inventory/object/proof/activation additionally require drain. Bad
+authentication is 401; invalid explicit inputs are 400; missing objects/routes are
+404; maintenance, stale generations/releases, unavailable coordination or incomplete
+drain refuse with 503. No key/cursor is a URL parameter, and none is printed.
+
+Final pre-push gate: **`npm run check` passed, exit 0**, on Node **24.22.1** /
+npm **11.9.0**, with typecheck, zero-warning lint, formatting and **1,814 tests**
+(147 shared, 370 connectors, 457 Worker, 62 deployment/runtime/recovery, 778
+mobile). Used process-local `EXPO_OFFLINE=1`, an 8 GiB Node heap and private
+temporary Wrangler/config paths. Local drills used invented data and a real
+`wrangler dev --local`; no production workflow or Cloudflare operation was run.
+The final log/runbook wording and workflow comment were then formatted and the
+scope, whitespace and append-only log checks were repeated before committing.

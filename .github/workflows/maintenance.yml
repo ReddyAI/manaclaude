@@ -1,0 +1,29 @@
+name: Maintenance
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Maintenance on (also waits for drain), off, or status
+        type: choice
+        options: [status, 'on', 'off']
+        default: status
+        required: true
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: read
+jobs:
+  maintenance:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MAINTENANCE_MODE: ${{ inputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: node backend/recovery/control.mjs "$MAINTENANCE_MODE"

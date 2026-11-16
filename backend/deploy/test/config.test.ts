@@ -11,6 +11,9 @@ const values = {
 };
 
 describe('renderWranglerConfig', () => {
+  it('disables version-specific preview URLs that could bypass maintenance on old code', () => {
+    expect(renderWranglerConfig(toml, values)).toContain('preview_urls = false');
+  });
   it('fills every placeholder of the real wrangler.toml', () => {
     const out = renderWranglerConfig(toml, values);
     expect(out).toContain('database_id = "db-1111"');

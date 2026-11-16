@@ -14,6 +14,8 @@ export default defineConfig(async () => {
         remoteBindings: false,
         miniflare: {
           bindings: {
+            MAINTENANCE_TEST_DEFAULT: 'off',
+            RELEASE_COMMIT: 'a'.repeat(40),
             TEST_MIGRATIONS: migrations,
             APP_API_TOKEN: 'test-app-token',
             MCP_OWNER_PASSWORD: 'test-owner-password',

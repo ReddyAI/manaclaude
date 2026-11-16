@@ -364,7 +364,7 @@ export function createApp(deps: AppDeps = {}) {
 
   // ---- Dataset, accounts, transactions -----------------------------------
   app.get('/v1/dataset', async (c) => {
-    await ensureDefaultCategories(c.env.DB);
+    if (!c.env.MAINTENANCE_READ) await ensureDefaultCategories(c.env.DB);
     return c.json(await loadDataset(c.env.DB));
   });
   app.get('/v1/accounts', async (c) => c.json({ accounts: await listAccounts(c.env.DB) }));
@@ -482,7 +482,7 @@ export function createApp(deps: AppDeps = {}) {
 
   // ---- Categories and rules ------------------------------------------------
   app.get('/v1/categories', async (c) => {
-    await ensureDefaultCategories(c.env.DB);
+    if (!c.env.MAINTENANCE_READ) await ensureDefaultCategories(c.env.DB);
     return c.json({ categories: await selectAll(c.env.DB, categoriesTable, '', [], '"order"') });
   });
   app.post('/v1/categories', async (c) => {
