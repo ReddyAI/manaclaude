@@ -383,3 +383,66 @@ describe('investment sync: activities', () => {
     expect(JSON.stringify(first.activities)).toBe(snapshot);
   });
 });
+
+describe('holdings snapshot evidence regressions', () => {
+  it('does not infer completeness from activity alone', () => {
+    const state = apply(plan({ holdings: [holding()] }), empty);
+    const out = plan({ state, activities: [activity({ type: 'dividend', quantity: null })] });
+    expect(out.holdingRemovals).toEqual([]);
+    expect(out.lotRemovals).toEqual([]);
+  });
+  it('does not infer completeness from a partial nonempty holding list', () => {
+    const state = apply(plan({ holdings: [holding(), holding({ symbol: 'ORCH' })] }), empty);
+    expect(plan({ state, holdings: [holding()] }).holdingRemovals).toEqual([]);
+  });
+});
+
+it.each(['partial', 'unavailable', 'failed', 'unsupported', 'unknown'] as const)(
+  'preserves positions and basis for explicit %s inventory',
+  (status) => {
+    const state = apply(plan({ holdings: [holding()] }), empty);
+    const out = planInvestmentSync({
+      connectionId: 'conn_1',
+      accounts: ACCOUNTS,
+      ...state,
+      result: {
+        holdings: [],
+        activities: [],
+        holdingsSnapshots: [{ accountExternalId: 'ext_brk', status }],
+      },
+      now: NOW,
+    });
+    expect(out.holdingRemovals).toEqual([]);
+    expect(out.lotRemovals).toEqual([]);
+  },
+);
+it('keeps a manual position and its basis when a provider reports the same security', () => {
+  const state = apply(plan({ holdings: [holding()] }), empty);
+  state.holdings[0]!.source = 'manual';
+  const out = plan({ state, holdings: [holding({ quantity: '99' })] });
+  expect(out.holdingUpdates).toEqual([]);
+  expect(out.lotRemovals).toEqual([]);
+  expect(out.lotUpdates).toEqual([]);
+  expect(out.holdingInserts).toHaveLength(1);
+  expect(out.holdingInserts[0]!.id).not.toBe(state.holdings[0]!.id);
+});
+it('refuses duplicate or conflicting completeness declarations', () => {
+  const state = apply(plan({ holdings: [holding()] }), empty);
+  for (const status of ['complete', 'partial'] as const) {
+    const out = planInvestmentSync({
+      connectionId: 'conn_1',
+      accounts: ACCOUNTS,
+      ...state,
+      result: {
+        holdings: [],
+        activities: [],
+        holdingsSnapshots: [
+          { accountExternalId: 'ext_brk', status: 'complete' },
+          { accountExternalId: 'ext_brk', status },
+        ],
+      },
+      now: NOW,
+    });
+    expect(out.holdingRemovals).toEqual([]);
+  }
+});

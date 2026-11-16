@@ -143,6 +143,11 @@ export function inspectDatabase(sql: string): DatabaseImage {
       .get()?.revision;
     if (typeof revision !== 'string' || !/^[a-f0-9]{64}$/.test(revision))
       throw new RecoveryError('Missing or invalid history concurrency revision.');
+    const investmentRevision = db
+      .prepare('SELECT revision FROM investment_revision WHERE id = 1')
+      .get()?.revision;
+    if (typeof investmentRevision !== 'string' || !/^[a-f0-9]{64}$/.test(investmentRevision))
+      throw new RecoveryError('Missing or invalid investment concurrency revision.');
     // Most model relationships predate foreign keys in this schema.
     for (const [table, column, target] of [
       ['transactions', 'account_id', 'accounts'],

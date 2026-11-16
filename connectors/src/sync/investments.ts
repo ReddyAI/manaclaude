@@ -47,11 +47,9 @@ export interface InvestmentSyncInput {
   holdings: readonly Holding[];
   taxLots: readonly TaxLot[];
   activities: readonly InvestmentActivity[];
-  result: Pick<SyncResult, 'holdings' | 'activities'>;
-  /**
-   * Provider account ids whose holdings list is complete in this result, so a
-   * holding that is missing from it was sold. Default: every account that has
-   * a holding or activity in the result plus `completeAccounts` below.
+  result: Pick<SyncResult, 'holdings' | 'activities' | 'holdingsSnapshots'>;
+  /** Explicit full inventories only. Prefer result.holdingsSnapshots at the adapter boundary.
+   * A missing position is no longer reported; this does not prove a sale.
    */
   completeAccounts?: ReadonlySet<string>;
   now: IsoDateTime;
@@ -62,7 +60,7 @@ export interface InvestmentSyncOutput {
   securityInserts: Security[];
   holdingInserts: Holding[];
   holdingUpdates: Update<Holding>[];
-  /** Holdings the broker no longer reports (sold out). */
+  /** Holdings no longer reported. The writer must archive their basis before removal. */
   holdingRemovals: Id[];
   lotInserts: TaxLot[];
   lotUpdates: Update<TaxLot>[];
@@ -228,11 +226,19 @@ export function planInvestmentSync(input: InvestmentSyncInput): InvestmentSyncOu
 
   // -- holdings and lots ---------------------------------------------------
   const complete = new Set<string>(input.completeAccounts ?? []);
-  for (const h of input.result.holdings) complete.add(h.accountExternalId);
-  for (const a of input.result.activities) complete.add(a.accountExternalId);
+  const snapshots = input.result.holdingsSnapshots ?? [];
+  for (const snapshot of snapshots) {
+    // Duplicate/conflicting declarations are ambiguous, never destructive evidence.
+    if (
+      snapshot.status === 'complete' &&
+      snapshots.filter((s) => s.accountExternalId === snapshot.accountExternalId).length === 1
+    )
+      complete.add(snapshot.accountExternalId);
+    else complete.delete(snapshot.accountExternalId);
+  }
 
   const holdingByAccountSecurity = new Map<string, Holding>();
-  for (const h of input.holdings)
+  for (const h of input.holdings.filter((h) => h.source === 'connector'))
     holdingByAccountSecurity.set(`${h.accountId}\u0000${h.securityId}`, h);
   const seenHoldingIds = new Set<Id>();
 
@@ -322,7 +328,7 @@ export function planInvestmentSync(input: InvestmentSyncInput): InvestmentSyncOu
     }
   }
 
-  // Holdings that disappeared from a complete account were sold.
+  // Absence in an authoritative inventory removes a current position, never invents a sale.
   const accountsComplete = new Set<Id>();
   for (const ext of complete) {
     const id = input.accounts.get(ext);

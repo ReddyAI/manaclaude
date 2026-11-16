@@ -15,8 +15,8 @@ import { createManualAccount, manualAccountSchema } from '../../src/services/acc
 import { ensureDefaultCategories } from '../../src/services/seed';
 import { updateSettings } from '../../src/services/settings';
 import { makeTransaction } from '../../src/services/transactions';
-import { insertStatement } from '../../src/db/table';
-import { accountsTable, transactionsTable } from '../../src/db/tables';
+import { selectOne, insertStatement } from '../../src/db/table';
+import { connectionsTable, accountsTable, transactionsTable } from '../../src/db/tables';
 import { previewHistoryPolicy, saveHistoryPolicy } from '../../src/history/service';
 import {
   bankReviewsTable,
@@ -34,6 +34,8 @@ import { createSession, getSession, type LinkSession } from '../../src/link/sess
 import { sophtronStatus } from '../../src/link/sophtron';
 import { runNightlyStep, type NightlyState } from '../../src/nightly';
 import { backfillMissingHistory } from '../../src/fx/service';
+import { applySyncResult } from '../../src/sync/apply';
+import { investmentRevision } from '../../src/sync/investments';
 import { loadDataset } from '../../src/services/dataset';
 import {
   backup,
@@ -260,6 +262,70 @@ beforeAll(async () => {
     currency: 'INR',
     date: '2026-11-01',
   });
+  const investmentAccount = {
+    ...known.account,
+    id: 'invented-investment-account',
+    type: 'brokerage' as const,
+    connectionId: 'invented-connection',
+    externalId: 'orchard-inventory',
+  };
+  await insertStatement(env.DB, accountsTable, investmentAccount).run();
+  const investmentConnection = (await selectOne(env.DB, connectionsTable, 'id = ?', [
+    'invented-connection',
+  ]))!;
+  const inventory = {
+    accounts: [
+      {
+        externalId: 'orchard-inventory',
+        name: 'Orchard',
+        institutionName: null,
+        type: 'brokerage' as const,
+        subtype: null,
+        currency: 'INR',
+        balance: 0,
+        availableBalance: null,
+        creditLimit: null,
+        mask: null,
+      },
+    ],
+    transactions: [],
+    activities: [],
+    removedTransactionExternalIds: [],
+    nextCursor: 'inventory-done',
+    holdingsSnapshots: [{ accountExternalId: 'orchard-inventory', status: 'complete' as const }],
+  };
+  await applySyncResult(
+    env.DB,
+    investmentConnection,
+    {
+      ...inventory,
+      holdings: [
+        {
+          accountExternalId: 'orchard-inventory',
+          symbol: 'ORCH',
+          name: 'Orchard',
+          securityType: 'equity',
+          exchange: 'NSE',
+          quantity: '2',
+          price: '30',
+          currency: 'INR',
+          costBasis: 4000,
+          lots: [
+            {
+              externalId: 'broker-lot',
+              acquiredOn: '2025-01-01',
+              quantity: '2',
+              costBasis: 4000,
+              currency: 'INR',
+            },
+          ],
+        },
+      ],
+    },
+    now,
+  );
+  await applySyncResult(env.DB, investmentConnection, { ...inventory, holdings: [] }, now);
+  expect((await env.DB.prepare('SELECT * FROM investment_archive').all()).results).toHaveLength(2);
   const historyAccount = {
     ...known.account,
     id: 'invented-history-account',
@@ -355,12 +421,12 @@ describe('private D1 and original-file recovery', () => {
       '--manifest-sha256',
       digest,
     ]);
-    expect(JSON.parse(stdout)).toEqual({ tables: 53, files: 4 });
+    expect(JSON.parse(stdout)).toEqual({ tables: 56, files: 4 });
   });
   it('restores all records, balances, notes, categories, splits, transfers and originals to new local D1/R2', async () => {
     const restored = join(root, 'restored');
     const result = await restoreLocal(bundle, digest, restored);
-    expect(result).toEqual({ tables: 53, files: 4 });
+    expect(result).toEqual({ tables: 56, files: 4 });
     const target = await getPlatformProxy<Env>({
       configPath: join(restored, 'wrangler.json'),
       remoteBindings: false,
@@ -407,6 +473,20 @@ describe('private D1 and original-file recovery', () => {
         expect(copy!.customMetadata ?? {}).toEqual(original!.customMetadata ?? {});
       }
       expect((await readPolicy(target.env.DB)).version).toBe(1);
+      const investmentBefore = await investmentRevision(env.DB);
+      expect(await investmentRevision(target.env.DB)).toBe(investmentBefore);
+      const archiveRows = (
+        await env.DB.prepare('SELECT * FROM investment_archive ORDER BY id').all()
+      ).results;
+      expect(
+        (await target.env.DB.prepare('SELECT * FROM investment_archive ORDER BY id').all()).results,
+      ).toEqual(archiveRows);
+      // A resumed stale request cannot use a pre-write revision after restoration.
+      await target.env.DB.prepare(
+        'UPDATE investment_revision SET revision = lower(hex(randomblob(32))) WHERE id = 1',
+      ).run();
+      expect(await investmentRevision(target.env.DB)).not.toBe(investmentBefore);
+      expect(await investmentRevision(env.DB)).toBe(investmentBefore);
       const revision = await historySnapshot(env.DB);
       expect(await historySnapshot(target.env.DB)).toBe(revision);
       const pendingReview = (await bankReviewList(target.env.DB)).reviews[0]!;
@@ -616,9 +696,10 @@ describe('private D1 and original-file recovery', () => {
 
   it('requires exact migration triggers and never executes exported trigger bodies', () => {
     const image = inspectDatabase(sql);
-    expect(image.triggers).toHaveLength(15);
+    expect(image.triggers).toHaveLength(24);
     const trigger = image.triggers[0]!;
     expect(() => inspectDatabase(sql + '\nDELETE FROM history_revision;')).toThrow(/revision/);
+    expect(() => inspectDatabase(sql + '\nDELETE FROM investment_revision;')).toThrow(/revision/);
     expect(() =>
       inspectDatabase(sql + "\nUPDATE history_revision SET revision = 'z' || substr(revision, 2);"),
     ).toThrow(/revision/);

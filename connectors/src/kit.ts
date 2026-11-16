@@ -188,3 +188,14 @@ export function defineAdapter(spec: AdapterSpec): ConnectorAdapter {
   }
   return adapter;
 }
+
+/** Call only after inspecting that endpoint's inventory and pagination semantics.
+ * This helper records evidence; it deliberately does not infer any from arrays.
+ */
+export function holdingsSnapshot(
+  result: SyncResult,
+  accountExternalId: string,
+  status: NonNullable<SyncResult['holdingsSnapshots']>[number]['status'],
+): void {
+  (result.holdingsSnapshots ??= []).push({ accountExternalId, status });
+}

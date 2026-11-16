@@ -13,6 +13,7 @@ import { readSince, sinceCursor } from '../../util/cursor';
 import { absDecimal, negate, toDecimalString, toMinor } from '../../util/decimal';
 import { todayUtc, toLocalDate, windowStart } from '../../util/dates';
 import {
+  holdingsSnapshot,
   appSecret,
   connectionSecret,
   defineAdapter,
@@ -291,7 +292,10 @@ export async function syncSnapTrade(
     const currency = (a.balance?.total?.currency ?? 'USD').toUpperCase();
     const balances = await st.get<StBalance[]>(`/accounts/${a.id}/balances`);
     const positionsRaw = await st.get<StPosition[]>(`/accounts/${a.id}/positions`);
-    const holdings = (Array.isArray(positionsRaw) ? positionsRaw : [])
+    // /positions is a full, unpaginated account inventory. A malformed envelope
+    // or an unmappable row is not an empty inventory.
+    const positions = Array.isArray(positionsRaw) ? positionsRaw : [];
+    const holdings = positions
       .map((p) => mapSnaptradePosition(p, a.id, currency))
       .filter((h): h is ProviderHolding => h !== null);
 
@@ -327,6 +331,20 @@ export async function syncSnapTrade(
       }),
     );
     result.holdings.push(...holdings);
+    holdingsSnapshot(
+      result,
+      a.id,
+      !Array.isArray(positionsRaw)
+        ? 'unavailable'
+        : positions.every(
+              (p) =>
+                mapSnaptradePosition(p, a.id, currency) !== null ||
+                (toDecimalString(p.units) === '0' &&
+                  (p.fractional_units == null || toDecimalString(p.fractional_units) === '0')),
+            )
+          ? 'complete'
+          : 'partial',
+    );
 
     // Activities, paged by offset.
     const start = windowStart(today, since, { backfillDays: 0, overlapDays: OVERLAP_DAYS });

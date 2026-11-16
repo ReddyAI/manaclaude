@@ -4,6 +4,7 @@ import { sinceCursor } from '../../util/cursor';
 import { todayUtc, toLocalDate } from '../../util/dates';
 import { absDecimal, negate, toDecimalString, toMinor } from '../../util/decimal';
 import {
+  holdingsSnapshot,
   basicAuth,
   connectionSecret,
   defineAdapter,
@@ -170,7 +171,17 @@ export async function syncTrading212(
   );
 
   const positions = await http.get<T212Position[]>('/equity/positions');
+  // Invest positions are an unpaginated current inventory; history paging is separate.
+  let complete = Array.isArray(positions);
   for (const p of Array.isArray(positions) ? positions : []) {
+    if (
+      !p?.instrument?.ticker ||
+      !toDecimalString(p.quantity) ||
+      !toDecimalString(p.currentPrice)
+    ) {
+      complete = false;
+      continue;
+    }
     const price = normalise(p.instrument.currency, p.currentPrice, currency);
     const avg = normalise(p.instrument.currency, p.averagePricePaid, currency);
     const quantity = toDecimalString(p.quantity);
@@ -189,6 +200,8 @@ export async function syncTrading212(
       lots: null,
     } satisfies ProviderHolding);
   }
+
+  holdingsSnapshot(result, accountId, complete ? 'complete' : 'partial');
 
   const seen = new Set<string>();
   for (const o of await feed<T212Order>(http, '/equity/history/orders')) {

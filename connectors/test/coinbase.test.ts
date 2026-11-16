@@ -238,4 +238,50 @@ describe('coinbase adapter', () => {
       ),
     );
   });
+  it.each([
+    [{ data: [], pagination: { next_uri: null } }, 'complete'],
+    [{ data: [] }, 'partial'],
+    [{ data: [], pagination: { next_uri: '/v2/accounts?limit=100' } }, 'partial'],
+  ])('requires an explicit terminal wallet page: %j', async (page, status) => {
+    const result = await coinbaseAdapter.sync(
+      makeCtx(
+        S,
+        fakeFetch(
+          routes({
+            [`GET ${H}/accounts`]: { json: page },
+          }),
+        ),
+      ),
+      makeConnection('coinbase'),
+    );
+    expect(result.holdings).toEqual([]);
+    expect(result.holdingsSnapshots?.[0]?.status).toBe(status);
+  });
+  it('does not certify a wallet inventory truncated at the pagination cap', async () => {
+    const result = await coinbaseAdapter.sync(
+      makeCtx(
+        S,
+        fakeFetch(
+          routes({
+            [`GET ${H}/accounts`]: (_call: FakeCall, n: number) => ({
+              json: {
+                data: [],
+                pagination: { next_uri: `/v2/accounts?page=${n + 1}` },
+              },
+            }),
+          }),
+        ),
+      ),
+      makeConnection('coinbase'),
+    );
+    expect(result.holdingsSnapshots?.[0]?.status).toBe('partial');
+  });
+  it('certifies only after all wallet pages and keeps history coverage separate', async () => {
+    const result = await coinbaseAdapter.sync(
+      makeCtx(S, fakeFetch(routes())),
+      makeConnection('coinbase'),
+    );
+    expect(result.holdingsSnapshots?.[0]?.status).toBe('complete');
+    expect(result.holdings).toHaveLength(2);
+  });
 });

@@ -139,3 +139,33 @@ describe('questrade adapter', () => {
     );
   });
 });
+
+it('explicit full empty holdings are independent of nonempty activities', async () => {
+  const result = await questradeAdapter.sync(
+    ctxFor(
+      routes({
+        [`GET ${A}/accounts/51000001/positions`]: { json: { positions: [] } },
+      }),
+    ),
+    makeConnection('questrade'),
+  );
+  expect(result.holdingsSnapshots?.[0]?.status).toBe('complete');
+  expect(result.activities.length).toBeGreaterThan(0);
+  expect(
+    result.holdings.filter(
+      (h) => h.accountExternalId === result.holdingsSnapshots![0]!.accountExternalId,
+    ),
+  ).toEqual([]);
+});
+
+it('a missing positions envelope is not an empty snapshot', async () => {
+  const result = await questradeAdapter.sync(
+    ctxFor(
+      routes({
+        [`GET ${A}/accounts/51000001/positions`]: { json: {} },
+      }),
+    ),
+    makeConnection('questrade'),
+  );
+  expect(result.holdingsSnapshots?.[0]?.status).not.toBe('complete');
+});

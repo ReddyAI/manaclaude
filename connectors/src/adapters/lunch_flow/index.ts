@@ -6,6 +6,7 @@ import { todayUtc, toLocalDate, windowStart } from '../../util/dates';
 import { toDecimalString, toMinor, toMinorOrNull } from '../../util/decimal';
 import { inferAccountType } from '../../util/accountTypes';
 import {
+  holdingsSnapshot,
   connectionSecret,
   defineAdapter,
   emptyResult,
@@ -116,11 +117,14 @@ export async function syncLunchFlow(
     );
     const observed = bal?.balance?.amount;
     if (observed === undefined || observed === null) continue; // keep last known balance, like Sure
+    let unsupported = false;
     const hold = await http
       .get<{ holdings?: LfHolding[] }>(`/accounts/${encoded}/holdings`)
       .catch((error: unknown) => {
-        if (error instanceof ProviderHttpError && (error.status === 501 || error.status === 404))
+        if (error instanceof ProviderHttpError && (error.status === 501 || error.status === 404)) {
+          unsupported = true;
           return { holdings: [] };
+        }
         throw error;
       });
     const holdings: ProviderHolding[] = [];
@@ -164,6 +168,8 @@ export async function syncLunchFlow(
       }),
     );
     result.holdings.push(...holdings);
+    // Aggregator support/pagination semantics do not establish a full inventory here.
+    holdingsSnapshot(result, id, unsupported ? 'unsupported' : 'unknown');
 
     const txResp = await http.get<{ transactions: LfTransaction[] }>(
       `/accounts/${encoded}/transactions`,

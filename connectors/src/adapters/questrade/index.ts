@@ -14,6 +14,7 @@ import { readSince, sinceCursor } from '../../util/cursor';
 import { todayUtc, toLocalDate, windowStart } from '../../util/dates';
 import { absDecimal, toDecimalString, toMinor } from '../../util/decimal';
 import {
+  holdingsSnapshot,
   connectionSecret,
   defineAdapter,
   emptyResult,
@@ -176,10 +177,16 @@ export async function syncQuestrade(
     );
 
     const pos = await http.get<{ positions: QtPosition[] }>(`/accounts/${a.number}/positions`);
-    for (const p of pos.positions ?? []) {
+    // The positions endpoint returns the complete account inventory without paging.
+    let complete = Array.isArray(pos?.positions);
+    for (const p of Array.isArray(pos?.positions) ? pos.positions : []) {
       const quantity = toDecimalString(p.openQuantity);
       const c = currencyOfSymbol(p.symbol);
-      if (!quantity || quantity === '0') continue;
+      if (!quantity || !p.symbol || !toDecimalString(p.currentPrice)) {
+        complete = false;
+        continue;
+      }
+      if (quantity === '0') continue;
       result.holdings.push({
         accountExternalId: a.number,
         symbol: p.symbol.replace(/\.(TO|VN)$/i, ''),
@@ -193,6 +200,8 @@ export async function syncQuestrade(
         lots: null,
       } satisfies ProviderHolding);
     }
+
+    holdingsSnapshot(result, a.number, complete ? 'complete' : 'partial');
 
     // Activities in windows of at most 31 days, oldest first.
     const occurrences = new Map<string, number>();

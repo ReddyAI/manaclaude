@@ -14,6 +14,7 @@ import {
 } from '@manaclaude/shared';
 import { selectAll, updateStatement } from '../db/table';
 import {
+  chunkRows,
   bulkByIdsSpecs,
   bulkInsertSpecs,
   bulkUpdateSpecs,
@@ -42,6 +43,7 @@ import { filterBankResult, reviewBankPlan } from '../history/sync';
 import { newId, nowIso } from '../util/ids';
 import { recordAtmWithdrawals } from '../services/cash';
 import { runTransferMatcher } from '../services/matcher';
+import { investmentRevision, investmentGuards, advanceInvestmentRevision } from './investments';
 import { clearRetrySpec, retryStatement } from './retries';
 
 export interface SyncSummary {
@@ -76,6 +78,8 @@ export interface SyncSummary {
 }
 
 export interface ApplyOptions {
+  /** Investment revision captured before fetching the provider. */
+  investmentRevision?: string;
   /** Queries this call may still spend. Without one, nothing is held back. */
   budget?: QueryBudget;
   /** Most new transactions and activities written in one call (CPU and queries on the Free plan). */
@@ -134,6 +138,12 @@ export async function applySyncResult(
   now = nowIso(),
   opts: ApplyOptions = {},
 ): Promise<SyncSummary> {
+  const hasInvestments =
+    result.holdings.length > 0 ||
+    result.activities.length > 0 ||
+    (result.holdingsSnapshots ?? []).some((s) => s.status === 'complete');
+  const investmentBaseline =
+    opts.investmentRevision ?? (hasInvestments ? await investmentRevision(db) : undefined);
   const warnings: string[] = [];
   const maxRows = opts.maxRows ?? MAX_ROWS_PER_SYNC;
 
@@ -173,7 +183,8 @@ export async function applySyncResult(
   // are excluded or a concurrent policy/review change makes the data batch retry.
   await runSpecs(db, accountSpecs);
   const historyState = await readPolicy(db);
-  const historyStateAtRead = historyState.version > 0 ? await historySnapshot(db) : undefined;
+  const historyStateAtRead =
+    historyState.version > 0 || hasInvestments ? await historySnapshot(db) : undefined;
   // Re-read identity AFTER the revision: account planning/balance writes preceded
   // this fence. Otherwise a concurrent account-kind/connection edit could be
   // hidden by capturing its new revision while still filtering with old accounts.
@@ -268,7 +279,8 @@ export async function applySyncResult(
 
   // -- investments (reads) ----------------------------------------------------------
   let inv: ReturnType<typeof planInvestmentSync> | null = null;
-  if (result.holdings.length > 0 || result.activities.length > 0) {
+  const archive: StatementSpec[] = [];
+  if (hasInvestments) {
     const ph = placeholders(syncedAccountIds.length);
     const [securities, holdings, taxLots, activities] = await Promise.all([
       selectAll(db, securitiesTable),
@@ -299,6 +311,55 @@ export async function applySyncResult(
       newId: idFactory,
     });
     warnings.push(...inv.warnings);
+    // Preserve every old basis row before replacing/removing it. Activities are
+    // independent historical records and are never removed by snapshot absence.
+    const changedLots = new Set([...inv.lotRemovals, ...inv.lotUpdates.map((u) => u.id)]);
+    const archivedHoldings = new Set([
+      ...inv.holdingRemovals,
+      ...inv.holdingUpdates
+        .filter((u) => 'costBasis' in u.changes || 'quantity' in u.changes)
+        .map((u) => u.id),
+      ...taxLots.filter((l) => changedLots.has(l.id)).map((l) => l.holdingId),
+    ]);
+    const records = [
+      ...holdings
+        .filter((h) => archivedHoldings.has(h.id))
+        .map((h) => ({
+          accountId: h.accountId,
+          holdingId: h.id,
+          type: 'holding',
+          record: h,
+        })),
+      ...taxLots
+        .filter((l) => changedLots.has(l.id))
+        .map((l) => ({
+          accountId: holdings.find((h) => h.id === l.holdingId)!.accountId,
+          holdingId: l.holdingId,
+          type: 'lot',
+          record: l,
+        })),
+    ];
+    // One row per archived record avoids a potentially unbounded per-holding JSON value.
+    for (const chunk of chunkRows(
+      records.map((r) => [
+        newId('archive'),
+        connection.id,
+        r.accountId,
+        r.holdingId,
+        now,
+        r.type,
+        JSON.stringify(r.record),
+      ]),
+    ))
+      archive.push({
+        sql: `INSERT INTO investment_archive SELECT
+        json_extract(value, '$[0]'), json_extract(value, '$[1]'),
+        json_extract(value, '$[2]'), json_extract(value, '$[3]'),
+        json_extract(value, '$[4]'), json_extract(value, '$[5]'),
+        json_extract(value, '$[6]') FROM json_each(?)`,
+        params: [chunk.json],
+        rows: chunk.rows,
+      });
   }
   const allActivityInserts = [...(inv?.activityInserts ?? [])].sort(newestFirst);
 
@@ -343,24 +404,31 @@ export async function applySyncResult(
     const invSpecs: StatementSpec[] = inv
       ? [
           ...bulkInsertSpecs(securitiesTable, inv.securityInserts, 'ignore'),
-          ...bulkInsertSpecs(holdingsTable, inv.holdingInserts),
-          ...bulkUpdateSpecs(
-            holdingsTable,
-            inv.holdingUpdates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
-          ),
-          ...bulkByIdsSpecs(
-            'DELETE FROM holdings WHERE id IN (SELECT value FROM json_each(?1))',
-            inv.holdingRemovals,
-          ),
-          ...bulkInsertSpecs(taxLotsTable, inv.lotInserts),
-          ...bulkUpdateSpecs(
-            taxLotsTable,
-            inv.lotUpdates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
-          ),
-          ...bulkByIdsSpecs(
-            'DELETE FROM tax_lots WHERE id IN (SELECT value FROM json_each(?1))',
-            inv.lotRemovals,
-          ),
+          // Defer inventory/basis changes until all incoming activities can be
+          // committed with them. Continuations retain the old current portfolio.
+          ...(actCount === allActivityInserts.length
+            ? [
+                ...archive,
+                ...bulkInsertSpecs(holdingsTable, inv.holdingInserts),
+                ...bulkUpdateSpecs(
+                  holdingsTable,
+                  inv.holdingUpdates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
+                ),
+                ...bulkByIdsSpecs(
+                  'DELETE FROM holdings WHERE id IN (SELECT value FROM json_each(?1))',
+                  inv.holdingRemovals,
+                ),
+                ...bulkInsertSpecs(taxLotsTable, inv.lotInserts),
+                ...bulkUpdateSpecs(
+                  taxLotsTable,
+                  inv.lotUpdates.map((u) => ({ key: { id: u.id }, changes: u.changes })),
+                ),
+                ...bulkByIdsSpecs(
+                  'DELETE FROM tax_lots WHERE id IN (SELECT value FROM json_each(?1))',
+                  inv.lotRemovals,
+                ),
+              ]
+            : []),
           ...bulkInsertSpecs(activitiesTable, activityInserts, 'ignore'),
           ...bulkUpdateSpecs(
             activitiesTable,
@@ -388,14 +456,16 @@ export async function applySyncResult(
   let actCount = Math.min(allActivityInserts.length, Math.max(0, maxRows - txnCount - reviewCount));
   let plan = build(txnCount, actCount, reviewCount);
   if (opts.budget) {
-    // Account writes, the connection row, and (on the last part) the after-sync steps must fit too.
+    // Fit the atomic data batch first. Optional post-processing runs only with
+    // its reserve available below; reserving it here can strand the final row
+    // forever when inventory guards consume the remaining queries.
     const fits = () => {
+      // The connection update and retry reset are both part of the successful data batch.
       const last =
         txnCount === allInserts.length &&
         actCount === allActivityInserts.length &&
         reviewCount === reviewPlan.queued.length;
-      // The connection update and retry reset are both part of the successful data batch.
-      const need = plan.specs.length + 4 + (last ? AFTER_SYNC_RESERVE : 0);
+      const need = plan.specs.length + 4 + (investmentBaseline ? 3 : last ? AFTER_SYNC_RESERVE : 0);
       return opts.budget!.allows(need);
     };
     while (!fits() && txnCount + actCount + reviewCount > 0) {
@@ -438,18 +508,30 @@ export async function applySyncResult(
           },
     },
   ]);
+  const invGuards = investmentBaseline ? investmentGuards(investmentBaseline) : null;
   const specs = [
+    ...(invGuards ? [invGuards[0]] : []),
     historyGuard,
     ...plan.specs,
     ...connectionSpec,
     clearRetrySpec(connection.id),
     historyRelease,
+    ...(invGuards ? [advanceInvestmentRevision, invGuards[1]] : []),
   ];
   if (opts.budget && !opts.budget.allows(specs.length))
     throw new Error(
       'History review/data batch exceeds this sync budget. Retry with a smaller provider window.',
     );
-  await writeHistory(db, specs);
+  try {
+    await writeHistory(db, specs);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('investment_valid = 1'))
+      throw conflict(
+        'Investments changed while syncing. Retry with a fresh provider snapshot.',
+        'investment_snapshot_changed',
+      );
+    throw error;
+  }
 
   // -- after the last part is saved -----------------------------------------------------
   let linked = 0;
@@ -479,7 +561,10 @@ export async function applySyncResult(
     removed: removals.length,
     linked,
     suggested,
-    holdings: inv ? inv.holdingInserts.length + inv.holdingUpdates.length : 0,
+    holdings:
+      inv && actCount === allActivityInserts.length
+        ? inv.holdingInserts.length + inv.holdingUpdates.length
+        : 0,
     activities: plan.activityInserts.length + (inv?.activityUpdates.length ?? 0),
     warnings,
     remaining,
@@ -495,16 +580,24 @@ export async function markConnectionError(
   message: string,
   now = nowIso(),
   retryAfterSeconds: number | null = null,
+  investmentBaseline?: string,
 ): Promise<void> {
-  await db.batch([
-    updateStatement(
-      db,
-      connectionsTable,
-      { id: connection.id },
-      { status, lastError: message.slice(0, 200), lastSyncAt: now, updatedAt: now },
-    ),
-    status === 'needs_repair' || status === 'disconnected'
-      ? toStatement(db, clearRetrySpec(connection.id))
-      : retryStatement(db, connection.id, now, retryAfterSeconds),
-  ]);
+  const guards = investmentBaseline ? investmentGuards(investmentBaseline) : null;
+  try {
+    await db.batch([
+      ...(guards ? [toStatement(db, guards[0])] : []),
+      updateStatement(
+        db,
+        connectionsTable,
+        { id: connection.id },
+        { status, lastError: message.slice(0, 200), lastSyncAt: now, updatedAt: now },
+      ),
+      status === 'needs_repair' || status === 'disconnected'
+        ? toStatement(db, clearRetrySpec(connection.id))
+        : retryStatement(db, connection.id, now, retryAfterSeconds),
+      ...(guards ? [toStatement(db, guards[1])] : []),
+    ]);
+  } catch (error) {
+    if (!(error instanceof Error && error.message.includes('investment_valid = 1'))) throw error;
+  }
 }

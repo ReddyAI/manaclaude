@@ -133,3 +133,12 @@ describe('lunch flow adapter', () => {
     );
   });
 });
+
+it('preserves unsupported holdings evidence separately from an empty list', async () => {
+  const result = await lunchFlowAdapter.sync(ctxFor(), makeConnection('lunch_flow'));
+  expect(result.holdingsSnapshots).toEqual([
+    { accountExternalId: '4101', status: 'unsupported' },
+    { accountExternalId: '4102', status: 'unsupported' },
+    { accountExternalId: '4103', status: 'unknown' },
+  ]);
+});

@@ -7,6 +7,7 @@ import {
 } from '@manaclaude/shared';
 import {
   getAdapter,
+  getConnector,
   ConnectorConfigError,
   runConnectionSync as runAdapterSync,
   shouldRefreshValuation,
@@ -18,6 +19,7 @@ import { badRequest, notFound } from '../util/errors';
 import { nowIso } from '../util/ids';
 import { meterDb, QueryBudget, type MeteredDb } from '../db/meter';
 import { applySyncResult, markConnectionError, type SyncSummary } from './apply';
+import { investmentRevision } from './investments';
 import { loadCredentials, saveCredentials } from './credentials';
 import { VALUATION_CONNECTORS, workerSecretsFor } from './secrets';
 import { connectorEnabled, PLAID_DISABLED_MESSAGE } from './policy';
@@ -141,7 +143,28 @@ export async function syncConnection(
   }
 
   const now = nowIso(nowFn());
+  let investmentBaseline: string | undefined;
+  const markError = async (
+    status: ConnectionStatus,
+    message: string,
+    retryAfter: number | null = null,
+  ) => {
+    // An obsolete failure or a lost successful response cannot replace a newer
+    // successful connection/cursor. Guard again inside markConnectionError's batch.
+    await markConnectionError(
+      env.DB,
+      connection,
+      status,
+      message,
+      now,
+      retryAfter,
+      investmentBaseline,
+    );
+  };
   try {
+    investmentBaseline = getConnector(connection.connectorId)?.dataTypes.includes('holdings')
+      ? await investmentRevision(env.DB)
+      : undefined;
     const credentials = await loadCredentials(env, connection.id);
     const ctx: ConnectorContext = {
       // The app's own keys win over a same-named per-login value.
@@ -157,14 +180,7 @@ export async function syncConnection(
     }
     if (!outcome.result) {
       const failed = outcome.connection;
-      await markConnectionError(
-        env.DB,
-        connection,
-        failed.status,
-        failed.lastError ?? 'Sync failed.',
-        now,
-        outcome.retryAfterSeconds,
-      );
+      await markError(failed.status, failed.lastError ?? 'Sync failed.', outcome.retryAfterSeconds);
       return {
         ...base,
         outcome: outcome.kind,
@@ -177,6 +193,7 @@ export async function syncConnection(
     const summary = await applySyncResult(env.DB, connection, outcome.result, now, {
       budget,
       maxRows: opts.maxRows,
+      investmentRevision: investmentBaseline,
     });
     return {
       ...base,
@@ -190,7 +207,7 @@ export async function syncConnection(
     const repair = e instanceof ConnectorRepairNeededError;
     const status: ConnectionStatus = repair ? 'needs_repair' : 'error';
     const message = e instanceof Error ? e.message : 'Sync failed.';
-    await markConnectionError(env.DB, connection, status, message, now);
+    await markError(status, message);
     return {
       ...base,
       outcome: repair ? 'needs_repair' : 'error',
