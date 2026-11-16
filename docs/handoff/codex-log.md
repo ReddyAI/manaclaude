@@ -1549,3 +1549,20 @@ temporary Wrangler/config paths. Local drills used invented data and a real
 `wrangler dev --local`; no production workflow or Cloudflare operation was run.
 The final log/runbook wording and workflow comment were then formatted and the
 scope, whitespace and append-only log checks were repeated before committing.
+
+Post-push drain review found one additional lifetime to cover: the nightly AI
+deadline uses `Promise.race`, so its underlying completion (including its D1 usage
+write) can outlive the cron's fallback. The Worker now passes its tracked context
+through the nightly step, and the underlying completion is registered with
+`waitUntil` before racing the deadline. A regression forces the deadline first,
+then a delayed invented write, and proves drain/resume stay blocked until that
+write finishes. No AI choice, deadline, fallback, credentials or financial logic
+changed. The targeted **10 maintenance/fence tests** and backend typecheck passed;
+a new full gate is run before updating the same branch/PR. The previous PR head's
+GitHub CI passed; only the updated head's checks will certify the final change.
+
+The updated complete **`npm run check` passed, exit 0 — 1,815 tests** (147 shared,
+370 connectors, 458 Worker, 62 deployment/runtime/recovery, 778 mobile), with the
+same Node/npm and local test settings. Typecheck, lint and formatting passed.
+The prior head's Browser tests also passed. This same PR is updated only after
+the fresh gate; production remains untouched.

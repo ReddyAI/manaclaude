@@ -5,6 +5,8 @@ import { createWorker } from '../src/worker';
 import { client } from './worker';
 import { freshDb, testEnv, db, addAccount } from './helpers';
 import { previewImport } from '../src/imports/service';
+import { scheduledAi } from '../src/nightly/ai';
+import { updateSettings } from '../src/services/settings';
 
 const operatorEnv = {
   ...testEnv,
@@ -144,6 +146,62 @@ describe('maintenance admission and drain', () => {
     expect((await status()).drained).toBe(false);
     // Internal test cleanup only; there is intentionally no public force-release route.
     await coordinator(testEnv, 'finish', { token: 'invented-crashed-writer' });
+  });
+  it('retains a timed-out nightly AI completion until its deferred work actually finishes', async () => {
+    await updateSettings(db, { aiEnabled: true });
+    const ctx = createExecutionContext();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      await tracked(testEnv, ctx, async (wrapped) => {
+        const deps = await scheduledAi(
+          testEnv,
+          {
+            client: {
+              provider: 'workers_ai',
+              complete: () =>
+                pending.then(async () => {
+                  await db.prepare("INSERT INTO settings VALUES ('invented-late-ai','done')").run();
+                  return '{}';
+                }),
+            },
+          },
+          wrapped,
+        );
+        let deadline!: () => void;
+        const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementationOnce((callback) => {
+          deadline = callback as () => void;
+          return 0 as unknown as ReturnType<typeof setTimeout>;
+        });
+        let completion: Promise<string>;
+        try {
+          completion = deps.client!.complete({ system: 'Invented', prompt: 'Invented' });
+        } finally {
+          timer.mockRestore();
+        }
+        const rejected = expect(completion).rejects.toThrow('Scheduled AI deadline exceeded');
+        deadline();
+        await rejected;
+        return new Response('fallback completed');
+      });
+      await coordinator(testEnv, 'on');
+      expect(await status()).toMatchObject({ active: 1, drained: false });
+      expect((await off()).status).toBe(503);
+      expect(
+        await db.prepare("SELECT value FROM settings WHERE key='invented-late-ai'").first('value'),
+      ).toBeNull();
+      release();
+      await waitOnExecutionContext(ctx);
+      expect(await status()).toMatchObject({ active: 0, drained: true });
+      expect(
+        await db.prepare("SELECT value FROM settings WHERE key='invented-late-ai'").first('value'),
+      ).toBe('done');
+    } finally {
+      release();
+      await waitOnExecutionContext(ctx);
+    }
   });
   it('authenticates operator reads, requires drain for object access, and distinguishes MCP read tools', async () => {
     const c = client({}, operatorEnv);

@@ -5,7 +5,11 @@ import { tryGetAi, type AiDeps } from '../ai/provider';
 /** One bounded model call per maintenance step. The ordinary job fallbacks
  * still apply when AI is disabled, unavailable, over allowance or times out.
  */
-export async function scheduledAi(env: Env, deps: AiDeps): Promise<AiDeps> {
+export async function scheduledAi(
+  env: Env,
+  deps: AiDeps,
+  ctx?: Pick<ExecutionContext, 'waitUntil'>,
+): Promise<AiDeps> {
   const fetcher = deps.fetch ?? fetch;
   const boundedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetcher(input, {
@@ -46,8 +50,12 @@ export async function scheduledAi(env: Env, deps: AiDeps): Promise<AiDeps> {
           throw new Error('Scheduled AI prompt too large');
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
+          const completion = ai.complete(request);
+          // A deadline fallback must not declare maintenance drained while the
+          // underlying call (including its D1 usage write) is still in flight.
+          ctx?.waitUntil(completion);
           const reply = await Promise.race([
-            ai.complete(request),
+            completion,
             new Promise<never>((_, reject) => {
               timer = setTimeout(() => reject(new Error('Scheduled AI deadline exceeded')), 30_000);
             }),

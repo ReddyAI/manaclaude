@@ -131,11 +131,11 @@ export function createWorker(deps: AppDeps = {}) {
       _ctx: ExecutionContext,
     ): Promise<void> {
       try {
-        await tracked(env, _ctx, async () => {
+        await tracked(env, _ctx, async (trackedCtx) => {
           const f = deps.fetch ?? fetch;
           if (controller.cron === NIGHTLY_CRON) {
-            await runNightlyStep(env, new Date(controller.scheduledTime), deps).catch((e) =>
-              console.error('Nightly step failed', String(e)),
+            await runNightlyStep(env, new Date(controller.scheduledTime), deps, trackedCtx).catch(
+              (e) => console.error('Nightly step failed', String(e)),
             );
             return;
           }
